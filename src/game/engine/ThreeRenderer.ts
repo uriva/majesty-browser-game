@@ -17,6 +17,7 @@ export class ThreeRenderer {
 
   // Procedural Canvas Textures
   private grassTexture: THREE.CanvasTexture;
+  private grassBumpTexture: THREE.CanvasTexture;
   private cobbleTexture: THREE.CanvasTexture;
   private stoneWallTexture: THREE.CanvasTexture;
   private thatchTexture: THREE.CanvasTexture;
@@ -95,6 +96,7 @@ export class ThreeRenderer {
 
     // Generate Procedural Textures
     this.grassTexture = this.createGrassTexture();
+    this.grassBumpTexture = this.createGrassBumpTexture();
     this.cobbleTexture = this.createCobbleTexture();
     this.stoneWallTexture = this.createStoneWallTexture();
     this.thatchTexture = this.createThatchTexture();
@@ -158,6 +160,7 @@ export class ThreeRenderer {
     const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     this.roadTexture.anisotropy = maxAniso;
     this.grassTexture.anisotropy = maxAniso;
+    this.grassBumpTexture.anisotropy = maxAniso;
     this.cobbleTexture.anisotropy = maxAniso;
 
     // 4. Lighting
@@ -206,39 +209,200 @@ export class ThreeRenderer {
     this.buildSelectionMeshes();
   }
 
-  // --- PROCEDURAL PROCEDURAL TEXTURE GENERATORS ---
+  // --- PROCEDURAL TEXTURE GENERATORS ---
   private createGrassTexture(): THREE.CanvasTexture {
+    const size = 1024;
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
+    canvas.width = size;
+    canvas.height = size;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#2d6a4f';
-    ctx.fillRect(0, 0, 256, 256);
+    // 1. Multi-Octave Rich Fantasy Meadow Base Gradient
+    ctx.fillStyle = '#22533a';
+    ctx.fillRect(0, 0, size, size);
 
-    // Blade and patch variations
-    for (let i = 0; i < 400; i++) {
-      const x = Math.random() * 256;
-      const y = Math.random() * 256;
-      const shade = Math.random() > 0.5 ? '#40916c' : '#1b4332';
-      ctx.fillStyle = shade;
-      ctx.fillRect(x, y, Math.random() * 3 + 1, Math.random() * 6 + 2);
+    // Large organic tonal patches (undulating meadow lighting)
+    const tones = ['#1e4620', '#2d6a4f', '#387a55', '#40916c', '#52796f', '#355834', '#4b7c59'];
+    for (let i = 0; i < 48; i++) {
+      const px = ((i * 197) % size);
+      const py = ((i * 311) % size);
+      const radius = 90 + ((i * 37) % 110);
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, radius);
+      grad.addColorStop(0, tones[i % tones.length]);
+      grad.addColorStop(0.7, tones[(i + 1) % tones.length]);
+      grad.addColorStop(1, 'rgba(34, 83, 58, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(px, py, radius, 0, Math.PI * 2);
+      ctx.fill();
     }
 
-    // Tiny clover & wild flower dots
-    for (let f = 0; f < 35; f++) {
-      const fx = Math.random() * 256;
-      const fy = Math.random() * 256;
-      ctx.fillStyle = Math.random() > 0.5 ? '#fbbf24' : '#f43f5e';
+    // Medium soft loam & moss pockets
+    for (let i = 0; i < 120; i++) {
+      const mx = ((i * 139) % size);
+      const my = ((i * 277) % size);
+      const mr = 20 + ((i * 17) % 35);
+      const mossGrad = ctx.createRadialGradient(mx, my, 0, mx, my, mr);
+      mossGrad.addColorStop(0, i % 2 === 0 ? '#1b3d22' : '#4d7c0f');
+      mossGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = mossGrad;
       ctx.beginPath();
-      ctx.arc(fx, fy, 1.8, 0, Math.PI * 2);
+      ctx.arc(mx, my, mr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 2. Dense Hand-Painted Organic Grass Blade Tufts (3,500 blades)
+    const bladeColors = ['#1b4332', '#2d6a4f', '#40916c', '#52b788', '#74c69d', '#95d5b2', '#a7c957', '#d8f3dc'];
+    for (let b = 0; b < 3600; b++) {
+      const bx = ((b * 73 + (b % 17) * 41) % size);
+      const by = ((b * 127 + (b % 23) * 59) % size);
+      const bladeH = 6 + (b % 9);
+      const curve = ((b % 7) - 3) * 1.5;
+      const col = bladeColors[b % bladeColors.length];
+
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.2 + (b % 3) * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.quadraticCurveTo(bx + curve, by - bladeH * 0.5, bx + curve * 1.4, by - bladeH);
+      ctx.stroke();
+
+      // Bright sunlit tip highlight on a fraction of blades
+      if (b % 4 === 0) {
+        ctx.fillStyle = '#d8f3dc';
+        ctx.fillRect(bx + curve * 1.4, by - bladeH, 1.2, 1.2);
+      }
+    }
+
+    // 3. Lush Clover Patches with Trifoliate Leaflets (220 clover clumps)
+    for (let c = 0; c < 220; c++) {
+      const cx = ((c * 241 + (c % 19) * 31) % size);
+      const cy = ((c * 179 + (c % 29) * 47) % size);
+      const cr = 3.5 + (c % 3);
+
+      for (let leaf = 0; leaf < 3; leaf++) {
+        const angle = (leaf * (Math.PI * 2 / 3)) + ((c % 5) * 0.3);
+        const lx = cx + Math.cos(angle) * cr;
+        const ly = cy + Math.sin(angle) * cr;
+
+        // Leaf shadow
+        ctx.fillStyle = '#1b4332';
+        ctx.beginPath();
+        ctx.arc(lx, ly, cr * 0.85, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Leaf body
+        ctx.fillStyle = '#40916c';
+        ctx.beginPath();
+        ctx.arc(lx, ly, cr * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pale center chevron
+        ctx.fillStyle = '#74c69d';
+        ctx.fillRect(lx - 0.5, ly - 0.5, 1, 1);
+      }
+    }
+
+    // 4. Vibrant Painterly Wildflowers (Buttercups, Poppies, Forget-Me-Nots, Daisies)
+    for (let f = 0; f < 320; f++) {
+      const fx = ((f * 313 + (f % 13) * 67) % size);
+      const fy = ((f * 229 + (f % 31) * 83) % size);
+      const type = f % 4;
+
+      if (type === 0) {
+        // Golden Buttercup / Marigold
+        ctx.fillStyle = '#ca8a04';
+        ctx.beginPath(); ctx.arc(fx, fy, 3.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath(); ctx.arc(fx, fy, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath(); ctx.arc(fx, fy, 1.0, 0, Math.PI * 2); ctx.fill();
+      } else if (type === 1) {
+        // Scarlet Wild Poppy
+        ctx.fillStyle = '#991b1b';
+        ctx.beginPath(); ctx.arc(fx, fy, 3.4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath(); ctx.arc(fx, fy, 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1c1917';
+        ctx.beginPath(); ctx.arc(fx, fy, 0.9, 0, Math.PI * 2); ctx.fill();
+      } else if (type === 2) {
+        // Azure Alpine Forget-Me-Not
+        ctx.fillStyle = '#1e40af';
+        ctx.beginPath(); ctx.arc(fx, fy, 2.8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath(); ctx.arc(fx, fy, 2.0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath(); ctx.arc(fx, fy, 0.8, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // White Meadow Daisy
+        for (let p = 0; p < 5; p++) {
+          const pa = p * (Math.PI * 2 / 5);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(fx + Math.cos(pa) * 2.2, fy + Math.sin(pa) * 2.2, 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#facc15';
+        ctx.beginPath(); ctx.arc(fx, fy, 1.4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(16, 16);
+    return tex;
+  }
+
+  private createGrassBumpTexture(): THREE.CanvasTexture {
+    const size = 1024;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+
+    // Neutral gray baseline
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, size, size);
+
+    // Micro-grooves and blade relief
+    for (let b = 0; b < 2400; b++) {
+      const bx = ((b * 73 + (b % 17) * 41) % size);
+      const by = ((b * 127 + (b % 23) * 59) % size);
+      const bladeH = 6 + (b % 9);
+      const curve = ((b % 7) - 3) * 1.5;
+
+      // Depressed root groove
+      ctx.strokeStyle = '#505050';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + curve * 0.4, by - bladeH * 0.3);
+      ctx.stroke();
+
+      // Raised blade body
+      ctx.strokeStyle = '#b8b8b8';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(bx + curve * 0.4, by - bladeH * 0.3);
+      ctx.lineTo(bx + curve * 1.4, by - bladeH);
+      ctx.stroke();
+    }
+
+    // Raised wildflower nodes
+    for (let f = 0; f < 320; f++) {
+      const fx = ((f * 313 + (f % 13) * 67) % size);
+      const fy = ((f * 229 + (f % 31) * 83) % size);
+      ctx.fillStyle = '#d0d0d0';
+      ctx.beginPath();
+      ctx.arc(fx, fy, 2.5, 0, Math.PI * 2);
       ctx.fill();
     }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(12, 12);
+    tex.repeat.set(16, 16);
     return tex;
   }
 
@@ -1097,26 +1261,74 @@ export class ThreeRenderer {
     const w = this.gridManager.width;
     const h = this.gridManager.height;
 
-    // 1. Base Ground Plane (Grass with 3D rolling hills)
+    // 1. Base Ground Plane (Grass with 3D rolling hills & multi-biome vertex coloring)
     const segmentsX = w * 2;
     const segmentsZ = h * 2;
     const groundGeo = new THREE.PlaneGeometry(w * ts, h * ts, segmentsX, segmentsZ);
     groundGeo.rotateX(-Math.PI / 2);
 
     const posAttr = groundGeo.attributes.position;
+    const colorAttr = new Float32Array(posAttr.count * 3);
+
     for (let i = 0; i < posAttr.count; i++) {
       const vx = posAttr.getX(i) + (w * ts) / 2;
       const vz = posAttr.getZ(i) + (h * ts) / 2;
       const vy = this.getTerrainHeight(vx, vz);
       posAttr.setY(i, vy);
+
+      // Base lush meadow vertex tone (normalized 1.0)
+      let r = 1.0, g = 1.0, b = 1.0;
+
+      // Elevation tint (Hills and rocky crags are warmer/sunnier or rockier)
+      if (vy > 3.0) {
+        const hFactor = Math.min(1.0, (vy - 3.0) / 12.0);
+        r += hFactor * 0.14;
+        g += hFactor * 0.10;
+        b -= hFactor * 0.08;
+      }
+
+      // River proximity shading (Moist dark moss & peat near waterlines)
+      const distW = Math.abs(vx - this.getWestRiverX(vz));
+      const distE = Math.abs(vx - this.getEastRiverX(vz));
+      const minRiverDist = Math.min(distW, distE);
+      if (minRiverDist < 40) {
+        const moist = 1.0 - (minRiverDist / 40);
+        r -= moist * 0.25;
+        g -= moist * 0.12;
+        b -= moist * 0.20;
+      }
+
+      // Forest grove shading
+      const tx = Math.floor(vx / ts);
+      const ty = Math.floor(vz / ts);
+      if (this.gridManager.isValid(tx, ty) && this.gridManager.grid[ty][tx] === 3) {
+        r -= 0.18;
+        g -= 0.10;
+        b -= 0.14;
+      }
+
+      // Subtle macro-tonal variation wave
+      const wave = Math.sin(vx * 0.008) * Math.cos(vz * 0.008) * 0.08;
+      r += wave;
+      g += wave * 0.8;
+      b += wave * 0.5;
+
+      colorAttr[i * 3] = Math.max(0.25, Math.min(1.2, r));
+      colorAttr[i * 3 + 1] = Math.max(0.25, Math.min(1.2, g));
+      colorAttr[i * 3 + 2] = Math.max(0.25, Math.min(1.2, b));
     }
+
+    groundGeo.setAttribute('color', new THREE.BufferAttribute(colorAttr, 3));
     groundGeo.computeVertexNormals();
 
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x3d7a59,
+      color: 0xffffff,
       map: this.grassTexture,
-      roughness: 0.85,
-      metalness: 0.05
+      bumpMap: this.grassBumpTexture,
+      bumpScale: 0.45,
+      vertexColors: true,
+      roughness: 0.82,
+      metalness: 0.04
     });
 
     const groundMesh = new THREE.Mesh(groundGeo, groundMat);
@@ -1286,6 +1498,45 @@ export class ThreeRenderer {
           rock.userData = { tx: x, ty: y };
           this.terrainGroup.add(rock);
           this.terrainFeaturesList.push(rock);
+        } else if (tile === 0) {
+          // Open meadow flora scattering (Wildflowers, Grass tufts, River pebbles)
+          const hash = (((x * 283 + y * 439) % 1000) + 1000) % 1000 / 1000;
+          const hashB = (((x * 179 + y * 337) % 1000) + 1000) % 1000 / 1000;
+          const distW = Math.abs(px - this.getWestRiverX(pz));
+          const distE = Math.abs(px - this.getEastRiverX(pz));
+          const minRiver = Math.min(distW, distE);
+
+          if (minRiver > 18 && minRiver < 36 && hash > 0.68) {
+            // Riverbank mossy pebbles
+            const pebble = this.create3DRiverPebbleMesh();
+            const pebY = this.getTerrainHeight(px, pz);
+            pebble.position.set(px + (hash - 0.5) * 12, pebY, pz + (hashB - 0.5) * 12);
+            pebble.rotation.y = hash * Math.PI * 2;
+            pebble.userData = { tx: x, ty: y };
+            this.terrainGroup.add(pebble);
+            this.terrainFeaturesList.push(pebble);
+          } else if (hash > 0.48 && Math.hypot(px - (w * ts) / 2, pz - (h * ts) / 2) > 100) {
+            if (hashB > 0.52) {
+              // 3D Wildflower patch (Poppies, Buttercups, Bluebells, Daisies)
+              const flowerType = (x * 3 + y * 7) % 4;
+              const flower = this.create3DWildflowerMesh(flowerType);
+              const flowerY = this.getTerrainHeight(px + (hash - 0.5) * 14, pz + (hashB - 0.5) * 14);
+              flower.position.set(px + (hash - 0.5) * 14, flowerY, pz + (hashB - 0.5) * 14);
+              flower.scale.set(0.9 + hashB * 0.35, 0.9 + hashB * 0.35, 0.9 + hashB * 0.35);
+              flower.userData = { tx: x, ty: y };
+              this.terrainGroup.add(flower);
+              this.terrainFeaturesList.push(flower);
+            } else {
+              // 3D Swaying Grass Tuft
+              const tuft = this.create3DGrassTuftMesh((x + y) % 4);
+              const tuftY = this.getTerrainHeight(px + (hashB - 0.5) * 14, pz + (hash - 0.5) * 14);
+              tuft.position.set(px + (hashB - 0.5) * 14, tuftY, pz + (hash - 0.5) * 14);
+              tuft.scale.set(0.85 + hash * 0.35, 0.85 + hash * 0.35, 0.85 + hash * 0.35);
+              tuft.userData = { tx: x, ty: y };
+              this.terrainGroup.add(tuft);
+              this.terrainFeaturesList.push(tuft);
+            }
+          }
         }
       }
     }
@@ -2078,6 +2329,99 @@ export class ThreeRenderer {
 
     posAttr.needsUpdate = true;
     this.roadsMesh.geometry.computeVertexNormals();
+  }
+
+  private create3DGrassTuftMesh(variant: number): THREE.Group {
+    const tuft = new THREE.Group();
+    const colors = [0x2d6a4f, 0x40916c, 0x52b788, 0x74c69d];
+    const col = colors[variant % colors.length];
+    const mat = new THREE.MeshStandardMaterial({
+      color: col,
+      roughness: 0.8,
+      side: THREE.DoubleSide
+    });
+
+    const bladeGeo = new THREE.PlaneGeometry(1.2, 3.5);
+    bladeGeo.translate(0, 1.75, 0);
+
+    const b1 = new THREE.Mesh(bladeGeo, mat);
+    b1.rotation.y = 0;
+    b1.rotation.x = 0.15;
+    tuft.add(b1);
+
+    const b2 = new THREE.Mesh(bladeGeo, mat);
+    b2.rotation.y = Math.PI / 3;
+    b2.rotation.x = -0.12;
+    tuft.add(b2);
+
+    const b3 = new THREE.Mesh(bladeGeo, mat);
+    b3.rotation.y = (Math.PI * 2) / 3;
+    b3.rotation.x = 0.18;
+    tuft.add(b3);
+
+    return tuft;
+  }
+
+  private create3DWildflowerMesh(type: number): THREE.Group {
+    const group = new THREE.Group();
+    const stemMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.8 });
+    const stemGeo = new THREE.CylinderGeometry(0.12, 0.15, 2.5, 5);
+    stemGeo.translate(0, 1.25, 0);
+    const stem = new THREE.Mesh(stemGeo, stemMat);
+    group.add(stem);
+
+    if (type === 0) {
+      // Golden Buttercup
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.75, 6, 6), headMat);
+      head.position.y = 2.6;
+      group.add(head);
+    } else if (type === 1) {
+      // Scarlet Poppy
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.6 });
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.85, 6, 6), headMat);
+      head.position.y = 2.6;
+      group.add(head);
+      const stamen = new THREE.Mesh(new THREE.SphereGeometry(0.3, 4, 4), new THREE.MeshStandardMaterial({ color: 0x1c1917 }));
+      stamen.position.y = 2.85;
+      group.add(stamen);
+    } else if (type === 2) {
+      // Azure Bluebell
+      const headMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.6 });
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.2, 5), headMat);
+      head.position.y = 2.6;
+      head.rotation.x = Math.PI;
+      group.add(head);
+    } else {
+      // White Daisy
+      const petalMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 });
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.2, 7), petalMat);
+      disc.position.y = 2.5;
+      group.add(disc);
+      const center = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6), new THREE.MeshStandardMaterial({ color: 0xfacc15 }));
+      center.position.y = 2.65;
+      group.add(center);
+    }
+
+    return group;
+  }
+
+  private create3DRiverPebbleMesh(): THREE.Group {
+    const group = new THREE.Group();
+    const pebbleMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.7 });
+    const mossMat = new THREE.MeshStandardMaterial({ color: 0x3f6212, roughness: 0.9 });
+
+    const p1 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.2, 0), pebbleMat);
+    p1.scale.set(1.4, 0.7, 1.1);
+    p1.position.set(0, 0.4, 0);
+    group.add(p1);
+
+    const p2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.8, 0), mossMat);
+    p2.scale.set(1.2, 0.6, 1.0);
+    p2.position.set(1.2, 0.3, 0.6);
+    group.add(p2);
+
+    return group;
   }
 
   private create3DTreeMesh(variant: number): THREE.Group {

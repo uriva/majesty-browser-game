@@ -118,15 +118,48 @@ export class CanvasRenderer {
         const py = y * ts;
 
         if (tileType === 0) {
-          // Lush grass with subtle checker texture
-          const isAlt = (x + y) % 2 === 0;
-          ctx.fillStyle = isAlt ? '#2d6a4f' : '#285e46';
+          // Lush painterly fantasy meadow with organic multi-tonal grass patches
+          const hash = ((x * 197 + y * 311) % 100);
+          let grassColor = '#2d6a4f';
+          if (hash < 25) grassColor = '#22533a';
+          else if (hash < 55) grassColor = '#2d6a4f';
+          else if (hash < 80) grassColor = '#387a55';
+          else grassColor = '#40916c';
+
+          ctx.fillStyle = grassColor;
           ctx.fillRect(px, py, ts, ts);
 
-          if ((x * 7 + y * 13) % 4 === 0) {
-            ctx.fillStyle = '#40916c';
-            ctx.fillRect(px + 4, py + 6, 2, 4);
-            ctx.fillRect(px + 18, py + 14, 2, 4);
+          // Fine grass blade texture & clover clumps
+          if (hash % 3 === 0) {
+            ctx.fillStyle = '#52b788';
+            ctx.fillRect(px + 4 + (hash % 6), py + 5 + (hash % 7), 1.5, 3.5);
+            ctx.fillRect(px + 16 + (hash % 8), py + 14 + (hash % 9), 1.5, 3.5);
+          }
+
+          // Scattered Wildflower Blooms in open meadows
+          if (hash > 72 && (x * 7 + y * 13) % 5 === 0) {
+            const fType = (x + y) % 4;
+            if (fType === 0) {
+              // Buttercup
+              ctx.fillStyle = '#facc15';
+              ctx.beginPath(); ctx.arc(px + 10, py + 12, 2.2, 0, Math.PI * 2); ctx.fill();
+            } else if (fType === 1) {
+              // Scarlet Poppy
+              ctx.fillStyle = '#ef4444';
+              ctx.beginPath(); ctx.arc(px + 20, py + 18, 2.5, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#1c1917';
+              ctx.fillRect(px + 19.5, py + 17.5, 1, 1);
+            } else if (fType === 2) {
+              // Azure Bluebell
+              ctx.fillStyle = '#38bdf8';
+              ctx.beginPath(); ctx.arc(px + 14, py + 22, 2.0, 0, Math.PI * 2); ctx.fill();
+            } else {
+              // White Daisy
+              ctx.fillStyle = '#ffffff';
+              ctx.beginPath(); ctx.arc(px + 18, py + 8, 2.2, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#facc15';
+              ctx.beginPath(); ctx.arc(px + 18, py + 8, 1.0, 0, Math.PI * 2); ctx.fill();
+            }
           }
         } else if (tileType === 1) {
           // Cobblestone / Dirt Road
