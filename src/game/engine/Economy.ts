@@ -134,47 +134,14 @@ export class EconomyManager {
     lairs: MonsterLair[],
     targetBuildingId?: string
   ) {
-    const dx = targetX - tc.x;
-    const dy = targetY - tc.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (dist < 4) return;
-
-    const moveDist = tc.speed * delta;
-    const vx = (dx / dist) * moveDist;
-    const vy = (dy / dist) * moveDist;
-
-    const nextX = tc.x + vx;
-    const nextY = tc.y + vy;
-
-    // Check solid building collision (open buildings like marketplace are walkable)
-    if (this.gridManager.isWalkablePosition(nextX, nextY, buildings, lairs, targetBuildingId)) {
-      tc.x = nextX;
-      tc.y = nextY;
-    } else {
-      // Wall sliding around solid buildings
-      if (this.gridManager.isWalkablePosition(nextX, tc.y, buildings, lairs, targetBuildingId)) {
-        tc.x = nextX;
-      } else if (this.gridManager.isWalkablePosition(tc.x, nextY, buildings, lairs, targetBuildingId)) {
-        tc.y = nextY;
-      } else {
-        // Perpendicular detour
-        const perpX = -vy;
-        const perpY = vx;
-        if (this.gridManager.isWalkablePosition(tc.x + perpX, tc.y + perpY, buildings, lairs, targetBuildingId)) {
-          tc.x += perpX;
-          tc.y += perpY;
-        } else if (this.gridManager.isWalkablePosition(tc.x - perpX, tc.y - perpY, buildings, lairs, targetBuildingId)) {
-          tc.x -= perpX;
-          tc.y -= perpY;
-        }
-      }
-    }
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      tc.direction = dx > 0 ? 'right' : 'left';
-    } else {
-      tc.direction = dy > 0 ? 'down' : 'up';
-    }
+    this.gridManager.moveEntityAlongPath(
+      tc,
+      targetX,
+      targetY,
+      delta,
+      buildings,
+      lairs,
+      targetBuildingId
+    );
   }
 }

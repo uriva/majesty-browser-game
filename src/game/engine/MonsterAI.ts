@@ -325,45 +325,23 @@ export class MonsterAIManager {
     speedMult = 1.0,
     targetBuildingId?: string
   ) {
-    const dx = targetX - monster.x;
-    const dy = targetY - monster.y;
-    const dist = Math.hypot(dx, dy);
+    const reached = this.gridManager.moveEntityAlongPath(
+      monster,
+      targetX,
+      targetY,
+      delta,
+      buildings,
+      [],
+      targetBuildingId,
+      speedMult
+    );
 
-    if (dist < 4) {
+    if (reached) {
       monster.targetX = undefined;
       monster.targetY = undefined;
-      return;
-    }
-
-    const moveDist = monster.speed * speedMult * delta;
-    const vx = (dx / dist) * moveDist;
-    const vy = (dy / dist) * moveDist;
-
-    const nextX = monster.x + vx;
-    const nextY = monster.y + vy;
-
-    // Check solid building collision (open buildings like marketplace are walkable)
-    if (this.gridManager.isWalkablePosition(nextX, nextY, buildings, [], targetBuildingId)) {
-      monster.x = nextX;
-      monster.y = nextY;
-    } else {
-      // Wall sliding around solid buildings
-      if (this.gridManager.isWalkablePosition(nextX, monster.y, buildings, [], targetBuildingId)) {
-        monster.x = nextX;
-      } else if (this.gridManager.isWalkablePosition(monster.x, nextY, buildings, [], targetBuildingId)) {
-        monster.y = nextY;
-      } else {
-        // Obstructed -> reset wander target immediately so it doesn't get stuck bumping
-        monster.targetX = undefined;
-        monster.targetY = undefined;
+      if (monster.state === 'wandering') {
         monster.wanderTimer = 0;
       }
-    }
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      monster.direction = dx > 0 ? 'right' : 'left';
-    } else {
-      monster.direction = dy > 0 ? 'down' : 'up';
     }
   }
 }

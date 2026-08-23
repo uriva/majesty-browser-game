@@ -754,70 +754,24 @@ export class HeroAIManager {
     speedMultiplier = 1.0,
     targetBuildingId?: string
   ) {
-    const dx = targetX - hero.x;
-    const dy = targetY - hero.y;
-    const dist = Math.hypot(dx, dy);
+    const reached = this.gridManager.moveEntityAlongPath(
+      hero,
+      targetX,
+      targetY,
+      delta,
+      buildings,
+      lairs,
+      targetBuildingId,
+      speedMultiplier
+    );
 
-    if (dist < 4) {
+    if (reached) {
       hero.targetX = undefined;
       hero.targetY = undefined;
       if (hero.state === 'wandering') {
         hero.state = 'idle';
         hero.stateTimer = Math.random() * 2 + 1;
       }
-      return;
-    }
-
-    const prevX = hero.x;
-    const prevY = hero.y;
-
-    const moveDist = hero.speed * speedMultiplier * delta;
-    const vx = (dx / dist) * moveDist;
-    const vy = (dy / dist) * moveDist;
-
-    const nextX = hero.x + vx;
-    const nextY = hero.y + vy;
-
-    // Check solid building collision (open buildings like marketplace and statue are walkable!)
-    if (this.gridManager.isWalkablePosition(nextX, nextY, buildings, lairs, targetBuildingId)) {
-      hero.x = nextX;
-      hero.y = nextY;
-    } else {
-      // Wall sliding around solid buildings
-      if (this.gridManager.isWalkablePosition(nextX, hero.y, buildings, lairs, targetBuildingId)) {
-        hero.x = nextX;
-      } else if (this.gridManager.isWalkablePosition(hero.x, nextY, buildings, lairs, targetBuildingId)) {
-        hero.y = nextY;
-      } else {
-        // Try gentle angle deviation to navigate around corner
-        const perpX = -vy;
-        const perpY = vx;
-        if (this.gridManager.isWalkablePosition(hero.x + perpX, hero.y + perpY, buildings, lairs, targetBuildingId)) {
-          hero.x += perpX * 0.5;
-          hero.y += perpY * 0.5;
-        } else if (this.gridManager.isWalkablePosition(hero.x - perpX, hero.y - perpY, buildings, lairs, targetBuildingId)) {
-          hero.x -= perpX * 0.5;
-          hero.y -= perpY * 0.5;
-        }
-      }
-    }
-
-    const distMoved = Math.hypot(hero.x - prevX, hero.y - prevY);
-    if (distMoved < 0.05 * moveDist && moveDist > 0.01) {
-      // Hero cannot move towards target (blocked by solid obstacle/wall)
-      if (hero.state === 'wandering') {
-        hero.targetX = undefined;
-        hero.targetY = undefined;
-        hero.state = 'idle';
-        hero.stateTimer = Math.random() * 2 + 1;
-      }
-    }
-
-    // Direction facing
-    if (Math.abs(dx) > Math.abs(dy)) {
-      hero.direction = dx > 0 ? 'right' : 'left';
-    } else {
-      hero.direction = dy > 0 ? 'down' : 'up';
     }
   }
 

@@ -108,6 +108,8 @@ export interface Hero {
   isAttackingAnimation: number; // timer for attack frame
   isDead?: boolean;
   restingProgress?: number;
+  path?: Position[];
+  pathTargetKey?: string;
 }
 
 export interface Monster {
@@ -137,6 +139,8 @@ export interface Monster {
   targetX?: number;
   targetY?: number;
   wanderTimer?: number;
+  path?: Position[];
+  pathTargetKey?: string;
 }
 
 export interface Building {
@@ -212,6 +216,8 @@ export interface TaxCollector {
   targetBuildingId?: string;
   state: 'seeking_building' | 'returning_to_palace' | 'fleeing';
   direction: 'left' | 'right' | 'up' | 'down';
+  path?: Position[];
+  pathTargetKey?: string;
 }
 
 export interface Peasant {
@@ -226,6 +232,8 @@ export interface Peasant {
   targetBuildingId?: string;
   hammerTimer: number;
   direction: 'left' | 'right' | 'up' | 'down';
+  path?: Position[];
+  pathTargetKey?: string;
 }
 
 export interface Corpse {

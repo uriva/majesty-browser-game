@@ -676,35 +676,15 @@ export class GameEngine {
   }
 
   private movePeasantTowards(p: Peasant, targetX: number, targetY: number, delta: number) {
-    const dx = targetX - p.x;
-    const dy = targetY - p.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (dist < 4) return;
-
-    const moveDist = p.speed * delta;
-    const vx = (dx / dist) * moveDist;
-    const vy = (dy / dist) * moveDist;
-
-    const nextX = p.x + vx;
-    const nextY = p.y + vy;
-
-    if (this.gridManager.isWalkablePosition(nextX, nextY, this.state.buildings, [], p.targetBuildingId)) {
-      p.x = nextX;
-      p.y = nextY;
-    } else {
-      if (this.gridManager.isWalkablePosition(nextX, p.y, this.state.buildings, [], p.targetBuildingId)) {
-        p.x = nextX;
-      } else if (this.gridManager.isWalkablePosition(p.x, nextY, this.state.buildings, [], p.targetBuildingId)) {
-        p.y = nextY;
-      }
-    }
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      p.direction = dx > 0 ? 'right' : 'left';
-    } else {
-      p.direction = dy > 0 ? 'down' : 'up';
-    }
+    this.gridManager.moveEntityAlongPath(
+      p,
+      targetX,
+      targetY,
+      delta,
+      this.state.buildings,
+      this.state.lairs,
+      p.targetBuildingId
+    );
   }
 
   private updateCottageSprouting(delta: number) {
