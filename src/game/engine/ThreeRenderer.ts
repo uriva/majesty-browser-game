@@ -1919,8 +1919,8 @@ export class ThreeRenderer {
       depthTest: false
     });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(24, 6.0, 1);
-    const headY = hero.heroClass === 'dwarf' ? 10.5 : 12.5;
+    sprite.scale.set(52, 13.0, 1);
+    const headY = hero.heroClass === 'dwarf' ? 12.0 : 14.5;
     sprite.position.set(0, headY, 0);
     sprite.name = 'nameLabel';
 
@@ -1957,38 +1957,38 @@ export class ThreeRenderer {
     const color = classDef.color || '#3b82f6';
 
     // Dark rounded high-contrast translucent pill banner
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.fillStyle = 'rgba(10, 15, 29, 0.94)';
     ctx.strokeStyle = color;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 6;
 
     ctx.beginPath();
-    ctx.roundRect(12, 12, 488, 104, 20);
+    ctx.roundRect(14, 14, 484, 100, 24);
     ctx.fill();
     ctx.stroke();
 
     // Class Color Indicator Dot
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(52, 54, 16, 0, Math.PI * 2);
+    ctx.arc(58, 56, 18, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 3.5;
+    ctx.lineWidth = 4;
     ctx.stroke();
 
-    // Hero Name & Level Text with subtle drop shadow
+    // Hero Name & Level Text (Large, Bold, High-Contrast)
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px sans-serif';
+    ctx.font = 'bold 42px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${hero.name}  (L${hero.level})`, 82, 50);
+    ctx.fillText(`${hero.name} (L${hero.level})`, 92, 50);
 
     // Mini Health Bar along bottom of nameplate
     const hpRatio = Math.max(0, Math.min(1, hero.hp / hero.maxHp));
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(82, 78, 396, 14);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(92, 82, 386, 16);
 
     ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : (hpRatio > 0.25 ? '#eab308' : '#ef4444');
-    ctx.fillRect(82, 78, 396 * hpRatio, 14);
+    ctx.fillRect(92, 82, 386 * hpRatio, 16);
   }
 
   private create3DHeroMesh(h: Hero): THREE.Group {
@@ -3262,7 +3262,7 @@ export class ThreeRenderer {
       // 1. Draw Large 3D Shaded Metallic Sovereign Gold Coin
       const cx = 72;
       const cy = 80;
-      const r = 48;
+      const r = 52;
 
       const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
       grad.addColorStop(0, '#fef08a');
@@ -3276,37 +3276,37 @@ export class ThreeRenderer {
 
       // Outer gold rim
       ctx.strokeStyle = '#fef08a';
-      ctx.lineWidth = 5;
+      ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.arc(cx, cy, r - 5, 0, Math.PI * 2);
       ctx.stroke();
 
       // Crown sovereign symbol
       ctx.fillStyle = '#78350f';
-      ctx.font = 'bold 44px serif';
+      ctx.font = 'bold 50px serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('👑', cx, cy - 2);
 
       // 2. Draw Transaction Sum in Large Crisp Typography with heavy outline
-      ctx.font = 'bold 54px sans-serif';
+      ctx.font = 'bold 64px sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
 
       ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 10;
-      ctx.strokeText(ft.text, 140, cy);
+      ctx.lineWidth = 12;
+      ctx.strokeText(ft.text, 144, cy);
 
       ctx.fillStyle = '#fef08a';
-      ctx.fillText(ft.text, 140, cy);
+      ctx.fillText(ft.text, 144, cy);
     } else {
       // Large Combat damage, healing, or level up banner
-      ctx.font = 'bold 50px sans-serif';
+      ctx.font = 'bold 58px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
       ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 10;
+      ctx.lineWidth = 12;
       ctx.strokeText(ft.text, 256, 80);
 
       ctx.fillStyle = ft.color || '#ffffff';
@@ -3321,7 +3321,7 @@ export class ThreeRenderer {
       depthTest: false
     });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(isGold ? 28 : 22, isGold ? 8.75 : 6.875, 1);
+    sprite.scale.set(isGold ? 48 : 38, isGold ? 15.0 : 11.875, 1);
     return sprite;
   }
 
