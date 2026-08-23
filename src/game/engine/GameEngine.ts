@@ -220,11 +220,12 @@ export class GameEngine {
       const cx = Math.floor(Math.random() * (scenario.mapWidth - 14)) + 7;
       const cy = Math.floor(Math.random() * (scenario.mapHeight - 14)) + 7;
       if (Math.hypot(cx - centerX, cy - centerY) < 14) continue;
+      const dropPos = this.gridManager.findNearestWalkablePosition((cx + 0.5) * MAP_CONFIG.TILE_SIZE, (cy + 0.5) * MAP_CONFIG.TILE_SIZE, this.state.buildings, this.state.lairs);
 
       this.state.treasures.push({
         id: `treasure_wild_${c}`,
-        x: (cx + 0.5) * MAP_CONFIG.TILE_SIZE,
-        y: (cy + 0.5) * MAP_CONFIG.TILE_SIZE,
+        x: dropPos.x,
+        y: dropPos.y,
         goldAmount: Math.floor(Math.random() * 60) + 40,
         type: 'chest',
         createdAt: Date.now()
@@ -387,10 +388,11 @@ export class GameEngine {
         // Bosses or high-tier beasts drop ground loot for heroes to collect
         const dropChance = monster.isBoss ? 1.0 : (monster.type === 'minotaur' || monster.type === 'goblin_shaman' ? 0.35 : 0);
         if (Math.random() < dropChance) {
+          const dropPos = this.gridManager.findNearestWalkablePosition(monster.x, monster.y, this.state.buildings, this.state.lairs);
           this.state.treasures.push({
             id: `loot_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-            x: monster.x,
-            y: monster.y,
+            x: dropPos.x,
+            y: dropPos.y,
             goldAmount: monster.isBoss ? 150 : Math.floor(Math.random() * 20) + 15,
             type: monster.isBoss ? 'chest' : 'gold_bag',
             createdAt: Date.now()
@@ -493,10 +495,13 @@ export class GameEngine {
 
         // Spawn ground plunder loot on the ruins for heroes to collect
         for (let l = 0; l < 2; l++) {
+          const rawX = lx + (Math.random() * 24 - 12);
+          const rawY = ly + (Math.random() * 24 - 12);
+          const dropPos = this.gridManager.findNearestWalkablePosition(rawX, rawY, this.state.buildings, this.state.lairs, lair.id);
           this.state.treasures.push({
             id: `loot_lair_${Date.now()}_${l}`,
-            x: lx + (Math.random() * 24 - 12),
-            y: ly + (Math.random() * 24 - 12),
+            x: dropPos.x,
+            y: dropPos.y,
             goldAmount: Math.floor(plunderGold * 0.12) + 25,
             type: lair.type === 'dragon_cavern' ? 'chest' : 'gold_bag',
             createdAt: Date.now()

@@ -86,10 +86,11 @@ export class EconomyManager {
         audioManager.playVoice('tax_death', tc.x, tc.y);
 
         if (tc.goldCarried > 0 && onDropTreasure) {
+          const dropPos = this.gridManager.findNearestWalkablePosition(tc.x, tc.y, buildings, lairs);
           onDropTreasure({
             id: `loot_tax_${Date.now()}_${tc.id}`,
-            x: tc.x,
-            y: tc.y,
+            x: dropPos.x,
+            y: dropPos.y,
             goldAmount: tc.goldCarried,
             type: tc.goldCarried > 100 ? 'chest' : 'gold_bag',
             createdAt: Date.now()

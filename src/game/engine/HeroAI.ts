@@ -468,9 +468,18 @@ export class HeroAIManager {
     const treasure = treasures[treasureIndex];
     const dist = Math.hypot(treasure.x - hero.x, treasure.y - hero.y);
 
-    if (dist > 18) {
-      this.moveTowards(hero, treasure.x, treasure.y, delta, buildings, lairs, 1.15);
-    } else {
+    const pickupRadius = 26;
+    let shouldClaim = dist <= pickupRadius;
+
+    if (!shouldClaim) {
+      const reached = this.moveTowards(hero, treasure.x, treasure.y, delta, buildings, lairs, 1.15);
+      const newDist = Math.hypot(treasure.x - hero.x, treasure.y - hero.y);
+      if (reached || newDist <= pickupRadius + 2) {
+        shouldClaim = true;
+      }
+    }
+
+    if (shouldClaim) {
       // Pick up treasure!
       hero.gold += treasure.goldAmount;
       hero.xp += 25;
@@ -485,7 +494,8 @@ export class HeroAIManager {
 
       treasures.splice(treasureIndex, 1);
       hero.state = 'idle';
-      hero.stateTimer = 1.0;
+      hero.stateTimer = 0.5;
+      hero.targetEntityId = undefined;
       hero.currentThought = `Looted ${treasure.goldAmount} gold!`;
     }
   }
@@ -947,9 +957,11 @@ export class HeroAIManager {
       hero.targetY = undefined;
       if (hero.state === 'wandering') {
         hero.state = 'idle';
-        hero.stateTimer = Math.random() * 2 + 1;
+        hero.stateTimer = 1.2;
       }
     }
+
+    return reached;
   }
 
   private levelUpHero(hero: Hero) {

@@ -848,6 +848,42 @@ export class GridManager {
     return this.isValid(tx, ty) ? this.explored[ty][tx] : false;
   }
 
+  public findNearestWalkablePosition(
+    px: number,
+    py: number,
+    buildings: Building[],
+    lairs: MonsterLair[],
+    excludeBuildingId?: string
+  ): Position {
+    if (this.isWalkablePosition(px, py, buildings, lairs, excludeBuildingId, 4)) {
+      return { x: px, y: py };
+    }
+
+    const ts = this.tileSize;
+    const startTx = Math.floor(px / ts);
+    const startTy = Math.floor(py / ts);
+
+    // Search outwards in concentric rings up to 5 tiles (80px) for the nearest dry walkable ground
+    for (let r = 1; r <= 5; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const tx = startTx + dx;
+          const ty = startTy + dy;
+          if (this.isValid(tx, ty)) {
+            const candidatePx = (tx + 0.5) * ts;
+            const candidatePy = (ty + 0.5) * ts;
+            if (this.isWalkablePosition(candidatePx, candidatePy, buildings, lairs, excludeBuildingId, 4)) {
+              return { x: candidatePx, y: candidatePy };
+            }
+          }
+        }
+      }
+    }
+
+    return { x: px, y: py };
+  }
+
   public isPixelVisible(px: number, py: number): boolean {
     const tx = Math.floor(px / this.tileSize);
     const ty = Math.floor(py / this.tileSize);
