@@ -211,6 +211,20 @@ export interface TaxCollector {
   direction: 'left' | 'right' | 'up' | 'down';
 }
 
+export interface Peasant {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  speed: number;
+  state: 'idle_at_palace' | 'walking_to_site' | 'hammering_construction' | 'repairing_building' | 'fleeing';
+  targetBuildingId?: string;
+  hammerTimer: number;
+  direction: 'left' | 'right' | 'up' | 'down';
+}
+
 export interface Treasure {
   id: string;
   x: number;
@@ -335,6 +349,7 @@ export interface GameState {
   lairs: MonsterLair[];
   flags: Flag[];
   taxCollectors: TaxCollector[];
+  peasants: Peasant[];
   treasures: Treasure[];
   projectiles: Projectile[];
   particles: Particle[];
@@ -343,7 +358,7 @@ export interface GameState {
   notifications: NotificationItem[];
   stats: GameStats;
   selectedEntity: {
-    type: 'hero' | 'building' | 'monster' | 'lair' | 'flag' | 'tax_collector';
+    type: 'hero' | 'building' | 'monster' | 'lair' | 'flag' | 'tax_collector' | 'peasant';
     id: string;
   } | null;
   camera: {

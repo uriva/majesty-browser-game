@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
-import { Building, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Projectile, TaxCollector, Treasure } from '../types';
+import { Building, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 
 export class ThreeRenderer {
@@ -23,10 +23,14 @@ export class ThreeRenderer {
   private monstersMap: Map<string, THREE.Group> = new Map();
   private lairsMap: Map<string, THREE.Group> = new Map();
   private taxCollectorsMap: Map<string, THREE.Group> = new Map();
+  private peasantsMap: Map<string, THREE.Group> = new Map();
   private treasuresMap: Map<string, THREE.Group> = new Map();
   private flagsMap: Map<string, THREE.Group> = new Map();
   private projectilesMap: Map<string, THREE.Group> = new Map();
-  private previewMesh: THREE.Mesh | null = null;
+
+  // Selection & Placement Highlights
+  private selectionGroup: THREE.Group;
+  private placementPreviewGroup: THREE.Group;
 
   // Raycaster for 3D mouse interaction
   public raycaster: THREE.Raycaster = new THREE.Raycaster();
@@ -90,11 +94,17 @@ export class ThreeRenderer {
     // 5. Groups
     this.terrainGroup = new THREE.Group();
     this.fogGroup = new THREE.Group();
+    this.selectionGroup = new THREE.Group();
+    this.placementPreviewGroup = new THREE.Group();
+
     this.scene.add(this.terrainGroup);
     this.scene.add(this.fogGroup);
+    this.scene.add(this.selectionGroup);
+    this.scene.add(this.placementPreviewGroup);
 
     this.buildTerrain();
     this.buildFogOfWar();
+    this.buildSelectionMeshes();
   }
 
   public handleResize() {
@@ -199,6 +209,36 @@ export class ThreeRenderer {
     }
   }
 
+  // --- BUILD SELECTION HIGHLIGHT MESHES ---
+  private buildSelectionMeshes() {
+    // Golden pulsating ground ring / box
+    const ringGeo = new THREE.RingGeometry(12, 14, 32);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.y = 0.8;
+    ring.name = 'selectionRing';
+    this.selectionGroup.add(ring);
+
+    // 4 Corner Brackets for Buildings
+    const cornerMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+    const cornerGeo = new THREE.BoxGeometry(4, 1, 4);
+
+    for (let i = 0; i < 4; i++) {
+      const corner = new THREE.Mesh(cornerGeo, cornerMat);
+      corner.name = `corner_${i}`;
+      corner.position.y = 1.0;
+      this.selectionGroup.add(corner);
+    }
+
+    this.selectionGroup.visible = false;
+  }
+
   // --- BUILD 3D FOG OF WAR SHROUD ---
   private buildFogOfWar() {
     const ts = this.gridManager.tileSize;
@@ -238,10 +278,10 @@ export class ThreeRenderer {
           mat.opacity = 1.0;
           fogTile.visible = true;
         } else if (!isVisible) {
-          mat.opacity = 0.48; // Explored shadow
+          mat.opacity = 0.48;
           fogTile.visible = true;
         } else {
-          fogTile.visible = false; // Fully visible area
+          fogTile.visible = false;
         }
       }
     }
@@ -249,45 +289,30 @@ export class ThreeRenderer {
 
   // --- MAIN RENDER CYCLE ---
   public render(state: GameState, mouseWorldPos: { x: number; y: number } | null) {
-    // 1. Update Camera Position & Target
     this.updateCamera(state);
-
-    // 2. Day / Night Atmosphere Lighting
     this.updateDayNightLighting(state);
-
-    // 3. Update Fog of War
     this.updateFogOfWar(state);
 
-    // 4. Update Buildings
     this.updateBuildings(state);
-
-    // 5. Update Monster Lairs
     this.updateLairs(state);
-
-    // 6. Update Treasures
     this.updateTreasures(state);
-
-    // 7. Update Flags
     this.updateFlags(state);
-
-    // 8. Update Tax Collectors
     this.updateTaxCollectors(state);
-
-    // 9. Update Heroes
+    this.updatePeasants(state);
     this.updateHeroes(state);
-
-    // 10. Update Monsters
     this.updateMonsters(state);
-
-    // 11. Update Projectiles
     this.updateProjectiles(state);
 
-    // 12. Render 3D Scene
+    // Update Selection Visuals
+    this.updateSelectionVisuals(state);
+
+    // Update Placement Preview Hover Hologram
+    this.updatePlacementPreview(state, mouseWorldPos);
+
     this.renderer.render(this.scene, this.camera);
   }
 
   private updateCamera(state: GameState) {
-    // Follow active hero if in follow mode
     if (this.cameraMode === 'follow' && state.selectedEntity?.type === 'hero') {
       const hero = state.heroes.find(h => h.id === state.selectedEntity?.id);
       if (hero) {
@@ -297,7 +322,6 @@ export class ThreeRenderer {
       this.cameraTarget.set(state.camera.x, 0, state.camera.y);
     }
 
-    // Convert spherical coordinates (pitch, yaw, distance) to 3D position
     const cosPitch = Math.cos(this.cameraPitch);
     const sinPitch = Math.sin(this.cameraPitch);
     const sinYaw = Math.sin(this.cameraYaw);
@@ -351,6 +375,155 @@ export class ThreeRenderer {
     }
   }
 
+  // --- SELECTION HIGHLIGHT ---
+  private updateSelectionVisuals(state: GameState) {
+    if (!state.selectedEntity) {
+      this.selectionGroup.visible = false;
+      return;
+    }
+
+    const ts = this.gridManager.tileSize;
+    const pulse = (Math.sin(Date.now() * 0.008) + 1) * 0.5;
+
+    if (state.selectedEntity.type === 'building') {
+      const b = state.buildings.find(build => build.id === state.selectedEntity?.id);
+      if (b) {
+        const px = (b.x + b.width / 2) * ts;
+        const pz = (b.y + b.height / 2) * ts;
+        const halfW = (b.width * ts) / 2 + 3;
+        const halfH = (b.height * ts) / 2 + 3;
+
+        this.selectionGroup.position.set(px, 0, pz);
+        this.selectionGroup.visible = true;
+
+        // Position 4 corner brackets
+        const c0 = this.selectionGroup.getObjectByName('corner_0');
+        const c1 = this.selectionGroup.getObjectByName('corner_1');
+        const c2 = this.selectionGroup.getObjectByName('corner_2');
+        const c3 = this.selectionGroup.getObjectByName('corner_3');
+
+        if (c0) c0.position.set(-halfW, 0.8, -halfH);
+        if (c1) c1.position.set(halfW, 0.8, -halfH);
+        if (c2) c2.position.set(-halfW, 0.8, halfH);
+        if (c3) c3.position.set(halfW, 0.8, halfH);
+
+        const ring = this.selectionGroup.getObjectByName('selectionRing');
+        if (ring) {
+          ring.scale.set(b.width * 1.5, b.height * 1.5, 1);
+        }
+      }
+    } else if (state.selectedEntity.type === 'hero') {
+      const h = state.heroes.find(hero => hero.id === state.selectedEntity?.id);
+      if (h) {
+        this.selectionGroup.position.set(h.x, 0, h.y);
+        this.selectionGroup.visible = true;
+        const ring = this.selectionGroup.getObjectByName('selectionRing');
+        if (ring) ring.scale.set(1.0, 1.0, 1.0);
+      }
+    } else if (state.selectedEntity.type === 'tax_collector') {
+      const tc = state.taxCollectors.find(collector => collector.id === state.selectedEntity?.id);
+      if (tc) {
+        this.selectionGroup.position.set(tc.x, 0, tc.y);
+        this.selectionGroup.visible = true;
+      }
+    } else if (state.selectedEntity.type === 'peasant') {
+      const p = state.peasants.find(peasant => peasant.id === state.selectedEntity?.id);
+      if (p) {
+        this.selectionGroup.position.set(p.x, 0, p.y);
+        this.selectionGroup.visible = true;
+      }
+    } else {
+      this.selectionGroup.visible = false;
+    }
+  }
+
+  // --- PLACEMENT PREVIEW (HOVER HOLOGRAM & SHADOW) ---
+  private updatePlacementPreview(state: GameState, mouseWorldPos: { x: number; y: number } | null) {
+    if (!state.activePlacement || !mouseWorldPos) {
+      this.placementPreviewGroup.visible = false;
+      return;
+    }
+
+    const ts = this.gridManager.tileSize;
+    const tileX = Math.floor(mouseWorldPos.x / ts);
+    const tileY = Math.floor(mouseWorldPos.y / ts);
+
+    if (state.activePlacement.type === 'building') {
+      const bDef = BUILDING_DEFINITIONS[state.activePlacement.subType as keyof typeof BUILDING_DEFINITIONS];
+      if (!bDef) return;
+
+      const isValid = this.gridManager.canPlaceBuilding(tileX, tileY, bDef.width, bDef.height, state.buildings, state.lairs);
+      const color = isValid ? 0x22c55e : 0xef4444;
+
+      // Rebuild preview mesh if needed
+      this.placementPreviewGroup.clear();
+
+      const px = (tileX + bDef.width / 2) * ts;
+      const pz = (tileY + bDef.height / 2) * ts;
+      this.placementPreviewGroup.position.set(px, 0, pz);
+
+      // 3D Bounding Hologram Box
+      const boxGeo = new THREE.BoxGeometry(bDef.width * ts, 20, bDef.height * ts);
+      const boxMat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.45,
+        wireframe: false
+      });
+      const box = new THREE.Mesh(boxGeo, boxMat);
+      box.position.y = 10;
+      this.placementPreviewGroup.add(box);
+
+      // Wireframe Outline
+      const wireMat = new THREE.MeshBasicMaterial({ color, wireframe: true });
+      const wire = new THREE.Mesh(boxGeo, wireMat);
+      wire.position.y = 10;
+      this.placementPreviewGroup.add(wire);
+
+      // Ground Footprint Grid
+      const footprintGeo = new THREE.PlaneGeometry(bDef.width * ts, bDef.height * ts);
+      footprintGeo.rotateX(-Math.PI / 2);
+      const footprintMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 });
+      const footprint = new THREE.Mesh(footprintGeo, footprintMat);
+      footprint.position.y = 0.6;
+      this.placementPreviewGroup.add(footprint);
+
+      this.placementPreviewGroup.visible = true;
+    } else if (state.activePlacement.type === 'flag') {
+      this.placementPreviewGroup.clear();
+      this.placementPreviewGroup.position.set(mouseWorldPos.x, 0, mouseWorldPos.y);
+
+      const ringGeo = new THREE.RingGeometry(2, 20, 24);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.6
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.y = 0.8;
+      this.placementPreviewGroup.add(ring);
+      this.placementPreviewGroup.visible = true;
+    } else if (state.activePlacement.type === 'spell') {
+      this.placementPreviewGroup.clear();
+      this.placementPreviewGroup.position.set(mouseWorldPos.x, 0, mouseWorldPos.y);
+
+      const ringGeo = new THREE.RingGeometry(2, 60, 32);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xc084fc,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.y = 0.8;
+      this.placementPreviewGroup.add(ring);
+      this.placementPreviewGroup.visible = true;
+    }
+  }
+
   // --- 3D BUILDINGS ---
   private updateBuildings(state: GameState) {
     const activeIds = new Set<string>();
@@ -365,18 +538,15 @@ export class ThreeRenderer {
         this.buildingsMap.set(b.id, group);
       }
 
-      // Position in 3D (Z is depth in Three.js)
       const ts = this.gridManager.tileSize;
       const px = (b.x + b.width / 2) * ts;
       const pz = (b.y + b.height / 2) * ts;
       group.position.set(px, 0, pz);
 
-      // Check visibility in fog
       const isVisible = this.gridManager.isPixelExplored(px, pz);
       group.visible = isVisible;
     }
 
-    // Cleanup destroyed buildings
     for (const [id, group] of this.buildingsMap.entries()) {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
@@ -391,84 +561,165 @@ export class ThreeRenderer {
     const w = b.width * ts;
     const h = b.height * ts;
 
+    if (b.isConstructing) {
+      // 3D Construction Scaffolding
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+      const plankMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 });
+
+      // 4 Corner Wooden Posts
+      const postGeo = new THREE.CylinderGeometry(1.5, 1.5, 24, 6);
+      const halfW = w * 0.4;
+      const halfH = h * 0.4;
+
+      const p1 = new THREE.Mesh(postGeo, postMat); p1.position.set(-halfW, 12, -halfH); group.add(p1);
+      const p2 = new THREE.Mesh(postGeo, postMat); p2.position.set(halfW, 12, -halfH); group.add(p2);
+      const p3 = new THREE.Mesh(postGeo, postMat); p3.position.set(-halfW, 12, halfH); group.add(p3);
+      const p4 = new THREE.Mesh(postGeo, postMat); p4.position.set(halfW, 12, halfH); group.add(p4);
+
+      // Crossbeams
+      const plankGeo = new THREE.BoxGeometry(w * 0.85, 2, 2);
+      const beam1 = new THREE.Mesh(plankGeo, plankMat); beam1.position.set(0, 16, -halfH); group.add(beam1);
+      const beam2 = new THREE.Mesh(plankGeo, plankMat); beam2.position.set(0, 16, halfH); group.add(beam2);
+
+      return group;
+    }
+
     if (b.type === 'palace') {
-      // Grand Royal Castle Keep
-      const castleBaseGeo = new THREE.BoxGeometry(w * 0.85, 24, h * 0.85);
+      // Grand Royal Multi-Tier Fortress
+      const castleBaseGeo = new THREE.BoxGeometry(w * 0.85, 22, h * 0.85);
       const castleBaseMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
       const castleBase = new THREE.Mesh(castleBaseGeo, castleBaseMat);
-      castleBase.position.y = 12;
+      castleBase.position.y = 11;
       castleBase.castShadow = true;
       castleBase.receiveShadow = true;
       group.add(castleBase);
 
-      // Central Grand Tower & Red Roof
-      const towerGeo = new THREE.BoxGeometry(w * 0.45, 36, h * 0.45);
-      const towerMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.7 });
-      const tower = new THREE.Mesh(towerGeo, towerMat);
-      tower.position.y = 18;
-      tower.castShadow = true;
-      group.add(tower);
+      // 4 Corner Round Turrets with Red Roofs
+      const turretGeo = new THREE.CylinderGeometry(5, 5.5, 28, 8);
+      const turretRoofGeo = new THREE.ConeGeometry(6, 12, 8);
+      const turretMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.7 });
+      const turretRoofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 });
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.38, 20, 4);
-      const roofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 });
-      const roof = new THREE.Mesh(roofGeo, roofMat);
-      roof.position.y = 46;
-      roof.rotation.y = Math.PI / 4;
-      roof.castShadow = true;
-      group.add(roof);
+      const offsets = [
+        [-w * 0.38, -h * 0.38],
+        [w * 0.38, -h * 0.38],
+        [-w * 0.38, h * 0.38],
+        [w * 0.38, h * 0.38]
+      ];
+
+      offsets.forEach(([tx, tz]) => {
+        const turret = new THREE.Mesh(turretGeo, turretMat);
+        turret.position.set(tx, 14, tz);
+        turret.castShadow = true;
+        group.add(turret);
+
+        const tRoof = new THREE.Mesh(turretRoofGeo, turretRoofMat);
+        tRoof.position.set(tx, 34, tz);
+        tRoof.castShadow = true;
+        group.add(tRoof);
+      });
+
+      // Central Grand Keep Tower
+      const keepGeo = new THREE.BoxGeometry(w * 0.45, 36, h * 0.45);
+      const keep = new THREE.Mesh(keepGeo, turretMat);
+      keep.position.y = 18;
+      keep.castShadow = true;
+      group.add(keep);
+
+      const keepRoofGeo = new THREE.ConeGeometry(w * 0.38, 20, 4);
+      const keepRoof = new THREE.Mesh(keepRoofGeo, turretRoofMat);
+      keepRoof.position.y = 46;
+      keepRoof.rotation.y = Math.PI / 4;
+      keepRoof.castShadow = true;
+      group.add(keepRoof);
 
       // Golden Sovereign Crown Spire
       const crownGeo = new THREE.CylinderGeometry(3, 4, 6, 8);
-      const crownMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.6, roughness: 0.2 });
+      const crownMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.7, roughness: 0.2 });
       const crown = new THREE.Mesh(crownGeo, crownMat);
       crown.position.y = 59;
       group.add(crown);
     } else if (b.type === 'wizard_tower') {
-      // Tall Cylindrical Arcane Tower
-      const cylinderGeo = new THREE.CylinderGeometry(w * 0.3, w * 0.36, 42, 12);
+      // Spiraling Arcane Tower with Balconies
+      const cylinderGeo = new THREE.CylinderGeometry(w * 0.28, w * 0.36, 46, 12);
       const towerMat = new THREE.MeshStandardMaterial({ color: 0x312e81, roughness: 0.7 });
       const tower = new THREE.Mesh(cylinderGeo, towerMat);
-      tower.position.y = 21;
+      tower.position.y = 23;
       tower.castShadow = true;
       group.add(tower);
+
+      const balconyGeo = new THREE.CylinderGeometry(w * 0.35, w * 0.35, 3, 12);
+      const balcony = new THREE.Mesh(balconyGeo, towerMat);
+      balcony.position.y = 32;
+      group.add(balcony);
 
       const coneGeo = new THREE.ConeGeometry(w * 0.34, 22, 12);
       const coneMat = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.5 });
       const cone = new THREE.Mesh(coneGeo, coneMat);
-      cone.position.y = 53;
+      cone.position.y = 57;
       cone.castShadow = true;
       group.add(cone);
 
-      // Rotating Glowing Arcane Orb
+      // Levitating Pulsing Arcane Orb
       const orbGeo = new THREE.SphereGeometry(5, 12, 12);
       const orbMat = new THREE.MeshStandardMaterial({
         color: 0xc084fc,
         emissive: 0x9333ea,
-        emissiveIntensity: 0.8,
+        emissiveIntensity: 0.9,
         roughness: 0.2
       });
       const orb = new THREE.Mesh(orbGeo, orbMat);
-      orb.position.y = 67;
+      orb.position.y = 72;
       group.add(orb);
-    } else if (b.type === 'marketplace') {
-      // Marketplace Stalls with Striped Canvas
-      const stallBaseGeo = new THREE.BoxGeometry(w * 0.8, 8, h * 0.8);
-      const stallMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
-      const stall = new THREE.Mesh(stallBaseGeo, stallMat);
-      stall.position.y = 4;
-      stall.castShadow = true;
-      group.add(stall);
+    } else if (b.type === 'cleric_temple') {
+      // White Marble Cathedral with Grand Gold Dome
+      const cathedralBaseGeo = new THREE.BoxGeometry(w * 0.85, 20, h * 0.75);
+      const cathedralMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.6 });
+      const cathedral = new THREE.Mesh(cathedralBaseGeo, cathedralMat);
+      cathedral.position.y = 10;
+      cathedral.castShadow = true;
+      group.add(cathedral);
 
-      // Canopy
-      const canopyGeo = new THREE.ConeGeometry(w * 0.45, 12, 4);
+      const domeGeo = new THREE.SphereGeometry(w * 0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+      const domeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.6, roughness: 0.2 });
+      const dome = new THREE.Mesh(domeGeo, domeMat);
+      dome.position.y = 20;
+      group.add(dome);
+
+      // Golden Solar Cross
+      const crossVGeo = new THREE.BoxGeometry(1.5, 10, 1.5);
+      const crossHGeo = new THREE.BoxGeometry(6, 1.5, 1.5);
+      const crossV = new THREE.Mesh(crossVGeo, domeMat);
+      const crossH = new THREE.Mesh(crossHGeo, domeMat);
+      crossV.position.y = 35;
+      crossH.position.y = 37;
+      group.add(crossV);
+      group.add(crossH);
+    } else if (b.type === 'marketplace') {
+      // Vibrant Multi-Stall Bazaar
+      const baseGeo = new THREE.BoxGeometry(w * 0.85, 6, h * 0.85);
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+      const base = new THREE.Mesh(baseGeo, woodMat);
+      base.position.y = 3;
+      base.castShadow = true;
+      group.add(base);
+
+      // Striped Red/White Tent Canopy
+      const canopyGeo = new THREE.ConeGeometry(w * 0.45, 14, 4);
       const canopyMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.7 });
       const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-      canopy.position.y = 16;
+      canopy.position.y = 17;
       canopy.rotation.y = Math.PI / 4;
       canopy.castShadow = true;
       group.add(canopy);
+
+      // Crates & Barrels
+      const barrelGeo = new THREE.CylinderGeometry(3, 3, 6, 8);
+      const barrel = new THREE.Mesh(barrelGeo, woodMat);
+      barrel.position.set(w * 0.3, 5, h * 0.25);
+      group.add(barrel);
     } else if (b.type === 'blacksmith') {
-      // Stone Forge with Chimney
+      // Brick Forge with Chimney & Anvil
       const forgeBaseGeo = new THREE.BoxGeometry(w * 0.8, 14, h * 0.7);
       const forgeMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.8 });
       const forge = new THREE.Mesh(forgeBaseGeo, forgeMat);
@@ -476,13 +727,36 @@ export class ThreeRenderer {
       forge.castShadow = true;
       group.add(forge);
 
-      const chimneyGeo = new THREE.BoxGeometry(8, 26, 8);
+      const chimneyGeo = new THREE.BoxGeometry(8, 28, 8);
       const chimney = new THREE.Mesh(chimneyGeo, forgeMat);
-      chimney.position.set(w * 0.25, 13, -h * 0.2);
+      chimney.position.set(w * 0.25, 14, -h * 0.2);
       chimney.castShadow = true;
       group.add(chimney);
+
+      // Anvil outside
+      const anvilGeo = new THREE.BoxGeometry(4, 5, 6);
+      const anvilMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.2 });
+      const anvil = new THREE.Mesh(anvilGeo, anvilMat);
+      anvil.position.set(-w * 0.25, 2.5, h * 0.25);
+      group.add(anvil);
+    } else if (b.type === 'royal_inn') {
+      // Half-Timber Bavarian Tavern
+      const innBaseGeo = new THREE.BoxGeometry(w * 0.85, 18, h * 0.75);
+      const innMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.8 });
+      const inn = new THREE.Mesh(innBaseGeo, innMat);
+      inn.position.y = 9;
+      inn.castShadow = true;
+      group.add(inn);
+
+      const roofGeo = new THREE.ConeGeometry(w * 0.45, 14, 4);
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.position.y = 25;
+      roof.rotation.y = Math.PI / 4;
+      roof.castShadow = true;
+      group.add(roof);
     } else if (b.type === 'peasant_cottage') {
-      // Cozy Thatched Cottage
+      // Thatched Cottage
       const cottageBaseGeo = new THREE.BoxGeometry(w * 0.75, 10, h * 0.75);
       const cottageBaseMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
       const cottageBase = new THREE.Mesh(cottageBaseGeo, cottageBaseMat);
@@ -490,15 +764,15 @@ export class ThreeRenderer {
       cottageBase.castShadow = true;
       group.add(cottageBase);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.45, 10, 4);
+      const roofGeo = new THREE.ConeGeometry(w * 0.45, 11, 4);
       const roofMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.8 });
       const roof = new THREE.Mesh(roofGeo, roofMat);
-      roof.position.y = 15;
+      roof.position.y = 15.5;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
     } else {
-      // Standard Guild / Building
+      // Standard Guilds
       const baseGeo = new THREE.BoxGeometry(w * 0.8, 16, h * 0.8);
       const baseMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
       const base = new THREE.Mesh(baseGeo, baseMat);
@@ -626,7 +900,6 @@ export class ThreeRenderer {
 
       if (!flagGroup) {
         flagGroup = new THREE.Group();
-        // Pole
         const poleGeo = new THREE.CylinderGeometry(0.8, 0.8, 28, 6);
         const poleMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.8, roughness: 0.2 });
         const pole = new THREE.Mesh(poleGeo, poleMat);
@@ -634,7 +907,6 @@ export class ThreeRenderer {
         pole.castShadow = true;
         flagGroup.add(pole);
 
-        // Banner
         const bannerGeo = new THREE.BoxGeometry(10, 6, 0.5);
         const bannerColor = f.type === 'attack' ? 0xdc2626 : (f.type === 'explore' ? 0x2563eb : 0xeab308);
         const bannerMat = new THREE.MeshStandardMaterial({ color: bannerColor, roughness: 0.6 });
@@ -642,7 +914,6 @@ export class ThreeRenderer {
         banner.position.set(5, 23, 0);
         flagGroup.add(banner);
 
-        // Glowing Beacon Column
         const beaconGeo = new THREE.CylinderGeometry(0.5, 4, 80, 8);
         const beaconMat = new THREE.MeshBasicMaterial({
           color: bannerColor,
@@ -668,7 +939,115 @@ export class ThreeRenderer {
     }
   }
 
-  // --- 3D HEROES (ANIMATED LIMBS & WEAPONS) ---
+  // --- 3D PEASANT BUILDERS ---
+  private updatePeasants(state: GameState) {
+    const activeIds = new Set<string>();
+    const time = Date.now() * 0.01;
+
+    for (const p of state.peasants) {
+      if (p.hp <= 0) continue;
+      activeIds.add(p.id);
+      let pGroup = this.peasantsMap.get(p.id);
+
+      if (!pGroup) {
+        pGroup = this.create3DPeasantMesh(p);
+        this.scene.add(pGroup);
+        this.peasantsMap.set(p.id, pGroup);
+      }
+
+      pGroup.position.set(p.x, 0, p.y);
+      pGroup.visible = this.gridManager.isPixelVisible(p.x, p.y);
+
+      // Walk Stride
+      const isMoving = p.state === 'walking_to_site' || p.state === 'fleeing';
+      const legStride = isMoving ? Math.sin(time * 1.5) * 0.45 : 0;
+
+      const leftLeg = pGroup.getObjectByName('leftLeg');
+      const rightLeg = pGroup.getObjectByName('rightLeg');
+      if (leftLeg) leftLeg.rotation.x = legStride;
+      if (rightLeg) rightLeg.rotation.x = -legStride;
+
+      // Hammering Swing
+      const rightArm = pGroup.getObjectByName('rightArm');
+      if (rightArm) {
+        if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
+          rightArm.rotation.x = -Math.sin(time * 6) * 1.2;
+        } else {
+          rightArm.rotation.x = isMoving ? -legStride * 0.8 : 0;
+        }
+      }
+    }
+
+    for (const [id, group] of this.peasantsMap.entries()) {
+      if (!activeIds.has(id)) {
+        this.scene.remove(group);
+        this.peasantsMap.delete(id);
+      }
+    }
+  }
+
+  private create3DPeasantMesh(p: Peasant): THREE.Group {
+    const group = new THREE.Group();
+
+    // Torso (Tan Peasant Shirt & Brown Apron)
+    const torsoGeo = new THREE.BoxGeometry(5, 7, 3.5);
+    const torsoMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 });
+    const torso = new THREE.Mesh(torsoGeo, torsoMat);
+    torso.position.y = 8.5;
+    torso.castShadow = true;
+    group.add(torso);
+
+    // Head
+    const headGeo = new THREE.SphereGeometry(2.5, 8, 8);
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.8 });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 14;
+    head.castShadow = true;
+    group.add(head);
+
+    // Legs
+    const legGeo = new THREE.BoxGeometry(1.8, 6, 1.8);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.8 });
+
+    const leftLeg = new THREE.Mesh(legGeo, legMat);
+    leftLeg.position.set(-1.4, 3, 0);
+    leftLeg.name = 'leftLeg';
+    group.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(legGeo, legMat);
+    rightLeg.position.set(1.4, 3, 0);
+    rightLeg.name = 'rightLeg';
+    group.add(rightLeg);
+
+    // Right Arm Holding Hammer
+    const armGroup = new THREE.Group();
+    armGroup.name = 'rightArm';
+    armGroup.position.set(3.2, 10.5, 0);
+
+    const armGeo = new THREE.BoxGeometry(1.6, 6, 1.6);
+    const arm = new THREE.Mesh(armGeo, torsoMat);
+    arm.position.y = -2;
+    armGroup.add(arm);
+
+    // Wooden Mallet
+    const handleGeo = new THREE.CylinderGeometry(0.4, 0.4, 8, 6);
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+    const handle = new THREE.Mesh(handleGeo, handleMat);
+    handle.position.set(0, -3, 3);
+    handle.rotation.x = Math.PI / 3;
+    armGroup.add(handle);
+
+    const headMalletGeo = new THREE.BoxGeometry(3, 3, 5);
+    const headMalletMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+    const headMallet = new THREE.Mesh(headMalletGeo, headMalletMat);
+    headMallet.position.set(0, -5, 6);
+    armGroup.add(headMallet);
+
+    group.add(armGroup);
+    return group;
+  }
+
+  // --- 3D HEROES ---
   private updateHeroes(state: GameState) {
     const activeIds = new Set<string>();
     const time = Date.now() * 0.01;
@@ -687,13 +1066,11 @@ export class ThreeRenderer {
       heroGroup.position.set(h.x, 0, h.y);
       heroGroup.visible = this.gridManager.isPixelVisible(h.x, h.y);
 
-      // Direction rotation
       if (h.direction === 'left') heroGroup.rotation.y = -Math.PI / 2;
       else if (h.direction === 'right') heroGroup.rotation.y = Math.PI / 2;
       else if (h.direction === 'up') heroGroup.rotation.y = Math.PI;
       else heroGroup.rotation.y = 0;
 
-      // Animated Walk Strides
       const isMoving = h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure';
       const legStride = isMoving ? Math.sin(time * 1.4) * 0.45 : 0;
 
@@ -702,7 +1079,6 @@ export class ThreeRenderer {
       if (leftLeg) leftLeg.rotation.x = legStride;
       if (rightLeg) rightLeg.rotation.x = -legStride;
 
-      // Animated Attack Swing
       const rightArm = heroGroup.getObjectByName('rightArm');
       if (rightArm) {
         if (h.isAttackingAnimation > 0) {
@@ -726,7 +1102,6 @@ export class ThreeRenderer {
     const classDef = HERO_CLASS_DEFINITIONS[h.heroClass];
     const colorNum = parseInt(classDef.color.replace('#', '0x'), 16);
 
-    // Torso
     const torsoGeo = new THREE.BoxGeometry(5, 7, 3.5);
     const torsoMat = new THREE.MeshStandardMaterial({ color: colorNum, roughness: 0.7 });
     const torso = new THREE.Mesh(torsoGeo, torsoMat);
@@ -734,7 +1109,6 @@ export class ThreeRenderer {
     torso.castShadow = true;
     group.add(torso);
 
-    // Head
     const headGeo = new THREE.SphereGeometry(2.5, 8, 8);
     const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.8 });
     const head = new THREE.Mesh(headGeo, headMat);
@@ -742,7 +1116,6 @@ export class ThreeRenderer {
     head.castShadow = true;
     group.add(head);
 
-    // Helmet / Hat
     if (h.heroClass === 'warrior' || h.heroClass === 'dwarf') {
       const helmGeo = new THREE.CylinderGeometry(2.6, 2.7, 2.5, 8);
       const helmMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3 });
@@ -757,7 +1130,6 @@ export class ThreeRenderer {
       group.add(hat);
     }
 
-    // Legs
     const legGeo = new THREE.BoxGeometry(1.8, 6, 1.8);
     const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
 
@@ -773,7 +1145,6 @@ export class ThreeRenderer {
     rightLeg.castShadow = true;
     group.add(rightLeg);
 
-    // Right Arm & Weapon
     const armGroup = new THREE.Group();
     armGroup.name = 'rightArm';
     armGroup.position.set(3.2, 10.5, 0);
@@ -784,7 +1155,6 @@ export class ThreeRenderer {
     arm.castShadow = true;
     armGroup.add(arm);
 
-    // Weapon
     if (h.heroClass === 'warrior') {
       const swordGeo = new THREE.BoxGeometry(1, 12, 0.4);
       const swordMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.9, roughness: 0.1 });
@@ -825,7 +1195,6 @@ export class ThreeRenderer {
       mGroup.position.set(m.x, 0, m.y);
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
-      // Dragon Wing Flapping Animation
       if (m.type === 'red_dragon') {
         const wingL = mGroup.getObjectByName('wingL');
         const wingR = mGroup.getObjectByName('wingR');
@@ -849,7 +1218,6 @@ export class ThreeRenderer {
     const colorNum = parseInt(def.color.replace('#', '0x'), 16);
 
     if (m.type === 'red_dragon') {
-      // Big Boss Red Dragon
       const bodyGeo = new THREE.SphereGeometry(14, 12, 12);
       const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.7 });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -858,7 +1226,6 @@ export class ThreeRenderer {
       body.castShadow = true;
       group.add(body);
 
-      // Wings
       const wingGeo = new THREE.PlaneGeometry(28, 18);
       const wingMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, side: THREE.DoubleSide });
 
@@ -880,7 +1247,6 @@ export class ThreeRenderer {
       rat.castShadow = true;
       group.add(rat);
     } else {
-      // Bipedal humanoid monster
       const bodyGeo = new THREE.BoxGeometry(6, 9, 4);
       const bodyMat = new THREE.MeshStandardMaterial({ color: colorNum, roughness: 0.8 });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -901,7 +1267,6 @@ export class ThreeRenderer {
   // --- 3D TAX COLLECTOR ---
   private updateTaxCollectors(state: GameState) {
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.01;
 
     for (const tc of state.taxCollectors) {
       activeIds.add(tc.id);
@@ -909,7 +1274,6 @@ export class ThreeRenderer {
 
       if (!tcGroup) {
         tcGroup = new THREE.Group();
-        // Body (Purple Doublet)
         const bodyGeo = new THREE.BoxGeometry(5.5, 8, 4);
         const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6b21a8, roughness: 0.7 });
         const body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -917,7 +1281,6 @@ export class ThreeRenderer {
         body.castShadow = true;
         tcGroup.add(body);
 
-        // Head & Feathered Cap
         const headGeo = new THREE.SphereGeometry(2.5, 8, 8);
         const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.8 });
         const head = new THREE.Mesh(headGeo, headMat);
@@ -930,7 +1293,6 @@ export class ThreeRenderer {
         cap.position.y = 15.5;
         tcGroup.add(cap);
 
-        // Heavy Gold Coin Sack on Back
         const sackGeo = new THREE.SphereGeometry(4.5, 8, 8);
         const sackMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6 });
         const sack = new THREE.Mesh(sackGeo, sackMat);

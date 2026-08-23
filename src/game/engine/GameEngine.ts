@@ -1,5 +1,5 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, MAP_CONFIG, SOVEREIGN_SPELLS } from '../constants';
-import { Building, BuildingType, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, NotificationItem, Projectile, Scenario, SovereignSpell } from '../types';
+import { Building, BuildingType, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, NotificationItem, Peasant, Projectile, Scenario, SovereignSpell, Treasure } from '../types';
 import { audioManager } from './Audio';
 import { CombatManager } from './Combat';
 import { EconomyManager } from './Economy';
@@ -63,6 +63,7 @@ export class GameEngine {
       lairs: [],
       flags: [],
       taxCollectors: [],
+      peasants: [],
       treasures: [],
       projectiles: [],
       particles: [],
@@ -128,6 +129,23 @@ export class GameEngine {
     };
     this.state.buildings.push(palace);
 
+    // Spawn 2 initial Royal Peasant Builders at the Palace
+    for (let p = 0; p < 2; p++) {
+      const peasant: Peasant = {
+        id: `peasant_${p}`,
+        name: p === 0 ? 'Cedric the Builder' : 'Giles the Mason',
+        x: (palace.x + palace.width / 2) * MAP_CONFIG.TILE_SIZE + (p === 0 ? -12 : 12),
+        y: (palace.y + palace.height) * MAP_CONFIG.TILE_SIZE + 10,
+        hp: 120,
+        maxHp: 120,
+        speed: 40,
+        state: 'idle_at_palace',
+        hammerTimer: 0,
+        direction: 'down'
+      };
+      this.state.peasants.push(peasant);
+    }
+
     // Spawn initial Monster Lairs from scenario definition
     for (let i = 0; i < scenario.initialLairs.length; i++) {
       const lairConf = scenario.initialLairs[i];
@@ -185,8 +203,9 @@ export class GameEngine {
     // 3. Recalculate Fog of War / Line of Sight
     this.recalculateVisibility();
 
-    // 4. Update Buildings & Construction & Peasant Cottage Sprouting
+    // 4. Update Buildings & Peasant Construction & Peasant Cottage Sprouting
     this.updateBuildings(delta);
+    this.updatePeasants(delta);
     this.updateCottageSprouting(delta);
 
     // 5. Update Monster Lairs
@@ -449,16 +468,7 @@ export class GameEngine {
         continue;
       }
 
-      if (b.isConstructing) {
-        b.constructionProgress += (100 / b.constructionTime) * delta;
-        if (b.constructionProgress >= 100) {
-          b.constructionProgress = 100;
-          b.isConstructing = false;
-          this.state.stats.buildingsConstructed += 1;
-          audioManager.playBuildingPlaced();
-          this.addNotification('Construction Complete', `${b.name} is ready to serve your realm!`, 'success');
-        }
-      } else if (b.trainingQueue && b.trainingQueue.length > 0) {
+      if (b.trainingQueue && b.trainingQueue.length > 0 && !b.isConstructing) {
         // Process hero recruitment training over time
         const currentRecruit = b.trainingQueue[0];
         currentRecruit.progress += (100 / currentRecruit.totalTime) * delta;
@@ -468,6 +478,126 @@ export class GameEngine {
           this.spawnTrainedHero(b, currentRecruit.heroClass);
         }
       }
+    }
+  }
+
+  private updatePeasants(delta: number) {
+    const palace = this.state.buildings.find(b => b.type === 'palace' && b.hp > 0);
+    if (!palace) return;
+
+    const palaceCenter = {
+      x: (palace.x + palace.width / 2) * this.gridManager.tileSize,
+      y: (palace.y + palace.height / 2) * this.gridManager.tileSize
+    };
+
+    // Ensure adequate peasant workforce
+    const peasantCottages = this.state.buildings.filter(b => b.type === 'peasant_cottage' && !b.isConstructing && b.hp > 0).length;
+    const targetPeasantCount = 2 + (palace.level - 1) + Math.floor(peasantCottages / 2);
+
+    if (this.state.peasants.length < targetPeasantCount) {
+      const pIdx = this.state.peasants.length;
+      this.state.peasants.push({
+        id: `peasant_${Date.now()}_${pIdx}`,
+        name: pIdx % 2 === 0 ? 'Robin the Carpenter' : 'Will the Mason',
+        x: palaceCenter.x,
+        y: palaceCenter.y + 15,
+        hp: 120,
+        maxHp: 120,
+        speed: 40,
+        state: 'idle_at_palace',
+        hammerTimer: 0,
+        direction: 'down'
+      });
+    }
+
+    // Process each peasant builder
+    for (const p of this.state.peasants) {
+      if (p.hp <= 0) continue;
+
+      if (p.state === 'idle_at_palace') {
+        // Look for unfinished construction sites or damaged buildings
+        const unbuilt = this.state.buildings.find(b => b.isConstructing && b.hp > 0);
+        const damaged = this.state.buildings.find(b => !b.isConstructing && b.hp > 0 && b.hp < b.maxHp * 0.95);
+        const target = unbuilt || damaged;
+
+        if (target) {
+          p.targetBuildingId = target.id;
+          p.state = 'walking_to_site';
+        }
+      } else if (p.state === 'walking_to_site') {
+        const targetBuilding = this.state.buildings.find(b => b.id === p.targetBuildingId && b.hp > 0);
+        if (!targetBuilding) {
+          p.state = 'idle_at_palace';
+          p.targetBuildingId = undefined;
+          continue;
+        }
+
+        const bx = (targetBuilding.x + targetBuilding.width / 2) * this.gridManager.tileSize;
+        const by = (targetBuilding.y + targetBuilding.height / 2) * this.gridManager.tileSize;
+        const dist = Math.hypot(bx - p.x, by - p.y);
+
+        if (dist > 30) {
+          this.movePeasantTowards(p, bx, by, delta);
+        } else {
+          p.state = targetBuilding.isConstructing ? 'hammering_construction' : 'repairing_building';
+        }
+      } else if (p.state === 'hammering_construction') {
+        const targetBuilding = this.state.buildings.find(b => b.id === p.targetBuildingId && b.hp > 0);
+        if (!targetBuilding || !targetBuilding.isConstructing) {
+          p.state = 'idle_at_palace';
+          p.targetBuildingId = undefined;
+          continue;
+        }
+
+        p.hammerTimer += delta;
+        targetBuilding.constructionProgress += (100 / targetBuilding.constructionTime) * delta;
+
+        if (targetBuilding.constructionProgress >= 100) {
+          targetBuilding.constructionProgress = 100;
+          targetBuilding.isConstructing = false;
+          this.state.stats.buildingsConstructed += 1;
+          audioManager.playBuildingPlaced();
+          this.addFloatingText('Building Complete!', p.x, p.y - 20, '#22c55e');
+          this.addNotification('Construction Complete', `${targetBuilding.name} was built by your peasants!`, 'success');
+          p.state = 'idle_at_palace';
+          p.targetBuildingId = undefined;
+        }
+      } else if (p.state === 'repairing_building') {
+        const targetBuilding = this.state.buildings.find(b => b.id === p.targetBuildingId && b.hp > 0);
+        if (!targetBuilding || targetBuilding.hp >= targetBuilding.maxHp) {
+          p.state = 'idle_at_palace';
+          p.targetBuildingId = undefined;
+          continue;
+        }
+
+        p.hammerTimer += delta;
+        targetBuilding.hp = Math.min(targetBuilding.maxHp, targetBuilding.hp + 35 * delta);
+
+        if (targetBuilding.hp >= targetBuilding.maxHp) {
+          targetBuilding.hp = targetBuilding.maxHp;
+          this.addFloatingText('Repaired!', p.x, p.y - 20, '#22c55e');
+          p.state = 'idle_at_palace';
+          p.targetBuildingId = undefined;
+        }
+      }
+    }
+  }
+
+  private movePeasantTowards(p: Peasant, targetX: number, targetY: number, delta: number) {
+    const dx = targetX - p.x;
+    const dy = targetY - p.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < 4) return;
+
+    const moveDist = p.speed * delta;
+    p.x += (dx / dist) * moveDist;
+    p.y += (dy / dist) * moveDist;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      p.direction = dx > 0 ? 'right' : 'left';
+    } else {
+      p.direction = dy > 0 ? 'down' : 'up';
     }
   }
 

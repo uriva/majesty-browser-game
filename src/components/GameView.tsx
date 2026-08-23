@@ -14,6 +14,7 @@ import { HeroInspector } from './HeroInspector';
 import { BuildingInspector } from './BuildingInspector';
 import { MonsterInspector } from './MonsterInspector';
 import { TaxCollectorInspector } from './TaxCollectorInspector';
+import { PeasantInspector } from './PeasantInspector';
 import { ScenarioModal } from './ScenarioModal';
 import { Hammer, Coins, Zap, Eye, RotateCw, Video } from 'lucide-react';
 
@@ -258,6 +259,12 @@ export const GameView: React.FC = () => {
       return;
     }
 
+    const clickedPeasant = engine.state.peasants.find(p => Math.hypot(p.x - world.x, p.y - world.y) < 20);
+    if (clickedPeasant) {
+      engine.state.selectedEntity = { type: 'peasant', id: clickedPeasant.id };
+      return;
+    }
+
     const clickedBuilding = engine.state.buildings.find(b => {
       const px = b.x * engine.state.tileSize;
       const py = b.y * engine.state.tileSize;
@@ -369,6 +376,10 @@ export const GameView: React.FC = () => {
 
   const selectedTaxCollector = gameState?.selectedEntity?.type === 'tax_collector'
     ? gameState.taxCollectors.find(tc => tc.id === gameState.selectedEntity?.id)
+    : null;
+
+  const selectedPeasant = gameState?.selectedEntity?.type === 'peasant'
+    ? gameState.peasants.find(p => p.id === gameState.selectedEntity?.id)
     : null;
 
   return (
@@ -568,6 +579,22 @@ export const GameView: React.FC = () => {
               setActiveFlagType('defend');
               if (engineRef.current) {
                 engineRef.current.placeFlag('defend', tc.x, tc.y, 80);
+              }
+            }}
+          />
+        )}
+
+        {selectedPeasant && gameState && (
+          <PeasantInspector
+            peasant={selectedPeasant}
+            buildings={gameState.buildings}
+            onClose={() => {
+              if (engineRef.current) engineRef.current.state.selectedEntity = null;
+            }}
+            onTrackPeasant={(p) => {
+              if (engineRef.current) {
+                engineRef.current.state.camera.x = p.x;
+                engineRef.current.state.camera.y = p.y;
               }
             }}
           />
