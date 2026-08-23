@@ -2965,8 +2965,9 @@ export class ThreeRenderer {
 
     // Subterranean Earth-Retaining Masonry Foundation Plinth
     // Anchors deep underground so buildings never sink or float on uneven hills!
+    const isCottage = b.type === 'peasant_cottage';
     const plinthDepth = 16.0;
-    const plinthGeo = new THREE.BoxGeometry(w * 0.94, plinthDepth, h * 0.94);
+    const plinthGeo = new THREE.BoxGeometry(isCottage ? w * 0.65 : w * 0.94, plinthDepth, isCottage ? h * 0.65 : h * 0.94);
     const plinthMat = new THREE.MeshStandardMaterial({
       color: 0x475569,
       map: this.royalCastleWallTexture,
@@ -2982,7 +2983,7 @@ export class ThreeRenderer {
       if (b.constructionProgress <= 0) {
         // --- 1. ARCHITECTURAL BLUEPRINT (Before Builder Arrives) ---
         // Translucent Blueprint Ground Plinth
-        const bpGroundGeo = new THREE.PlaneGeometry(w * 0.94, h * 0.94);
+        const bpGroundGeo = new THREE.PlaneGeometry(isCottage ? w * 0.72 : w * 0.94, isCottage ? h * 0.72 : h * 0.94);
         bpGroundGeo.rotateX(-Math.PI / 2);
         const bpGroundMat = new THREE.MeshStandardMaterial({
           map: this.blueprintTexture,
@@ -3979,41 +3980,227 @@ export class ThreeRenderer {
       const b1 = new THREE.Mesh(barrelGeo, woodMat); b1.position.set(w * 0.32, 2, h * 0.28); group.add(b1);
       const b2 = new THREE.Mesh(barrelGeo, woodMat); b2.position.set(w * 0.32, 2, h * 0.15); group.add(b2);
     } else if (b.type === 'peasant_cottage') {
-      // Detailed Thatched Peasant Cottage with Stone Base (32x32)
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.85 });
+      // Architectural Peasant Cottage with Distinct Shapes (Two-Story, L-Shaped, Rectangular with Dormers)
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x57534e, map: this.royalCastleWallTexture, roughness: 0.85 });
       const thatchMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, map: this.thatchTexture, roughness: 0.95 });
-      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+      const tudorMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, map: this.tudorWallTexture, roughness: 0.75 });
+      const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.8 });
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xf59e0b, emissiveIntensity: 0.4 });
 
-      const cottageBaseGeo = new THREE.BoxGeometry(w * 0.74, 12, h * 0.74);
-      const cottageBase = new THREE.Mesh(cottageBaseGeo, stoneMat);
-      cottageBase.position.y = 6;
-      cottageBase.castShadow = true;
-      group.add(cottageBase);
+      const variant = Math.abs(b.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % 3;
 
-      const thatchGeo = new THREE.ConeGeometry(w * 0.52, 13, 4);
-      const thatch = new THREE.Mesh(thatchGeo, thatchMat);
-      thatch.position.y = 18.5;
-      thatch.rotation.y = Math.PI / 4;
-      thatch.castShadow = true;
-      group.add(thatch);
+      if (variant === 0) {
+        // --- VARIANT 0: Compact Two-Story Thatched Hut with Overhanging Loft & Lean-To Wood Store ---
+        const houseW = w * 0.46;
+        const houseD = h * 0.50;
+        const houseX = -w * 0.08;
+        const houseZ = 0;
 
-      // Stone Chimney with Animated Smoke
-      const chimneyGeo = new THREE.BoxGeometry(2.5, 11, 2.5);
-      const chimney = new THREE.Mesh(chimneyGeo, stoneMat);
-      chimney.position.set(w * 0.2, 18, -h * 0.2);
-      group.add(chimney);
-      group.add(this.createSmokeEmitter(w * 0.2, 24, -h * 0.2, false, 4));
+        // Ground floor (Rustic Fieldstone)
+        const groundFloor = new THREE.Mesh(new THREE.BoxGeometry(houseW, 8.5, houseD), stoneMat);
+        groundFloor.position.set(houseX, 4.25, houseZ);
+        groundFloor.castShadow = true;
+        group.add(groundFloor);
 
-      const doorGeo = new THREE.BoxGeometry(3, 5, 0.4);
-      const door = new THREE.Mesh(doorGeo, woodMat);
-      door.position.set(0, 2.5, h * 0.37);
-      group.add(door);
+        // Wooden Door & Window
+        const door0 = new THREE.Mesh(new THREE.BoxGeometry(2.8, 5.0, 0.4), darkWoodMat);
+        door0.position.set(houseX, 2.5, houseZ + houseD / 2 + 0.1);
+        group.add(door0);
 
-      // Firewood pile outside
-      const woodPileGeo = new THREE.BoxGeometry(4, 2, 2);
-      const woodPile = new THREE.Mesh(woodPileGeo, woodMat);
-      woodPile.position.set(-w * 0.28, 1, h * 0.25);
-      group.add(woodPile);
+        const win0 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.2, 0.3), glassMat);
+        win0.position.set(houseX + 3.8, 4.5, houseZ + houseD / 2 + 0.1);
+        group.add(win0);
+
+        // Overhanging Second Story (Tudor Timber & Plaster)
+        const loftW = houseW * 1.12;
+        const loftD = houseD * 1.10;
+        const loft = new THREE.Mesh(new THREE.BoxGeometry(loftW, 7.0, loftD), tudorMat);
+        loft.position.set(houseX, 12.0, houseZ);
+        loft.castShadow = true;
+        group.add(loft);
+
+        // Corbel support beam
+        const corbel = new THREE.Mesh(new THREE.BoxGeometry(loftW + 0.4, 0.8, loftD + 0.4), darkWoodMat);
+        corbel.position.set(houseX, 8.5, houseZ);
+        group.add(corbel);
+
+        const winLoft = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.4, 0.3), glassMat);
+        winLoft.position.set(houseX, 12.5, houseZ + loftD / 2 + 0.1);
+        group.add(winLoft);
+
+        // Steep Pitched Thatched Roof
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(loftW * 0.72, 10.5, 4), thatchMat);
+        roof.position.set(houseX, 19.5, houseZ);
+        roof.rotation.y = Math.PI / 4;
+        roof.scale.set(1.0, 1.0, loftD / loftW);
+        roof.castShadow = true;
+        group.add(roof);
+
+        // Side Lean-To Woodshed (Attached to right side)
+        const shedW = w * 0.28;
+        const shedD = h * 0.38;
+        const shedX = houseX + houseW / 2 + shedW / 2 - 0.2;
+        const shedZ = houseZ;
+        const shed = new THREE.Mesh(new THREE.BoxGeometry(shedW, 5.5, shedD), stoneMat);
+        shed.position.set(shedX, 2.75, shedZ);
+        shed.castShadow = true;
+        group.add(shed);
+
+        const shedRoof = new THREE.Mesh(new THREE.BoxGeometry(shedW + 1.2, 0.6, shedD + 1.0), thatchMat);
+        shedRoof.position.set(shedX, 5.8, shedZ);
+        shedRoof.rotation.z = -Math.PI / 8;
+        group.add(shedRoof);
+
+        // Chopped Firewood logs under shed
+        const log1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, shedW * 0.8, 6), darkWoodMat);
+        log1.rotation.z = Math.PI / 2;
+        log1.position.set(shedX, 1.2, shedZ + 1.2);
+        group.add(log1);
+        const log2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, shedW * 0.8, 6), darkWoodMat);
+        log2.rotation.z = Math.PI / 2;
+        log2.position.set(shedX, 2.0, shedZ + 0.6);
+        group.add(log2);
+
+        // Stone Chimney with Smoke
+        const chimX = houseX - houseW / 2 + 1.5;
+        const chimZ = houseZ - houseD / 2 + 1.5;
+        const chim = new THREE.Mesh(new THREE.BoxGeometry(2.4, 15.0, 2.4), stoneMat);
+        chim.position.set(chimX, 13.0, chimZ);
+        group.add(chim);
+        group.add(this.createSmokeEmitter(chimX, 21.0, chimZ, false, 3));
+      } else if (variant === 1) {
+        // --- VARIANT 1: One-Story Asymmetrical L-Shaped Thatched Cottage ---
+        // Main Back Wing (East-West rectangular hall)
+        const mainW = w * 0.56;
+        const mainD = h * 0.32;
+        const mainX = w * 0.02;
+        const mainZ = -h * 0.12;
+
+        const mainHall = new THREE.Mesh(new THREE.BoxGeometry(mainW, 8.0, mainD), stoneMat);
+        mainHall.position.set(mainX, 4.0, mainZ);
+        mainHall.castShadow = true;
+        group.add(mainHall);
+
+        // Main Wing Thatch Roof
+        const mainRoof = new THREE.Mesh(new THREE.ConeGeometry(mainW * 0.62, 8.5, 4), thatchMat);
+        mainRoof.position.set(mainX, 11.5, mainZ);
+        mainRoof.rotation.y = Math.PI / 4;
+        mainRoof.scale.set(1.25, 1.0, (mainD / mainW) * 2.2);
+        mainRoof.castShadow = true;
+        group.add(mainRoof);
+
+        // Front Cross Wing (North-South forward projection, forming the 'L')
+        const crossW = w * 0.30;
+        const crossD = h * 0.36;
+        const crossX = mainX - mainW / 2 + crossW / 2;
+        const crossZ = mainZ + mainD / 2 + crossD / 2 - 0.2;
+
+        const crossWing = new THREE.Mesh(new THREE.BoxGeometry(crossW, 7.5, crossD), tudorMat);
+        crossWing.position.set(crossX, 3.75, crossZ);
+        crossWing.castShadow = true;
+        group.add(crossWing);
+
+        // Cross Wing Thatch Roof
+        const crossRoof = new THREE.Mesh(new THREE.ConeGeometry(crossW * 0.72, 7.5, 4), thatchMat);
+        crossRoof.position.set(crossX, 10.5, crossZ);
+        crossRoof.rotation.y = Math.PI / 4;
+        crossRoof.scale.set(1.0, 1.0, crossD / crossW);
+        crossRoof.castShadow = true;
+        group.add(crossRoof);
+
+        // Front Window on Cross Wing
+        const crossWin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.2, 0.3), glassMat);
+        crossWin.position.set(crossX, 4.2, crossZ + crossD / 2 + 0.1);
+        group.add(crossWin);
+
+        // Inner Nook Door (Sheltered inside the L-junction)
+        const door1 = new THREE.Mesh(new THREE.BoxGeometry(2.8, 4.8, 0.4), darkWoodMat);
+        door1.position.set(mainX + 2.0, 2.4, mainZ + mainD / 2 + 0.1);
+        group.add(door1);
+
+        // Porch Awning over door
+        const porchRoof = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.5, 3.0), thatchMat);
+        porchRoof.position.set(mainX + 2.0, 5.2, mainZ + mainD / 2 + 1.2);
+        porchRoof.rotation.x = Math.PI / 8;
+        group.add(porchRoof);
+
+        const porchPost = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 5.0, 6), darkWoodMat);
+        porchPost.position.set(mainX + 3.8, 2.5, mainZ + mainD / 2 + 2.4);
+        group.add(porchPost);
+
+        // Water barrel in the garden nook
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.0, 2.4, 8), darkWoodMat);
+        barrel.position.set(mainX + w * 0.22, 1.2, crossZ);
+        group.add(barrel);
+
+        // Chimney on east gable
+        const chim1X = mainX + mainW / 2 - 1.2;
+        const chim1Z = mainZ;
+        const chim1 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 13.0, 2.2), stoneMat);
+        chim1.position.set(chim1X, 8.5, chim1Z);
+        group.add(chim1);
+        group.add(this.createSmokeEmitter(chim1X, 15.5, chim1Z, false, 3));
+      } else {
+        // --- VARIANT 2: Quaint Rectangular Long-Cottage with Dormer & Bread Oven ---
+        const house2W = w * 0.60;
+        const house2D = h * 0.38;
+        const house2X = 0;
+        const house2Z = -h * 0.04;
+
+        // Base Structure
+        const base2 = new THREE.Mesh(new THREE.BoxGeometry(house2W, 8.0, house2D), stoneMat);
+        base2.position.set(house2X, 4.0, house2Z);
+        base2.castShadow = true;
+        group.add(base2);
+
+        // Steep Thatched Gable Roof
+        const roof2 = new THREE.Mesh(new THREE.ConeGeometry(house2W * 0.60, 9.0, 4), thatchMat);
+        roof2.position.set(house2X, 12.0, house2Z);
+        roof2.rotation.y = Math.PI / 4;
+        roof2.scale.set(1.28, 1.0, (house2D / house2W) * 2.1);
+        roof2.castShadow = true;
+        group.add(roof2);
+
+        // Dormer Window protruding from front roof slope
+        const dormer = new THREE.Mesh(new THREE.BoxGeometry(3.5, 3.2, 2.8), tudorMat);
+        dormer.position.set(house2X - 2.5, 10.5, house2Z + house2D / 2 + 0.4);
+        group.add(dormer);
+
+        const dormerRoof = new THREE.Mesh(new THREE.ConeGeometry(2.6, 2.8, 4), thatchMat);
+        dormerRoof.position.set(house2X - 2.5, 12.6, house2Z + house2D / 2 + 0.4);
+        dormerRoof.rotation.y = Math.PI / 4;
+        group.add(dormerRoof);
+
+        const winDormer = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 0.2), glassMat);
+        winDormer.position.set(house2X - 2.5, 10.5, house2Z + house2D / 2 + 1.85);
+        group.add(winDormer);
+
+        // Front Door & Window
+        const door2 = new THREE.Mesh(new THREE.BoxGeometry(2.8, 5.0, 0.4), darkWoodMat);
+        door2.position.set(house2X + 3.2, 2.5, house2Z + house2D / 2 + 0.1);
+        group.add(door2);
+
+        const win2 = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 0.3), glassMat);
+        win2.position.set(house2X - 4.5, 4.2, house2Z + house2D / 2 + 0.1);
+        group.add(win2);
+
+        // Stone Bread Oven on Side
+        const oven = new THREE.Mesh(new THREE.SphereGeometry(2.2, 8, 8), stoneMat);
+        oven.position.set(house2X - house2W / 2 - 0.6, 2.2, house2Z);
+        group.add(oven);
+
+        const chim2X = house2X - house2W / 2 + 1.2;
+        const chim2Z = house2Z - house2D / 2 + 1.2;
+        const chim2 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 13.5, 2.2), stoneMat);
+        chim2.position.set(chim2X, 9.5, chim2Z);
+        group.add(chim2);
+        group.add(this.createSmokeEmitter(chim2X, 16.5, chim2Z, false, 3));
+
+        // Rustic Wooden Bench in front
+        const bench = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.2, 1.4), darkWoodMat);
+        bench.position.set(house2X + 4.5, 0.6, house2Z + house2D / 2 + 2.5);
+        group.add(bench);
+      }
     } else if (b.type === 'guard_tower') {
       // Fortified Stone Watchtower with Beacon Brazier (32x32)
       const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.8 });

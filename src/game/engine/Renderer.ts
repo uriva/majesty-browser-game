@@ -334,7 +334,7 @@ export class CanvasRenderer {
         this.drawStatueSprite(px, py, w, h);
         break;
       case 'peasant_cottage':
-        this.drawPeasantCottageSprite(px, py, w, h);
+        this.drawPeasantCottageSprite(px, py, w, h, b.id);
         break;
       default:
         ctx.fillStyle = '#475569';
@@ -600,39 +600,166 @@ export class CanvasRenderer {
     ctx.fillRect(px + w / 2 - 7, py + 4, 14, 6);
   }
 
-  private drawPeasantCottageSprite(px: number, py: number, w: number, h: number) {
+  private drawPeasantCottageSprite(px: number, py: number, w: number, h: number, id: string = '') {
     const { ctx } = this;
-    // Fieldstone base walls
-    ctx.fillStyle = '#64748b';
-    ctx.fillRect(px + 4, py + 12, w - 8, h - 16);
-
-    // Golden straw thatched roof
-    ctx.fillStyle = '#ca8a04';
-    ctx.beginPath();
-    ctx.moveTo(px + w / 2, py + 2);
-    ctx.lineTo(px + 1, py + 15);
-    ctx.lineTo(px + w - 1, py + 15);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#eab308';
-    ctx.fillRect(px + 3, py + 13, w - 6, 2.5);
-
-    // Chimney with animated smoke
-    ctx.fillStyle = '#78350f';
-    ctx.fillRect(px + w - 10, py + 2, 5, 8);
-
+    const variant = Math.abs(id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % 3;
     const smokeY = (Date.now() * 0.015) % 15;
-    ctx.fillStyle = 'rgba(203, 213, 225, 0.4)';
-    ctx.beginPath();
-    ctx.arc(px + w - 8, py - 2 - smokeY, 3 + smokeY * 0.3, 0, Math.PI * 2);
-    ctx.fill();
 
-    // Wooden door & warm window
-    ctx.fillStyle = '#78350f';
-    ctx.fillRect(px + 8, py + h - 14, 8, 10);
-    ctx.fillStyle = '#fef08a';
-    ctx.fillRect(px + w - 16, py + 18, 6, 6);
+    if (variant === 0) {
+      // --- VARIANT 0: Two-Story Narrow Cottage with Overhanging Loft & Lean-To ---
+      // Right side Lean-to Wood Store
+      ctx.fillStyle = '#57534e';
+      ctx.fillRect(px + w * 0.54, py + h * 0.46, w * 0.38, h * 0.44);
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.moveTo(px + w * 0.52, py + h * 0.44);
+      ctx.lineTo(px + w * 0.94, py + h * 0.58);
+      ctx.lineTo(px + w * 0.52, py + h * 0.58);
+      ctx.closePath();
+      ctx.fill();
+      // Stacked firewood logs in shed
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(px + w * 0.60, py + h * 0.68, w * 0.26, 4);
+
+      // Ground floor stone walls (Narrow & compact)
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(px + 3, py + h * 0.46, w * 0.52, h * 0.46);
+
+      // Wooden door
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(px + 8, py + h * 0.62, 7, 10);
+
+      // Second floor overhanging jetty (Tudor plaster & timber beams)
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 1, py + h * 0.22, w * 0.56, h * 0.26);
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(px + 1, py + h * 0.44, w * 0.56, 2.5); // Corbel beam
+      ctx.fillRect(px + w * 0.28, py + h * 0.22, 2, h * 0.24); // Center timber post
+
+      // Loft window
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 10, py + h * 0.26, 5, 5);
+
+      // Steep peaked thatch roof
+      ctx.fillStyle = '#d97706';
+      ctx.beginPath();
+      ctx.moveTo(px + w * 0.29, py + 1);
+      ctx.lineTo(px - 1, py + h * 0.24);
+      ctx.lineTo(px + w * 0.59, py + h * 0.24);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px + 1, py + h * 0.22, w * 0.56, 2);
+
+      // Stone chimney with animated smoke
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px + 4, py + 1, 4, 8);
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.45)';
+      ctx.beginPath();
+      ctx.arc(px + 6, py - 3 - smokeY, 2.5 + smokeY * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (variant === 1) {
+      // --- VARIANT 1: One-Story Asymmetrical L-Shaped Cottage with Inner Nook Porch ---
+      // Back horizontal wing
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(px + 4, py + 8, w - 10, h * 0.40);
+
+      // Front projecting wing (forming the 'L')
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 4, py + h * 0.42, w * 0.44, h * 0.48);
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(px + 4, py + h * 0.42, w * 0.44, 2); // Timber divider
+      ctx.fillRect(px + w * 0.24, py + h * 0.44, 2, h * 0.44);
+
+      // Window on projecting wing
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 8, py + h * 0.55, 5, 5);
+
+      // Main Thatch Roof across back
+      ctx.fillStyle = '#d97706';
+      ctx.beginPath();
+      ctx.moveTo(px + w * 0.52, py + 1);
+      ctx.lineTo(px + 2, py + 10);
+      ctx.lineTo(px + w - 4, py + 10);
+      ctx.closePath();
+      ctx.fill();
+
+      // Cross Wing Thatch Roof (Projecting forward)
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.moveTo(px + w * 0.26, py + 7);
+      ctx.lineTo(px + 2, py + h * 0.44);
+      ctx.lineTo(px + w * 0.50, py + h * 0.44);
+      ctx.closePath();
+      ctx.fill();
+
+      // Inner Nook Door & Porch Canopy (Sheltered inside the L)
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(px + w * 0.52, py + h * 0.50, 7, 10);
+      ctx.fillStyle = '#ca8a04';
+      ctx.fillRect(px + w * 0.50, py + h * 0.46, 11, 3); // Porch awning
+
+      // Water barrel in garden corner
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.arc(px + w - 10, py + h * 0.72, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Chimney on gable end
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px + w - 12, py + 2, 4, 8);
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.45)';
+      ctx.beginPath();
+      ctx.arc(px + w - 10, py - 2 - smokeY, 2.5 + smokeY * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // --- VARIANT 2: Quaint Rectangular Long-Cottage with Dormer & Bread Oven ---
+      // Fieldstone base walls
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(px + 4, py + 11, w - 8, h - 15);
+
+      // Thatch Roof with wide eaves
+      ctx.fillStyle = '#d97706';
+      ctx.beginPath();
+      ctx.moveTo(px + w / 2, py + 1);
+      ctx.lineTo(px + 1, py + 14);
+      ctx.lineTo(px + w - 1, py + 14);
+      ctx.closePath();
+      ctx.fill();
+
+      // Dormer Window on Roof
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 8, py + 5, 6, 5);
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.moveTo(px + 11, py + 2);
+      ctx.lineTo(px + 6, py + 6);
+      ctx.lineTo(px + 16, py + 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(px + 9, py + 6, 4, 3);
+
+      // Stone Bread Oven on left side
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      ctx.arc(px + 3, py + h * 0.65, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Wooden door & warm window
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(px + w - 15, py + h - 13, 7, 10);
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(px + 12, py + 17, 5, 5);
+
+      // Chimney with animated smoke
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px + 4, py + 1, 4, 8);
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.45)';
+      ctx.beginPath();
+      ctx.arc(px + 6, py - 2 - smokeY, 2.5 + smokeY * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   private renderLair(lair: MonsterLair, state: GameState) {
