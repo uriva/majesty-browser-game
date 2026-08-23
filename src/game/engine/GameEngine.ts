@@ -345,6 +345,7 @@ export class GameEngine {
         this.state.monsters,
         this.state.heroes,
         this.state.buildings,
+        this.state.lairs,
         this.state.taxCollectors,
         (proj) => {
           this.state.projectiles.push({
@@ -369,6 +370,7 @@ export class GameEngine {
     this.economyManager.updateEconomy(
       delta,
       this.state.buildings,
+      this.state.lairs,
       this.state.taxCollectors,
       (amount) => {
         // Tax collector physically delivers taxes to Palace!

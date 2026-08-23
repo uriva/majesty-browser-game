@@ -1,4 +1,4 @@
-import { Building, TaxCollector } from '../types';
+import { Building, MonsterLair, TaxCollector } from '../types';
 import { GridManager } from './Grid';
 
 export class EconomyManager {
@@ -12,6 +12,7 @@ export class EconomyManager {
   public updateEconomy(
     delta: number,
     buildings: Building[],
+    lairs: MonsterLair[],
     taxCollectors: TaxCollector[],
     onTaxDelivery: (amount: number) => void,
     onSpawnTaxCollector: (tc: TaxCollector) => void,
@@ -85,12 +86,20 @@ export class EconomyManager {
           continue;
         }
 
-        const bx = (targetBuilding.x + targetBuilding.width / 2) * this.gridManager.tileSize;
-        const by = (targetBuilding.y + targetBuilding.height / 2) * this.gridManager.tileSize;
-        const dist = Math.hypot(bx - tc.x, by - tc.y);
+        const ts = this.gridManager.tileSize;
+        // Nearest point on building perimeter to tax collector
+        const bLeft = targetBuilding.x * ts;
+        const bRight = (targetBuilding.x + targetBuilding.width) * ts;
+        const bTop = targetBuilding.y * ts;
+        const bBottom = (targetBuilding.y + targetBuilding.height) * ts;
 
-        if (dist > 30) {
-          this.moveTowards(tc, bx, by, delta);
+        const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, tc.x));
+        const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, tc.y));
+
+        const dist = Math.hypot(clampX - tc.x, clampY - tc.y);
+
+        if (dist > 18) {
+          this.moveTowards(tc, clampX, clampY, delta, buildings, lairs, targetBuilding.id);
         } else {
           // Collect the gold!
           const collected = Math.floor(targetBuilding.goldStored);
@@ -101,8 +110,8 @@ export class EconomyManager {
         }
       } else if (tc.state === 'returning_to_palace') {
         const dist = Math.hypot(palaceGate.x - tc.x, palaceGate.y - tc.y);
-        if (dist > 15) {
-          this.moveTowards(tc, palaceGate.x, palaceGate.y, delta);
+        if (dist > 16) {
+          this.moveTowards(tc, palaceGate.x, palaceGate.y, delta, buildings, lairs, palace.id);
         } else {
           // Safely reached palace front gate! Deposit into Royal Treasury
           if (tc.goldCarried > 0) {
@@ -116,7 +125,15 @@ export class EconomyManager {
     }
   }
 
-  private moveTowards(tc: TaxCollector, targetX: number, targetY: number, delta: number) {
+  private moveTowards(
+    tc: TaxCollector,
+    targetX: number,
+    targetY: number,
+    delta: number,
+    buildings: Building[],
+    lairs: MonsterLair[],
+    targetBuildingId?: string
+  ) {
     const dx = targetX - tc.x;
     const dy = targetY - tc.y;
     const dist = Math.hypot(dx, dy);
@@ -127,8 +144,32 @@ export class EconomyManager {
     const vx = (dx / dist) * moveDist;
     const vy = (dy / dist) * moveDist;
 
-    tc.x += vx;
-    tc.y += vy;
+    const nextX = tc.x + vx;
+    const nextY = tc.y + vy;
+
+    // Check solid building collision (open buildings like marketplace are walkable)
+    if (this.gridManager.isWalkablePosition(nextX, nextY, buildings, lairs, targetBuildingId)) {
+      tc.x = nextX;
+      tc.y = nextY;
+    } else {
+      // Wall sliding around solid buildings
+      if (this.gridManager.isWalkablePosition(nextX, tc.y, buildings, lairs, targetBuildingId)) {
+        tc.x = nextX;
+      } else if (this.gridManager.isWalkablePosition(tc.x, nextY, buildings, lairs, targetBuildingId)) {
+        tc.y = nextY;
+      } else {
+        // Perpendicular detour
+        const perpX = -vy;
+        const perpY = vx;
+        if (this.gridManager.isWalkablePosition(tc.x + perpX, tc.y + perpY, buildings, lairs, targetBuildingId)) {
+          tc.x += perpX;
+          tc.y += perpY;
+        } else if (this.gridManager.isWalkablePosition(tc.x - perpX, tc.y - perpY, buildings, lairs, targetBuildingId)) {
+          tc.x -= perpX;
+          tc.y -= perpY;
+        }
+      }
+    }
 
     if (Math.abs(dx) > Math.abs(dy)) {
       tc.direction = dx > 0 ? 'right' : 'left';

@@ -575,17 +575,22 @@ export class ThreeRenderer {
       } else {
         // Unit Selection (Hero, Monster, Tax Collector, Peasant)
         let colorHex = 0x38bdf8; // Default blue for hero
-        let radius = 10;
+        let radius = 4.5;
 
         if (state.selectedEntity.type === 'monster') {
+          const m = state.monsters.find(mon => mon.id === state.selectedEntity?.id);
           colorHex = 0xf43f5e;
-          radius = 12;
+          if (m?.type === 'red_dragon') radius = 18;
+          else if (m?.type === 'minotaur') radius = 8;
+          else if (m?.type === 'dire_wolf') radius = 5.5;
+          else if (m?.type === 'giant_rat') radius = 3.2;
+          else radius = 4.5;
         } else if (state.selectedEntity.type === 'tax_collector') {
           colorHex = 0xc084fc;
-          radius = 10;
+          radius = 4.5;
         } else if (state.selectedEntity.type === 'peasant') {
           colorHex = 0xf59e0b;
-          radius = 9;
+          radius = 4.2;
         }
 
         // Outer smooth thin ring
@@ -835,18 +840,18 @@ export class ThreeRenderer {
     }
 
     if (b.type === 'palace') {
-      // Grand Royal Multi-Tier Fortress
-      const castleBaseGeo = new THREE.BoxGeometry(w * 0.85, 22, h * 0.85);
+      // Grand Monumental Royal Stronghold (4x4 tiles = 128x128)
+      const castleBaseGeo = new THREE.BoxGeometry(w * 0.82, 26, h * 0.82);
       const castleBaseMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
       const castleBase = new THREE.Mesh(castleBaseGeo, castleBaseMat);
-      castleBase.position.y = 11;
+      castleBase.position.y = 13;
       castleBase.castShadow = true;
       castleBase.receiveShadow = true;
       group.add(castleBase);
 
-      // 4 Corner Round Turrets with Red Roofs
-      const turretGeo = new THREE.CylinderGeometry(5, 5.5, 28, 8);
-      const turretRoofGeo = new THREE.ConeGeometry(6, 12, 8);
+      // 4 Corner Round Bastion Turrets with Crimson Roofs
+      const turretGeo = new THREE.CylinderGeometry(6, 7, 36, 12);
+      const turretRoofGeo = new THREE.ConeGeometry(7.5, 16, 12);
       const turretMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.7 });
       const turretRoofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 });
 
@@ -859,117 +864,117 @@ export class ThreeRenderer {
 
       offsets.forEach(([tx, tz]) => {
         const turret = new THREE.Mesh(turretGeo, turretMat);
-        turret.position.set(tx, 14, tz);
+        turret.position.set(tx, 18, tz);
         turret.castShadow = true;
         group.add(turret);
 
         const tRoof = new THREE.Mesh(turretRoofGeo, turretRoofMat);
-        tRoof.position.set(tx, 34, tz);
+        tRoof.position.set(tx, 44, tz);
         tRoof.castShadow = true;
         group.add(tRoof);
       });
 
-      // Central Grand Keep Tower
-      const keepGeo = new THREE.BoxGeometry(w * 0.45, 36, h * 0.45);
+      // Central Grand Imperial Throne Keep
+      const keepGeo = new THREE.BoxGeometry(w * 0.44, 48, h * 0.44);
       const keep = new THREE.Mesh(keepGeo, turretMat);
-      keep.position.y = 18;
+      keep.position.y = 24;
       keep.castShadow = true;
       group.add(keep);
 
-      const keepRoofGeo = new THREE.ConeGeometry(w * 0.38, 20, 4);
+      const keepRoofGeo = new THREE.ConeGeometry(w * 0.36, 24, 4);
       const keepRoof = new THREE.Mesh(keepRoofGeo, turretRoofMat);
-      keepRoof.position.y = 46;
+      keepRoof.position.y = 60;
       keepRoof.rotation.y = Math.PI / 4;
       keepRoof.castShadow = true;
       group.add(keepRoof);
 
       // Golden Sovereign Crown Spire
-      const crownGeo = new THREE.CylinderGeometry(3, 4, 6, 8);
-      const crownMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.7, roughness: 0.2 });
+      const crownGeo = new THREE.CylinderGeometry(3.5, 4.5, 8, 8);
+      const crownMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8, roughness: 0.2 });
       const crown = new THREE.Mesh(crownGeo, crownMat);
-      crown.position.y = 59;
+      crown.position.y = 76;
       group.add(crown);
     } else if (b.type === 'warrior_guild') {
-      // Fortified Stone Bastion with Pitched Blue Gable Roof & Training Dummy
-      const hallBaseGeo = new THREE.BoxGeometry(w * 0.85, 18, h * 0.75);
+      // Fortified Stone Bastion with Pitched Blue Gable Roof & Training Yard (2x2 = 64x64)
+      const hallBaseGeo = new THREE.BoxGeometry(w * 0.82, 22, h * 0.74);
       const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
       const hall = new THREE.Mesh(hallBaseGeo, stoneMat);
-      hall.position.y = 9;
+      hall.position.y = 11;
       hall.castShadow = true;
       group.add(hall);
 
       // Pitched Blue Slate Roof
-      const roofGeo = new THREE.ConeGeometry(w * 0.5, 16, 4);
+      const roofGeo = new THREE.ConeGeometry(w * 0.48, 18, 4);
       const blueRoofMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
       const roof = new THREE.Mesh(roofGeo, blueRoofMat);
-      roof.position.y = 25;
+      roof.position.y = 31;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
 
       // Shield & Crossed Swords Plaque above door
-      const shieldPlaqueGeo = new THREE.BoxGeometry(6, 8, 1);
+      const shieldPlaqueGeo = new THREE.BoxGeometry(5, 6.5, 1);
       const shieldMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.5 });
       const shieldPlaque = new THREE.Mesh(shieldPlaqueGeo, shieldMat);
-      shieldPlaque.position.set(0, 16, h * 0.38);
+      shieldPlaque.position.set(0, 18, h * 0.38);
       group.add(shieldPlaque);
 
       // Wooden Training Dummy outside in yard
-      const dummyPoleGeo = new THREE.CylinderGeometry(1, 1, 12, 6);
+      const dummyPoleGeo = new THREE.CylinderGeometry(0.8, 0.8, 10, 6);
       const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
       const dummy = new THREE.Mesh(dummyPoleGeo, woodMat);
-      dummy.position.set(w * 0.35, 6, h * 0.25);
+      dummy.position.set(w * 0.34, 5, h * 0.25);
       dummy.castShadow = true;
       group.add(dummy);
 
-      const dummyTargetGeo = new THREE.SphereGeometry(3, 8, 8);
+      const dummyTargetGeo = new THREE.SphereGeometry(2.4, 8, 8);
       const strawMat = new THREE.MeshStandardMaterial({ color: 0xca8a04 });
       const dummyTarget = new THREE.Mesh(dummyTargetGeo, strawMat);
-      dummyTarget.position.set(w * 0.35, 12, h * 0.25);
+      dummyTarget.position.set(w * 0.34, 10, h * 0.25);
       group.add(dummyTarget);
     } else if (b.type === 'ranger_guild') {
-      // Rustic Log Cabin with Archery Targets outside
-      const logBaseGeo = new THREE.BoxGeometry(w * 0.85, 16, h * 0.75);
+      // Rustic Timber Log Lodge with Forest Green Roof (2x2 = 64x64)
+      const logBaseGeo = new THREE.BoxGeometry(w * 0.82, 20, h * 0.74);
       const logMat = new THREE.MeshStandardMaterial({ color: 0x542608, roughness: 0.9 });
       const cabin = new THREE.Mesh(logBaseGeo, logMat);
-      cabin.position.y = 8;
+      cabin.position.y = 10;
       cabin.castShadow = true;
       group.add(cabin);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.48, 15, 4);
+      const roofGeo = new THREE.ConeGeometry(w * 0.46, 17, 4);
       const greenRoofMat = new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.7 });
       const roof = new THREE.Mesh(roofGeo, greenRoofMat);
-      roof.position.y = 23.5;
+      roof.position.y = 28.5;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
 
       // 2 Archery Target Hay Bales outside
-      const targetGeo = new THREE.CylinderGeometry(4, 4, 3, 12);
+      const targetGeo = new THREE.CylinderGeometry(3.5, 3.5, 2.5, 12);
       targetGeo.rotateX(Math.PI / 2);
       const targetMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.8 });
       const t1 = new THREE.Mesh(targetGeo, targetMat);
-      t1.position.set(w * 0.3, 4, h * 0.35);
+      t1.position.set(w * 0.3, 3.5, h * 0.35);
       t1.castShadow = true;
       group.add(t1);
 
       const t2 = new THREE.Mesh(targetGeo, targetMat);
-      t2.position.set(-w * 0.3, 4, h * 0.35);
+      t2.position.set(-w * 0.3, 3.5, h * 0.35);
       t2.castShadow = true;
       group.add(t2);
     } else if (b.type === 'rogue_guild') {
-      // Dark Shadowy Hideout with Lantern
-      const baseGeo = new THREE.BoxGeometry(w * 0.8, 14, h * 0.75);
+      // Dark Shadowy Hideout with Lantern (2x2 = 64x64)
+      const baseGeo = new THREE.BoxGeometry(w * 0.8, 18, h * 0.72);
       const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
       const hideout = new THREE.Mesh(baseGeo, darkMat);
-      hideout.position.y = 7;
+      hideout.position.y = 9;
       hideout.castShadow = true;
       group.add(hideout);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.44, 12, 4);
+      const roofGeo = new THREE.ConeGeometry(w * 0.44, 15, 4);
       const slateMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.7 });
       const roof = new THREE.Mesh(roofGeo, slateMat);
-      roof.position.y = 19;
+      roof.position.y = 25.5;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
@@ -978,176 +983,181 @@ export class ThreeRenderer {
       const lanternGeo = new THREE.BoxGeometry(2, 3, 2);
       const lanternMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.8 });
       const lantern = new THREE.Mesh(lanternGeo, lanternMat);
-      lantern.position.set(w * 0.35, 10, h * 0.38);
+      lantern.position.set(w * 0.34, 12, h * 0.38);
       group.add(lantern);
     } else if (b.type === 'wizard_tower') {
-      // Spiraling Arcane Tower with Balconies
-      const cylinderGeo = new THREE.CylinderGeometry(w * 0.28, w * 0.36, 46, 12);
+      // Spiraling Arcane Tower with Balconies (2x2 = 64x64)
+      const cylinderGeo = new THREE.CylinderGeometry(w * 0.24, w * 0.34, 52, 12);
       const towerMat = new THREE.MeshStandardMaterial({ color: 0x312e81, roughness: 0.7 });
       const tower = new THREE.Mesh(cylinderGeo, towerMat);
-      tower.position.y = 23;
+      tower.position.y = 26;
       tower.castShadow = true;
       group.add(tower);
 
-      const balconyGeo = new THREE.CylinderGeometry(w * 0.35, w * 0.35, 3, 12);
+      const balconyGeo = new THREE.CylinderGeometry(w * 0.32, w * 0.32, 3.5, 12);
       const balcony = new THREE.Mesh(balconyGeo, towerMat);
-      balcony.position.y = 32;
+      balcony.position.y = 38;
       group.add(balcony);
 
-      const coneGeo = new THREE.ConeGeometry(w * 0.34, 22, 12);
+      const coneGeo = new THREE.ConeGeometry(w * 0.3, 26, 12);
       const coneMat = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.5 });
       const cone = new THREE.Mesh(coneGeo, coneMat);
-      cone.position.y = 57;
+      cone.position.y = 65;
       cone.castShadow = true;
       group.add(cone);
 
       // Levitating Pulsing Arcane Orb
-      const orbGeo = new THREE.SphereGeometry(5, 12, 12);
+      const orbGeo = new THREE.SphereGeometry(4.5, 12, 12);
       const orbMat = new THREE.MeshStandardMaterial({
         color: 0xc084fc,
         emissive: 0x9333ea,
-        emissiveIntensity: 0.9,
+        emissiveIntensity: 1.0,
         roughness: 0.2
       });
       const orb = new THREE.Mesh(orbGeo, orbMat);
-      orb.position.y = 72;
+      orb.position.y = 80;
       group.add(orb);
     } else if (b.type === 'cleric_temple') {
-      // White Marble Cathedral with Grand Gold Dome
-      const cathedralBaseGeo = new THREE.BoxGeometry(w * 0.85, 20, h * 0.75);
+      // White Marble Cathedral with Grand Gold Dome (2x2 = 64x64)
+      const cathedralBaseGeo = new THREE.BoxGeometry(w * 0.82, 24, h * 0.74);
       const cathedralMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.6 });
       const cathedral = new THREE.Mesh(cathedralBaseGeo, cathedralMat);
-      cathedral.position.y = 10;
+      cathedral.position.y = 12;
       cathedral.castShadow = true;
       group.add(cathedral);
 
-      const domeGeo = new THREE.SphereGeometry(w * 0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-      const domeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.6, roughness: 0.2 });
+      const domeGeo = new THREE.SphereGeometry(w * 0.34, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+      const domeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.7, roughness: 0.2 });
       const dome = new THREE.Mesh(domeGeo, domeMat);
-      dome.position.y = 20;
+      dome.position.y = 24;
       group.add(dome);
 
       // Golden Solar Cross
-      const crossVGeo = new THREE.BoxGeometry(1.5, 10, 1.5);
-      const crossHGeo = new THREE.BoxGeometry(6, 1.5, 1.5);
+      const crossVGeo = new THREE.BoxGeometry(1.4, 10, 1.4);
+      const crossHGeo = new THREE.BoxGeometry(5.5, 1.4, 1.4);
       const crossV = new THREE.Mesh(crossVGeo, domeMat);
       const crossH = new THREE.Mesh(crossHGeo, domeMat);
-      crossV.position.y = 35;
-      crossH.position.y = 37;
+      crossV.position.y = 41;
+      crossH.position.y = 43;
       group.add(crossV);
       group.add(crossH);
     } else if (b.type === 'marketplace') {
-      // Vibrant Multi-Stall Bazaar
-      const baseGeo = new THREE.BoxGeometry(w * 0.85, 6, h * 0.85);
+      // Vibrant Multi-Stall Bazaar (2x2 = 64x64)
+      const baseGeo = new THREE.BoxGeometry(w * 0.85, 4, h * 0.85);
       const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
       const base = new THREE.Mesh(baseGeo, woodMat);
-      base.position.y = 3;
+      base.position.y = 2;
       base.castShadow = true;
       group.add(base);
 
       // Striped Red/White Tent Canopy
-      const canopyGeo = new THREE.ConeGeometry(w * 0.45, 14, 4);
+      const canopyGeo = new THREE.ConeGeometry(w * 0.46, 18, 4);
       const canopyMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.7 });
       const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-      canopy.position.y = 17;
+      canopy.position.y = 20;
       canopy.rotation.y = Math.PI / 4;
       canopy.castShadow = true;
       group.add(canopy);
 
       // Crates & Barrels
-      const barrelGeo = new THREE.CylinderGeometry(3, 3, 6, 8);
+      const barrelGeo = new THREE.CylinderGeometry(2.5, 2.5, 5, 8);
       const barrel = new THREE.Mesh(barrelGeo, woodMat);
-      barrel.position.set(w * 0.3, 5, h * 0.25);
+      barrel.position.set(w * 0.3, 4.5, h * 0.25);
       group.add(barrel);
     } else if (b.type === 'blacksmith') {
-      // Brick Forge with Chimney & Anvil
-      const forgeBaseGeo = new THREE.BoxGeometry(w * 0.8, 14, h * 0.7);
+      // Brick Forge with Tall Stone Chimney & Anvil (2x2 = 64x64)
+      const forgeBaseGeo = new THREE.BoxGeometry(w * 0.8, 18, h * 0.7);
       const forgeMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.8 });
       const forge = new THREE.Mesh(forgeBaseGeo, forgeMat);
-      forge.position.y = 7;
+      forge.position.y = 9;
       forge.castShadow = true;
       group.add(forge);
 
-      const chimneyGeo = new THREE.BoxGeometry(8, 28, 8);
+      const chimneyGeo = new THREE.BoxGeometry(7, 34, 7);
       const chimney = new THREE.Mesh(chimneyGeo, forgeMat);
-      chimney.position.set(w * 0.25, 14, -h * 0.2);
+      chimney.position.set(w * 0.25, 17, -h * 0.2);
       chimney.castShadow = true;
       group.add(chimney);
 
       // Anvil outside
-      const anvilGeo = new THREE.BoxGeometry(4, 5, 6);
+      const anvilGeo = new THREE.BoxGeometry(3.5, 4.5, 5);
       const anvilMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.2 });
       const anvil = new THREE.Mesh(anvilGeo, anvilMat);
-      anvil.position.set(-w * 0.25, 2.5, h * 0.25);
+      anvil.position.set(-w * 0.25, 2.25, h * 0.25);
       group.add(anvil);
     } else if (b.type === 'royal_inn') {
-      // Half-Timber Bavarian Tavern
-      const innBaseGeo = new THREE.BoxGeometry(w * 0.85, 18, h * 0.75);
+      // Half-Timber Bavarian Tavern (2x2 = 64x64)
+      const innBaseGeo = new THREE.BoxGeometry(w * 0.82, 22, h * 0.74);
       const innMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.8 });
       const inn = new THREE.Mesh(innBaseGeo, innMat);
-      inn.position.y = 9;
+      inn.position.y = 11;
       inn.castShadow = true;
       group.add(inn);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.45, 14, 4);
+      const roofGeo = new THREE.ConeGeometry(w * 0.46, 17, 4);
       const roofMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
       const roof = new THREE.Mesh(roofGeo, roofMat);
-      roof.position.y = 25;
+      roof.position.y = 30.5;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
     } else if (b.type === 'peasant_cottage') {
-      // Small Thatched Peasant Cottage (Distinct from Guilds)
-      const cottageBaseGeo = new THREE.BoxGeometry(w * 0.7, 9, h * 0.7);
-      const cottageBaseMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.9 }); // Whitewashed timber
+      // Realistic Thatched Peasant Cottage (1x1 tile = 32x32)
+      const cottageBaseGeo = new THREE.BoxGeometry(w * 0.72, 12, h * 0.72);
+      const cottageBaseMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.9 }); // Whitewashed plaster
       const cottageBase = new THREE.Mesh(cottageBaseGeo, cottageBaseMat);
-      cottageBase.position.y = 4.5;
+      cottageBase.position.y = 6;
       cottageBase.castShadow = true;
       group.add(cottageBase);
 
-      // Organic Low-Sloped Straw Thatched Roof
-      const thatchGeo = new THREE.CylinderGeometry(w * 0.1, w * 0.45, 8, 4);
+      // High-Pitched Straw Thatched Roof
+      const thatchGeo = new THREE.ConeGeometry(w * 0.48, 11, 4);
       const thatchMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.95 });
       const thatch = new THREE.Mesh(thatchGeo, thatchMat);
-      thatch.position.y = 13;
+      thatch.position.y = 17.5;
       thatch.rotation.y = Math.PI / 4;
       thatch.castShadow = true;
       group.add(thatch);
 
-      // Small Stone Chimney with Smoke
-      const chimneyGeo = new THREE.BoxGeometry(3, 8, 3);
+      // Stone Chimney with Smoke
+      const chimneyGeo = new THREE.BoxGeometry(2.5, 10, 2.5);
       const chimneyMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
       const chimney = new THREE.Mesh(chimneyGeo, chimneyMat);
-      chimney.position.set(w * 0.2, 13, -h * 0.2);
+      chimney.position.set(w * 0.2, 17, -h * 0.2);
       group.add(chimney);
 
-      // Small wooden door
-      const doorGeo = new THREE.BoxGeometry(3.5, 6, 0.5);
+      // Wooden door
+      const doorGeo = new THREE.BoxGeometry(3, 5, 0.4);
       const doorMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
       const door = new THREE.Mesh(doorGeo, doorMat);
-      door.position.set(0, 3, h * 0.35);
+      door.position.set(0, 2.5, h * 0.36);
       group.add(door);
     } else if (b.type === 'guard_tower') {
-      // Tall Stone Watchtower
-      const towerGeo = new THREE.BoxGeometry(w * 0.55, 36, h * 0.55);
+      // Fortified Stone Watchtower (1x1 tile = 32x32)
+      const towerGeo = new THREE.BoxGeometry(w * 0.5, 42, h * 0.5);
       const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
       const tower = new THREE.Mesh(towerGeo, stoneMat);
-      tower.position.y = 18;
+      tower.position.y = 21;
       tower.castShadow = true;
       group.add(tower);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.38, 12, 4);
+      const parapetGeo = new THREE.BoxGeometry(w * 0.6, 4, h * 0.6);
+      const parapet = new THREE.Mesh(parapetGeo, stoneMat);
+      parapet.position.y = 42;
+      group.add(parapet);
+
+      const roofGeo = new THREE.ConeGeometry(w * 0.38, 14, 4);
       const roofMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
       const roof = new THREE.Mesh(roofGeo, roofMat);
-      roof.position.y = 42;
+      roof.position.y = 51;
       roof.rotation.y = Math.PI / 4;
       group.add(roof);
     } else {
       // Default structure
-      const baseGeo = new THREE.BoxGeometry(w * 0.75, 14, h * 0.75);
+      const baseGeo = new THREE.BoxGeometry(w * 0.75, 18, h * 0.75);
       const baseMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
       const base = new THREE.Mesh(baseGeo, baseMat);
-      base.position.y = 7;
+      base.position.y = 9;
       base.castShadow = true;
       group.add(base);
     }
@@ -1188,26 +1198,157 @@ export class ThreeRenderer {
     const group = new THREE.Group();
     const ts = this.gridManager.tileSize;
     const w = lair.width * ts;
+    const h = lair.height * ts;
 
-    if (lair.type === 'dragon_cavern') {
-      const volcanoGeo = new THREE.ConeGeometry(w * 0.6, 32, 8);
+    if (lair.type === 'sewer_grate') {
+      // Detailed 3D Sewer Grate & Rat Den with Iron Bars & Toxic Slime
+      const rimGeo = new THREE.BoxGeometry(w * 0.85, 4, h * 0.85);
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
+      const rim = new THREE.Mesh(rimGeo, stoneMat);
+      rim.position.y = 2;
+      rim.castShadow = true;
+      group.add(rim);
+
+      // Bubbling Green Slime Pool inside
+      const slimeGeo = new THREE.PlaneGeometry(w * 0.7, h * 0.7);
+      slimeGeo.rotateX(-Math.PI / 2);
+      const slimeMat = new THREE.MeshStandardMaterial({
+        color: 0x10b981,
+        emissive: 0x059669,
+        emissiveIntensity: 0.8,
+        roughness: 0.2
+      });
+      const slime = new THREE.Mesh(slimeGeo, slimeMat);
+      slime.position.y = 3;
+      group.add(slime);
+
+      // Heavy Iron Sewer Bars
+      const barMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.2 });
+      const numBars = 5;
+      const spacing = (w * 0.65) / numBars;
+
+      for (let i = 0; i <= numBars; i++) {
+        const barGeo = new THREE.BoxGeometry(1.4, 1.4, h * 0.7);
+        const bar = new THREE.Mesh(barGeo, barMat);
+        bar.position.set(-w * 0.32 + i * spacing, 4.2, 0);
+        bar.castShadow = true;
+        group.add(bar);
+      }
+
+      // Cross bar
+      const crossBarGeo = new THREE.BoxGeometry(w * 0.7, 1.4, 1.4);
+      const crossBar = new THREE.Mesh(crossBarGeo, barMat);
+      crossBar.position.set(0, 4.5, 0);
+      group.add(crossBar);
+    } else if (lair.type === 'graveyard') {
+      // 3D Cursed Graveyard with Mausoleum & Headstones
+      const cryptGeo = new THREE.BoxGeometry(16, 14, 20);
+      const cryptMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
+      const crypt = new THREE.Mesh(cryptGeo, cryptMat);
+      crypt.position.set(0, 7, -6);
+      crypt.castShadow = true;
+      group.add(crypt);
+
+      // Crypt Roof
+      const cRoofGeo = new THREE.ConeGeometry(13, 8, 4);
+      const cRoofMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 });
+      const cRoof = new THREE.Mesh(cRoofGeo, cRoofMat);
+      cRoof.position.set(0, 18, -6);
+      cRoof.rotation.y = Math.PI / 4;
+      cRoof.castShadow = true;
+      group.add(cRoof);
+
+      // Tilted Headstones
+      const stoneGeo = new THREE.BoxGeometry(4, 7, 1.5);
+      const tombMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.9 });
+
+      const t1 = new THREE.Mesh(stoneGeo, tombMat);
+      t1.position.set(-w * 0.25, 3.5, h * 0.25);
+      t1.rotation.z = -0.15;
+      t1.castShadow = true;
+      group.add(t1);
+
+      const t2 = new THREE.Mesh(stoneGeo, tombMat);
+      t2.position.set(w * 0.25, 3.5, h * 0.2);
+      t2.rotation.z = 0.2;
+      t2.castShadow = true;
+      group.add(t2);
+    } else if (lair.type === 'goblin_hut') {
+      // Mud and Straw Teepee Hut with Bone Totems
+      const hutGeo = new THREE.ConeGeometry(w * 0.42, 22, 6);
+      const hutMat = new THREE.MeshStandardMaterial({ color: 0x713f12, roughness: 0.9 });
+      const hut = new THREE.Mesh(hutGeo, hutMat);
+      hut.position.y = 11;
+      hut.castShadow = true;
+      group.add(hut);
+
+      // Straw Thatch trim
+      const thatchGeo = new THREE.ConeGeometry(w * 0.45, 8, 6);
+      const thatchMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.8 });
+      const thatch = new THREE.Mesh(thatchGeo, thatchMat);
+      thatch.position.y = 8;
+      group.add(thatch);
+
+      // Tribal Totem Pole outside
+      const totemGeo = new THREE.CylinderGeometry(1, 1, 18, 6);
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+      const totem = new THREE.Mesh(totemGeo, woodMat);
+      totem.position.set(w * 0.3, 9, h * 0.25);
+      totem.castShadow = true;
+      group.add(totem);
+
+      const skullGeo = new THREE.SphereGeometry(2.5, 6, 6);
+      const skullMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0 });
+      const skull = new THREE.Mesh(skullGeo, skullMat);
+      skull.position.set(w * 0.3, 18, h * 0.25);
+      group.add(skull);
+    } else if (lair.type === 'wolf_den') {
+      // Rocky Cave Mouth Burrow
+      const caveMoundGeo = new THREE.SphereGeometry(w * 0.45, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+      const caveMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
+      const cave = new THREE.Mesh(caveMoundGeo, caveMat);
+      cave.position.y = 0;
+      cave.castShadow = true;
+      group.add(cave);
+
+      // Dark Cave Mouth
+      const mouthGeo = new THREE.CircleGeometry(6, 12);
+      const darkMat = new THREE.MeshBasicMaterial({ color: 0x030712 });
+      const mouth = new THREE.Mesh(mouthGeo, darkMat);
+      mouth.position.set(0, 4, h * 0.35);
+      group.add(mouth);
+    } else if (lair.type === 'ancient_ruins') {
+      // Crumbling Greek / Gothic Columns & Broken Lintel
+      const colGeo = new THREE.CylinderGeometry(2.5, 3, 22, 8);
+      const marbleMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.8 });
+
+      const c1 = new THREE.Mesh(colGeo, marbleMat); c1.position.set(-w * 0.25, 11, -h * 0.2); c1.castShadow = true; group.add(c1);
+      const c2 = new THREE.Mesh(colGeo, marbleMat); c2.position.set(w * 0.25, 11, -h * 0.2); c2.castShadow = true; group.add(c2);
+
+      // Broken Lintel resting on top
+      const lintelGeo = new THREE.BoxGeometry(w * 0.7, 4, 6);
+      const lintel = new THREE.Mesh(lintelGeo, marbleMat);
+      lintel.position.set(0, 23, -h * 0.2);
+      lintel.rotation.z = 0.1;
+      lintel.castShadow = true;
+      group.add(lintel);
+    } else if (lair.type === 'dragon_cavern') {
+      // Volcanic Obsidian Peaks with Magma Crag
+      const volcanoGeo = new THREE.ConeGeometry(w * 0.55, 36, 8);
       const volcanoMat = new THREE.MeshStandardMaterial({ color: 0x450a0a, roughness: 0.9 });
       const volcano = new THREE.Mesh(volcanoGeo, volcanoMat);
-      volcano.position.y = 16;
+      volcano.position.y = 18;
       volcano.castShadow = true;
       group.add(volcano);
 
-      const magmaGeo = new THREE.SphereGeometry(6, 8, 8);
-      const magmaMat = new THREE.MeshStandardMaterial({ color: 0xea580c, emissive: 0xf97316, emissiveIntensity: 0.9 });
+      const magmaGeo = new THREE.SphereGeometry(7, 8, 8);
+      const magmaMat = new THREE.MeshStandardMaterial({ color: 0xea580c, emissive: 0xf97316, emissiveIntensity: 1.0 });
       const magma = new THREE.Mesh(magmaGeo, magmaMat);
-      magma.position.y = 28;
+      magma.position.y = 32;
       group.add(magma);
     } else {
       const rockGeo = new THREE.DodecahedronGeometry(w * 0.35, 0);
-      const rockMat = new THREE.MeshStandardMaterial({
-        color: lair.type === 'graveyard' ? 0x292524 : (lair.type === 'goblin_hut' ? 0x713f12 : 0x1e293b),
-        roughness: 0.9
-      });
+      const rockMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
       const rock = new THREE.Mesh(rockGeo, rockMat);
       rock.position.y = 8;
       rock.castShadow = true;
@@ -1318,9 +1459,15 @@ export class ThreeRenderer {
       pGroup.position.set(p.x, 0, p.y);
       pGroup.visible = this.gridManager.isPixelVisible(p.x, p.y);
 
+      // Facing direction
+      if (p.direction === 'left') pGroup.rotation.y = -Math.PI / 2;
+      else if (p.direction === 'right') pGroup.rotation.y = Math.PI / 2;
+      else if (p.direction === 'up') pGroup.rotation.y = Math.PI;
+      else pGroup.rotation.y = 0;
+
       // Walk Stride
       const isMoving = p.state === 'walking_to_site' || p.state === 'fleeing';
-      const legStride = isMoving ? Math.sin(time * 1.5) * 0.45 : 0;
+      const legStride = isMoving ? Math.sin(time * 2.0) * 0.45 : 0;
 
       const leftLeg = pGroup.getObjectByName('leftLeg');
       const rightLeg = pGroup.getObjectByName('rightLeg');
@@ -1331,9 +1478,9 @@ export class ThreeRenderer {
       const rightArm = pGroup.getObjectByName('rightArm');
       if (rightArm) {
         if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
-          const hammerPhase = (Date.now() * 0.0035) % (Math.PI * 2);
+          const hammerPhase = (Date.now() * 0.004) % (Math.PI * 2);
           const swing = Math.sin(hammerPhase);
-          rightArm.rotation.x = -0.2 - Math.max(0, swing) * 1.2;
+          rightArm.rotation.x = -0.3 - Math.max(0, swing) * 1.3;
         } else {
           rightArm.rotation.x = isMoving ? -legStride * 0.8 : 0;
         }
@@ -1351,58 +1498,101 @@ export class ThreeRenderer {
   private create3DPeasantMesh(p: Peasant): THREE.Group {
     const group = new THREE.Group();
 
-    // Torso (Tan Peasant Shirt & Brown Apron)
-    const torsoGeo = new THREE.BoxGeometry(5, 7, 3.5);
+    // Torso (Tan Peasant Shirt & Brown Leather Apron)
+    const torsoGeo = new THREE.BoxGeometry(2.6, 3.6, 1.8);
     const torsoMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 });
     const torso = new THREE.Mesh(torsoGeo, torsoMat);
-    torso.position.y = 8.5;
+    torso.position.y = 4.6;
     torso.castShadow = true;
     group.add(torso);
 
     // Head
-    const headGeo = new THREE.SphereGeometry(2.5, 8, 8);
+    const headGeo = new THREE.SphereGeometry(1.25, 8, 8);
     const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.8 });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 14;
+    head.position.y = 7.4;
     head.castShadow = true;
     group.add(head);
 
+    // Peasant Hair / Cap
+    const hairGeo = new THREE.SphereGeometry(1.3, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.45);
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+    const hair = new THREE.Mesh(hairGeo, hairMat);
+    hair.position.set(0, 7.6, -0.15);
+    group.add(hair);
+
+    // Eyes
+    const eyeWhiteGeo = new THREE.SphereGeometry(0.24, 6, 6);
+    const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilGeo = new THREE.SphereGeometry(0.12, 6, 6);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x1c1917 });
+
+    const ewL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat); ewL.position.set(-0.4, 7.55, 1.15); group.add(ewL);
+    const pL = new THREE.Mesh(pupilGeo, pupilMat); pL.position.set(-0.4, 7.55, 1.32); group.add(pL);
+
+    const ewR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat); ewR.position.set(0.4, 7.55, 1.15); group.add(ewR);
+    const pR = new THREE.Mesh(pupilGeo, pupilMat); pR.position.set(0.4, 7.55, 1.32); group.add(pR);
+
+    // Eyebrows
+    const browGeo = new THREE.BoxGeometry(0.35, 0.08, 0.1);
+    const browMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+    const bL = new THREE.Mesh(browGeo, browMat); bL.position.set(-0.4, 7.88, 1.2); group.add(bL);
+    const bR = new THREE.Mesh(browGeo, browMat); bR.position.set(0.4, 7.88, 1.2); group.add(bR);
+
+    // Nose
+    const noseGeo = new THREE.BoxGeometry(0.22, 0.3, 0.25);
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0xfca5a5, roughness: 0.8 });
+    const nose = new THREE.Mesh(noseGeo, noseMat); nose.position.set(0, 7.35, 1.32); group.add(nose);
+
+    // Smile / Mouth
+    const mouthGeo = new THREE.BoxGeometry(0.42, 0.1, 0.1);
+    const mouthMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.8 });
+    const mouth = new THREE.Mesh(mouthGeo, mouthMat); mouth.position.set(0, 6.95, 1.22); group.add(mouth);
+
     // Legs
-    const legGeo = new THREE.BoxGeometry(1.8, 6, 1.8);
+    const legGeo = new THREE.BoxGeometry(0.9, 3.2, 0.9);
     const legMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.8 });
 
     const leftLeg = new THREE.Mesh(legGeo, legMat);
-    leftLeg.position.set(-1.4, 3, 0);
+    leftLeg.position.set(-0.75, 1.6, 0);
     leftLeg.name = 'leftLeg';
     group.add(leftLeg);
 
     const rightLeg = new THREE.Mesh(legGeo, legMat);
-    rightLeg.position.set(1.4, 3, 0);
+    rightLeg.position.set(0.75, 1.6, 0);
     rightLeg.name = 'rightLeg';
     group.add(rightLeg);
+
+    // Left Arm
+    const leftArmGeo = new THREE.BoxGeometry(0.8, 3.2, 0.8);
+    const leftArm = new THREE.Mesh(leftArmGeo, torsoMat);
+    leftArm.position.set(-1.7, 4.4, 0);
+    leftArm.name = 'leftArm';
+    group.add(leftArm);
 
     // Right Arm Holding Hammer
     const armGroup = new THREE.Group();
     armGroup.name = 'rightArm';
-    armGroup.position.set(3.2, 10.5, 0);
+    armGroup.position.set(1.7, 5.6, 0);
 
-    const armGeo = new THREE.BoxGeometry(1.6, 6, 1.6);
+    const armGeo = new THREE.BoxGeometry(0.8, 3.2, 0.8);
     const arm = new THREE.Mesh(armGeo, torsoMat);
-    arm.position.y = -2;
+    arm.position.y = -1.2;
+    arm.castShadow = true;
     armGroup.add(arm);
 
     // Wooden Mallet
-    const handleGeo = new THREE.CylinderGeometry(0.4, 0.4, 8, 6);
+    const handleGeo = new THREE.CylinderGeometry(0.2, 0.2, 4.2, 6);
     const handleMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
     const handle = new THREE.Mesh(handleGeo, handleMat);
-    handle.position.set(0, -3, 3);
+    handle.position.set(0, -1.8, 1.6);
     handle.rotation.x = Math.PI / 3;
     armGroup.add(handle);
 
-    const headMalletGeo = new THREE.BoxGeometry(3, 3, 5);
+    const headMalletGeo = new THREE.BoxGeometry(1.6, 1.6, 2.4);
     const headMalletMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
     const headMallet = new THREE.Mesh(headMalletGeo, headMalletMat);
-    headMallet.position.set(0, -5, 6);
+    headMallet.position.set(0, -2.8, 3.2);
     armGroup.add(headMallet);
 
     group.add(armGroup);
@@ -1434,7 +1624,7 @@ export class ThreeRenderer {
       else heroGroup.rotation.y = 0;
 
       const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 6;
-      const legStride = isMoving ? Math.sin(time * 1.4) * 0.45 : 0;
+      const legStride = isMoving ? Math.sin(time * 2.0) * 0.45 : 0;
 
       const leftLeg = heroGroup.getObjectByName('leftLeg');
       const rightLeg = heroGroup.getObjectByName('rightLeg');
@@ -1442,12 +1632,19 @@ export class ThreeRenderer {
       if (rightLeg) rightLeg.rotation.x = -legStride;
 
       const rightArm = heroGroup.getObjectByName('rightArm');
+      const leftArm = heroGroup.getObjectByName('leftArm');
+
       if (rightArm) {
         if (h.isAttackingAnimation > 0) {
-          rightArm.rotation.x = -Math.sin(h.isAttackingAnimation * 15) * 1.5;
+          const attackFactor = Math.sin((1 - Math.max(0, h.isAttackingAnimation) / 0.3) * Math.PI);
+          rightArm.rotation.x = -attackFactor * 1.6;
         } else {
           rightArm.rotation.x = isMoving ? -legStride * 0.8 : 0;
         }
+      }
+
+      if (leftArm) {
+        leftArm.rotation.x = isMoving ? legStride * 0.8 : 0;
       }
     }
 
@@ -1463,82 +1660,212 @@ export class ThreeRenderer {
     const group = new THREE.Group();
     const classDef = HERO_CLASS_DEFINITIONS[h.heroClass];
     const colorNum = parseInt(classDef.color.replace('#', '0x'), 16);
+    const isDwarf = h.heroClass === 'dwarf';
 
-    const torsoGeo = new THREE.BoxGeometry(5, 7, 3.5);
+    // Torso (Proportional medieval armor & tunic)
+    const torsoWidth = isDwarf ? 3.2 : 2.8;
+    const torsoHeight = isDwarf ? 3.0 : 3.6;
+    const torsoGeo = new THREE.BoxGeometry(torsoWidth, torsoHeight, 2.0);
     const torsoMat = new THREE.MeshStandardMaterial({ color: colorNum, roughness: 0.7 });
     const torso = new THREE.Mesh(torsoGeo, torsoMat);
-    torso.position.y = 8.5;
+    torso.position.y = isDwarf ? 3.8 : 4.6;
     torso.castShadow = true;
     group.add(torso);
 
-    const headGeo = new THREE.SphereGeometry(2.5, 8, 8);
+    // Head
+    const headY = isDwarf ? 6.2 : 7.4;
+    const headGeo = new THREE.SphereGeometry(1.25, 8, 8);
     const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.8 });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 14;
+    head.position.y = headY;
     head.castShadow = true;
     group.add(head);
 
-    if (h.heroClass === 'warrior' || h.heroClass === 'dwarf') {
-      const helmGeo = new THREE.CylinderGeometry(2.6, 2.7, 2.5, 8);
-      const helmMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3 });
-      const helm = new THREE.Mesh(helmGeo, helmMat);
-      helm.position.y = 15;
-      group.add(helm);
-    } else if (h.heroClass === 'wizard') {
-      const hatGeo = new THREE.ConeGeometry(3.5, 7, 8);
-      const hatMat = new THREE.MeshStandardMaterial({ color: 0x6d28d9, roughness: 0.6 });
-      const hat = new THREE.Mesh(hatGeo, hatMat);
-      hat.position.y = 18;
-      group.add(hat);
+    // Expressive Eyes with Class specific iris colors
+    const eyeWhiteGeo = new THREE.SphereGeometry(0.24, 6, 6);
+    const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const eyePupilGeo = new THREE.SphereGeometry(0.12, 6, 6);
+
+    let pupilColor = 0x1e3a8a; // blue for warrior
+    if (h.heroClass === 'wizard') pupilColor = 0x0284c7;
+    else if (h.heroClass === 'ranger') pupilColor = 0x059669;
+    else if (h.heroClass === 'cleric') pupilColor = 0xb45309;
+    else if (h.heroClass === 'rogue') pupilColor = 0x09090b;
+    else if (h.heroClass === 'dwarf') pupilColor = 0xc2410c;
+
+    const pupilMat = new THREE.MeshBasicMaterial({ color: pupilColor });
+
+    const ewL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat); ewL.position.set(-0.4, headY + 0.15, 1.15); group.add(ewL);
+    const pL = new THREE.Mesh(eyePupilGeo, pupilMat); pL.position.set(-0.4, headY + 0.15, 1.32); group.add(pL);
+
+    const ewR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat); ewR.position.set(0.4, headY + 0.15, 1.15); group.add(ewR);
+    const pR = new THREE.Mesh(eyePupilGeo, pupilMat); pR.position.set(0.4, headY + 0.15, 1.32); group.add(pR);
+
+    // Eyebrows
+    const browGeo = new THREE.BoxGeometry(0.36, 0.08, 0.1);
+    const browColor = h.heroClass === 'wizard' ? 0xf8fafc : (h.heroClass === 'dwarf' ? 0xc2410c : 0x451a03);
+    const browMat = new THREE.MeshStandardMaterial({ color: browColor });
+    const bL = new THREE.Mesh(browGeo, browMat); bL.position.set(-0.4, headY + 0.45, 1.2); group.add(bL);
+    const bR = new THREE.Mesh(browGeo, browMat); bR.position.set(0.4, headY + 0.45, 1.2); group.add(bR);
+
+    // Facial hair / Masks / Class features
+    if (h.heroClass === 'wizard') {
+      // Flowing White Wizard Beard & Mustache
+      const beardGeo = new THREE.ConeGeometry(1.1, 3.4, 6);
+      beardGeo.rotateX(Math.PI / 8);
+      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.9 });
+      const beard = new THREE.Mesh(beardGeo, whiteMat);
+      beard.position.set(0, headY - 1.2, 0.9);
+      group.add(beard);
+    } else if (h.heroClass === 'dwarf') {
+      // Thick Braided Copper Dwarf Beard
+      const beardGeo = new THREE.BoxGeometry(2.4, 2.2, 1.2);
+      const copperMat = new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.9 });
+      const beard = new THREE.Mesh(beardGeo, copperMat);
+      beard.position.set(0, headY - 1.0, 0.9);
+      group.add(beard);
+    } else if (h.heroClass === 'rogue') {
+      // Dark Bandit Face Wrap / Mask
+      const maskGeo = new THREE.BoxGeometry(2.2, 1.0, 1.1);
+      const maskMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.9 });
+      const mask = new THREE.Mesh(maskGeo, maskMat);
+      mask.position.set(0, headY - 0.4, 0.7);
+      group.add(mask);
+    } else {
+      // Clean / Stubble mouth & nose
+      const noseGeo = new THREE.BoxGeometry(0.2, 0.28, 0.22);
+      const noseMat = new THREE.MeshStandardMaterial({ color: 0xfca5a5, roughness: 0.8 });
+      const nose = new THREE.Mesh(noseGeo, noseMat); nose.position.set(0, headY - 0.05, 1.32); group.add(nose);
+
+      const mouthGeo = new THREE.BoxGeometry(0.38, 0.08, 0.1);
+      const mouthMat = new THREE.MeshStandardMaterial({ color: 0x991b1b });
+      const mouth = new THREE.Mesh(mouthGeo, mouthMat); mouth.position.set(0, headY - 0.42, 1.22); group.add(mouth);
     }
 
-    const legGeo = new THREE.BoxGeometry(1.8, 6, 1.8);
+    // Class specific Headwear
+    if (h.heroClass === 'warrior') {
+      const helmGeo = new THREE.CylinderGeometry(1.35, 1.4, 1.6, 8);
+      const helmMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3 });
+      const helm = new THREE.Mesh(helmGeo, helmMat);
+      helm.position.y = 8.0;
+      group.add(helm);
+    } else if (h.heroClass === 'dwarf') {
+      const helmGeo = new THREE.CylinderGeometry(1.4, 1.45, 1.4, 8);
+      const helmMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.6, roughness: 0.4 });
+      const helm = new THREE.Mesh(helmGeo, helmMat);
+      helm.position.y = 6.8;
+      group.add(helm);
+    } else if (h.heroClass === 'wizard') {
+      const hatGeo = new THREE.ConeGeometry(2.0, 4.2, 8);
+      const hatMat = new THREE.MeshStandardMaterial({ color: 0x6d28d9, roughness: 0.6 });
+      const hat = new THREE.Mesh(hatGeo, hatMat);
+      hat.position.y = 9.4;
+      group.add(hat);
+    } else if (h.heroClass === 'cleric') {
+      const mitreGeo = new THREE.ConeGeometry(1.6, 3.0, 4);
+      const mitreMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.5 });
+      const mitre = new THREE.Mesh(mitreGeo, mitreMat);
+      mitre.position.y = 8.8;
+      group.add(mitre);
+    }
+
+    // Legs
+    const legHeight = isDwarf ? 2.4 : 3.2;
+    const legGeo = new THREE.BoxGeometry(0.9, legHeight, 0.9);
     const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
 
     const leftLeg = new THREE.Mesh(legGeo, legMat);
-    leftLeg.position.set(-1.4, 3, 0);
+    leftLeg.position.set(-0.8, legHeight / 2, 0);
     leftLeg.name = 'leftLeg';
     leftLeg.castShadow = true;
     group.add(leftLeg);
 
     const rightLeg = new THREE.Mesh(legGeo, legMat);
-    rightLeg.position.set(1.4, 3, 0);
+    rightLeg.position.set(0.8, legHeight / 2, 0);
     rightLeg.name = 'rightLeg';
     rightLeg.castShadow = true;
     group.add(rightLeg);
 
+    // Left Arm (and shield/bow)
+    const leftArmGeo = new THREE.BoxGeometry(0.8, 3.2, 0.8);
+    const leftArm = new THREE.Mesh(leftArmGeo, torsoMat);
+    leftArm.position.set(-1.8, isDwarf ? 4.2 : 5.0, 0);
+    leftArm.name = 'leftArm';
+    leftArm.castShadow = true;
+    group.add(leftArm);
+
+    if (h.heroClass === 'warrior' || h.heroClass === 'cleric') {
+      const shieldGeo = new THREE.BoxGeometry(1.8, 2.6, 0.4);
+      const shieldMat = new THREE.MeshStandardMaterial({
+        color: h.heroClass === 'cleric' ? 0xfacc15 : 0x3b82f6,
+        metalness: 0.6,
+        roughness: 0.3
+      });
+      const shield = new THREE.Mesh(shieldGeo, shieldMat);
+      shield.position.set(-2.2, isDwarf ? 4.2 : 5.0, 0.8);
+      shield.castShadow = true;
+      group.add(shield);
+    }
+
+    // Right Arm (and weapon)
     const armGroup = new THREE.Group();
     armGroup.name = 'rightArm';
-    armGroup.position.set(3.2, 10.5, 0);
+    armGroup.position.set(1.8, isDwarf ? 4.8 : 5.6, 0);
 
-    const armGeo = new THREE.BoxGeometry(1.6, 6, 1.6);
+    const armGeo = new THREE.BoxGeometry(0.8, 3.2, 0.8);
     const arm = new THREE.Mesh(armGeo, torsoMat);
-    arm.position.y = -2;
+    arm.position.y = -1.2;
     arm.castShadow = true;
     armGroup.add(arm);
 
     if (h.heroClass === 'warrior') {
-      const swordGeo = new THREE.BoxGeometry(1, 12, 0.4);
+      const swordGeo = new THREE.BoxGeometry(0.5, 5.0, 0.2);
       const swordMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.9, roughness: 0.1 });
       const sword = new THREE.Mesh(swordGeo, swordMat);
-      sword.position.set(0, -3, 5);
+      sword.position.set(0, -1.5, 2.2);
       sword.rotation.x = Math.PI / 3;
       sword.castShadow = true;
       armGroup.add(sword);
     } else if (h.heroClass === 'wizard') {
-      const staffGeo = new THREE.CylinderGeometry(0.5, 0.5, 16, 6);
+      const staffGeo = new THREE.CylinderGeometry(0.2, 0.2, 6.5, 6);
       const staffMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
       const staff = new THREE.Mesh(staffGeo, staffMat);
-      staff.position.set(0, -1, 4);
+      staff.position.set(0, -0.6, 1.8);
       staff.rotation.x = Math.PI / 6;
       armGroup.add(staff);
+
+      const orbGeo = new THREE.SphereGeometry(0.6, 8, 8);
+      const orbMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 1.0 });
+      const orb = new THREE.Mesh(orbGeo, orbMat);
+      orb.position.set(0, 2.4, 2.6);
+      armGroup.add(orb);
+    } else if (h.heroClass === 'dwarf') {
+      const axeGeo = new THREE.CylinderGeometry(0.22, 0.22, 4.5, 6);
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+      const axe = new THREE.Mesh(axeGeo, woodMat);
+      axe.position.set(0, -1.2, 1.6);
+      axe.rotation.x = Math.PI / 3;
+      armGroup.add(axe);
+
+      const bladeGeo = new THREE.BoxGeometry(2.0, 1.6, 0.3);
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+      const blade = new THREE.Mesh(bladeGeo, bladeMat);
+      blade.position.set(0, -2.4, 2.4);
+      armGroup.add(blade);
+    } else if (h.heroClass === 'cleric') {
+      const maceGeo = new THREE.CylinderGeometry(0.25, 0.25, 4.5, 6);
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.7 });
+      const mace = new THREE.Mesh(maceGeo, metalMat);
+      mace.position.set(0, -1.2, 1.6);
+      mace.rotation.x = Math.PI / 3;
+      armGroup.add(mace);
     }
 
     group.add(armGroup);
     return group;
   }
 
-  // --- 3D MONSTERS ---
+  // --- 3D MONSTERS WITH COMPLETE ATTACK ANIMATIONS ---
   private updateMonsters(state: GameState) {
     const activeIds = new Set<string>();
     const time = Date.now() * 0.01;
@@ -1557,26 +1884,195 @@ export class ThreeRenderer {
       mGroup.position.set(m.x, 0, m.y);
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
-      // Rotate monster to face where it is moving
+      // Rotate monster to face where it is moving or attacking
       if (m.direction === 'left') mGroup.rotation.y = -Math.PI / 2;
       else if (m.direction === 'right') mGroup.rotation.y = Math.PI / 2;
       else if (m.direction === 'up') mGroup.rotation.y = Math.PI;
       else mGroup.rotation.y = 0;
 
+      const isAttacking = m.isAttackingAnimation > 0;
+      const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
+      const isMoving = (m.state === 'wandering' || m.state === 'raiding' || m.state === 'returning_to_lair' || (m.state === 'attacking' && !isAttacking)) && m.targetX !== undefined;
+      const walkStride = isMoving ? Math.sin(time * 2.2) * 0.45 : 0;
+
+      // Type-specific Attack & Locomotion Animations
       if (m.type === 'red_dragon') {
         const wingL = mGroup.getObjectByName('wingL');
         const wingR = mGroup.getObjectByName('wingR');
-        const flap = Math.sin(time * 0.8) * 0.5;
-        if (wingL) wingL.rotation.z = flap;
-        if (wingR) wingR.rotation.z = -flap;
+        const dragonHead = mGroup.getObjectByName('dragonHead');
+        const dragonTail = mGroup.getObjectByName('dragonTail');
+        const flap = Math.sin(time * 1.2) * 0.45;
+
+        if (wingL) wingL.rotation.z = flap + (isAttacking ? attackFactor * 0.5 : 0);
+        if (wingR) wingR.rotation.z = -flap - (isAttacking ? attackFactor * 0.5 : 0);
+
+        if (dragonHead) {
+          if (isAttacking) {
+            dragonHead.position.z = 8 + attackFactor * 6;
+            dragonHead.rotation.x = -attackFactor * 0.4;
+          } else {
+            dragonHead.position.z = 8;
+            dragonHead.rotation.x = Math.sin(time * 1.2) * 0.1;
+          }
+        }
+
+        if (dragonTail) {
+          dragonTail.rotation.y = Math.sin(time * 1.5) * 0.4;
+        }
       } else if (m.type === 'giant_rat') {
-        const tail = mGroup.getObjectByName('ratTail');
-        if (tail) tail.rotation.y = Math.sin(time * 3) * 0.45;
+        const ratTail = mGroup.getObjectByName('ratTail');
         const paw1 = mGroup.getObjectByName('paw1');
         const paw2 = mGroup.getObjectByName('paw2');
-        const stride = Math.sin(time * 3) * 0.5;
-        if (paw1) paw1.rotation.x = stride;
-        if (paw2) paw2.rotation.x = -stride;
+        const ratHead = mGroup.getObjectByName('ratHead');
+        const ratBody = mGroup.getObjectByName('ratBody');
+
+        if (isAttacking) {
+          if (ratBody) ratBody.position.z = attackFactor * 2.5;
+          if (ratHead) ratHead.position.z = 2.4 + attackFactor * 3.0;
+          if (paw1) paw1.rotation.x = attackFactor * 1.2;
+          if (paw2) paw2.rotation.x = attackFactor * 1.2;
+          if (ratTail) ratTail.rotation.y = Math.sin(time * 12) * 0.8;
+        } else {
+          if (ratBody) ratBody.position.z = 0;
+          if (ratHead) ratHead.position.z = 2.4;
+          if (paw1) paw1.rotation.x = walkStride;
+          if (paw2) paw2.rotation.x = -walkStride;
+          if (ratTail) ratTail.rotation.y = Math.sin(time * 3) * 0.4;
+        }
+      } else if (m.type === 'skeleton') {
+        const rightArm = mGroup.getObjectByName('rightArm');
+        const leftArm = mGroup.getObjectByName('leftArm');
+        const leftLeg = mGroup.getObjectByName('leftLeg');
+        const rightLeg = mGroup.getObjectByName('rightLeg');
+
+        if (leftLeg) leftLeg.rotation.x = walkStride;
+        if (rightLeg) rightLeg.rotation.x = -walkStride;
+
+        if (rightArm) {
+          if (isAttacking) {
+            rightArm.rotation.x = -attackFactor * 1.8;
+            rightArm.rotation.z = -attackFactor * 0.3;
+          } else {
+            rightArm.rotation.x = isMoving ? -walkStride * 0.7 : 0;
+            rightArm.rotation.z = 0;
+          }
+        }
+        if (leftArm) {
+          leftArm.rotation.x = isAttacking ? -attackFactor * 0.6 : (isMoving ? walkStride * 0.7 : 0);
+        }
+      } else if (m.type === 'zombie') {
+        const rightArm = mGroup.getObjectByName('rightArm');
+        const leftArm = mGroup.getObjectByName('leftArm');
+        const leftLeg = mGroup.getObjectByName('leftLeg');
+        const rightLeg = mGroup.getObjectByName('rightLeg');
+
+        if (leftLeg) leftLeg.rotation.x = walkStride * 0.7;
+        if (rightLeg) rightLeg.rotation.x = -walkStride * 0.7;
+
+        if (isAttacking) {
+          if (rightArm) rightArm.rotation.x = -attackFactor * 1.5;
+          if (leftArm) leftArm.rotation.x = -attackFactor * 1.5;
+        } else {
+          if (rightArm) rightArm.rotation.x = -0.4 + (isMoving ? Math.sin(time * 1.5) * 0.2 : 0);
+          if (leftArm) leftArm.rotation.x = -0.4 - (isMoving ? Math.sin(time * 1.5) * 0.2 : 0);
+        }
+      } else if (m.type === 'goblin_spearman') {
+        const rightArm = mGroup.getObjectByName('rightArm');
+        const leftArm = mGroup.getObjectByName('leftArm');
+        const leftLeg = mGroup.getObjectByName('leftLeg');
+        const rightLeg = mGroup.getObjectByName('rightLeg');
+
+        if (leftLeg) leftLeg.rotation.x = walkStride * 1.2;
+        if (rightLeg) rightLeg.rotation.x = -walkStride * 1.2;
+
+        if (rightArm) {
+          if (isAttacking) {
+            rightArm.position.z = attackFactor * 3.5;
+            rightArm.rotation.x = -0.2;
+          } else {
+            rightArm.position.z = 0;
+            rightArm.rotation.x = isMoving ? -walkStride * 0.8 : 0;
+          }
+        }
+        if (leftArm) leftArm.rotation.x = isMoving ? walkStride * 0.8 : 0;
+      } else if (m.type === 'goblin_shaman') {
+        const rightArm = mGroup.getObjectByName('rightArm');
+        const leftLeg = mGroup.getObjectByName('leftLeg');
+        const rightLeg = mGroup.getObjectByName('rightLeg');
+
+        if (leftLeg) leftLeg.rotation.x = walkStride;
+        if (rightLeg) rightLeg.rotation.x = -walkStride;
+
+        if (rightArm) {
+          if (isAttacking) {
+            rightArm.rotation.x = -1.6 - attackFactor * 0.5;
+          } else {
+            rightArm.rotation.x = -0.4;
+          }
+        }
+      } else if (m.type === 'dire_wolf') {
+        const wolfTail = mGroup.getObjectByName('wolfTail');
+        const paw1 = mGroup.getObjectByName('paw1');
+        const paw2 = mGroup.getObjectByName('paw2');
+        const wolfHead = mGroup.getObjectByName('wolfHead');
+        const wolfBody = mGroup.getObjectByName('wolfBody');
+
+        if (isAttacking) {
+          if (wolfBody) wolfBody.position.z = attackFactor * 3.0;
+          if (wolfHead) wolfHead.rotation.x = -attackFactor * 0.6;
+          if (paw1) paw1.rotation.x = attackFactor * 1.1;
+          if (paw2) paw2.rotation.x = attackFactor * 1.1;
+          if (wolfTail) wolfTail.rotation.y = Math.sin(time * 10) * 0.7;
+        } else {
+          if (wolfBody) wolfBody.position.z = 0;
+          if (wolfHead) wolfHead.rotation.x = 0;
+          if (paw1) paw1.rotation.x = walkStride * 1.2;
+          if (paw2) paw2.rotation.x = -walkStride * 1.2;
+          if (wolfTail) wolfTail.rotation.y = Math.sin(time * 2.5) * 0.35;
+        }
+      } else if (m.type === 'minotaur') {
+        const rightArm = mGroup.getObjectByName('rightArm');
+        const leftArm = mGroup.getObjectByName('leftArm');
+        const leftLeg = mGroup.getObjectByName('leftLeg');
+        const rightLeg = mGroup.getObjectByName('rightLeg');
+
+        if (leftLeg) leftLeg.rotation.x = walkStride * 0.8;
+        if (rightLeg) rightLeg.rotation.x = -walkStride * 0.8;
+
+        if (rightArm) {
+          if (isAttacking) {
+            rightArm.rotation.x = -attackFactor * 2.2;
+          } else {
+            rightArm.rotation.x = isMoving ? -walkStride * 0.6 : 0;
+          }
+        }
+        if (leftArm) leftArm.rotation.x = isMoving ? walkStride * 0.6 : 0;
+      } else if (m.type === 'necromancer') {
+        const rightArm = mGroup.getObjectByName('rightArm');
+        const leftArm = mGroup.getObjectByName('leftArm');
+
+        // Levitation hovering
+        mGroup.position.y = Math.sin(time * 2.0) * 0.8 + (isAttacking ? attackFactor * 2.5 : 0);
+
+        if (isAttacking) {
+          if (rightArm) {
+            rightArm.rotation.x = -1.6;
+            rightArm.rotation.z = attackFactor * 0.6;
+          }
+          if (leftArm) {
+            leftArm.rotation.x = -1.2;
+            leftArm.rotation.z = -attackFactor * 0.6;
+          }
+        } else {
+          if (rightArm) {
+            rightArm.rotation.x = -0.5;
+            rightArm.rotation.z = 0;
+          }
+          if (leftArm) {
+            leftArm.rotation.x = -0.3;
+            leftArm.rotation.z = 0;
+          }
+        }
       }
     }
 
@@ -1594,81 +2090,448 @@ export class ThreeRenderer {
     const colorNum = parseInt(def.color.replace('#', '0x'), 16);
 
     if (m.type === 'red_dragon') {
-      const bodyGeo = new THREE.SphereGeometry(14, 12, 12);
+      // Colossal Majestic Red Dragon Boss
+      const bodyGeo = new THREE.SphereGeometry(9, 12, 12);
       const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.7 });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
       body.position.y = 16;
-      body.scale.set(1.4, 1, 1);
+      body.scale.set(1.4, 0.9, 1.1);
       body.castShadow = true;
+      body.name = 'dragonBody';
       group.add(body);
 
-      const wingGeo = new THREE.PlaneGeometry(28, 18);
+      // Dragon Neck & Head
+      const headGroup = new THREE.Group();
+      headGroup.name = 'dragonHead';
+      headGroup.position.set(0, 19, 8);
+
+      const neckGeo = new THREE.CylinderGeometry(2.4, 3.6, 7, 8);
+      neckGeo.rotateX(Math.PI / 4);
+      const neck = new THREE.Mesh(neckGeo, bodyMat);
+      headGroup.add(neck);
+
+      const headGeo = new THREE.ConeGeometry(3.2, 7.5, 8);
+      headGeo.rotateX(-Math.PI / 2);
+      const head = new THREE.Mesh(headGeo, bodyMat);
+      head.position.set(0, 3, 4);
+      head.castShadow = true;
+      headGroup.add(head);
+
+      // Glowing Dragon Eyes
+      const eyeGeo = new THREE.SphereGeometry(0.7, 6, 6);
+      const eyeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 1.5 });
+      const eL = new THREE.Mesh(eyeGeo, eyeMat); eL.position.set(-1.8, 4.2, 4.5); headGroup.add(eL);
+      const eR = new THREE.Mesh(eyeGeo, eyeMat); eR.position.set(1.8, 4.2, 4.5); headGroup.add(eR);
+
+      // Dragon Horns
+      const hornGeo = new THREE.ConeGeometry(0.8, 5.5, 6);
+      hornGeo.rotateX(-Math.PI / 3);
+      const hornMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.5 });
+      const hL = new THREE.Mesh(hornGeo, hornMat); hL.position.set(-1.8, 5.5, 2); headGroup.add(hL);
+      const hR = new THREE.Mesh(hornGeo, hornMat); hR.position.set(1.8, 5.5, 2); headGroup.add(hR);
+
+      group.add(headGroup);
+
+      // Massive Wings
+      const wingGeo = new THREE.PlaneGeometry(22, 14);
       const wingMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, side: THREE.DoubleSide });
 
       const wingL = new THREE.Mesh(wingGeo, wingMat);
-      wingL.position.set(-18, 22, 0);
+      wingL.position.set(-14, 20, 0);
       wingL.name = 'wingL';
       group.add(wingL);
 
       const wingR = new THREE.Mesh(wingGeo, wingMat);
-      wingR.position.set(18, 22, 0);
+      wingR.position.set(14, 20, 0);
       wingR.name = 'wingR';
       group.add(wingR);
+
+      // Sinuous Spiked Tail
+      const tailGeo = new THREE.CylinderGeometry(1.4, 0.4, 18, 6);
+      tailGeo.rotateX(Math.PI / 2);
+      const tail = new THREE.Mesh(tailGeo, bodyMat);
+      tail.position.set(0, 15, -12);
+      tail.name = 'dragonTail';
+      group.add(tail);
     } else if (m.type === 'giant_rat') {
-      // Detailed 3D Giant Sewer Rat Monster
-      const bodyGeo = new THREE.SphereGeometry(4.5, 10, 8);
+      // Proportional 3D Giant Sewer Rat Monster
+      const bodyGeo = new THREE.SphereGeometry(2.4, 10, 8);
       const ratMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.9 });
       const body = new THREE.Mesh(bodyGeo, ratMat);
-      body.position.y = 3.5;
+      body.position.y = 1.8;
       body.scale.set(1.4, 0.85, 1);
       body.castShadow = true;
+      body.name = 'ratBody';
       group.add(body);
 
-      // Pointed Rodent Head & Snout
-      const headGeo = new THREE.ConeGeometry(2.5, 6, 8);
+      // Snout & Head
+      const headGeo = new THREE.ConeGeometry(1.4, 3.2, 8);
       headGeo.rotateX(-Math.PI / 2);
       const head = new THREE.Mesh(headGeo, ratMat);
-      head.position.set(0, 3.5, 4.5);
+      head.position.set(0, 1.8, 2.4);
       head.castShadow = true;
+      head.name = 'ratHead';
       group.add(head);
 
       // Pink Ears
-      const earGeo = new THREE.SphereGeometry(1.2, 6, 6);
+      const earGeo = new THREE.SphereGeometry(0.65, 6, 6);
       const pinkMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e });
-      const earL = new THREE.Mesh(earGeo, pinkMat); earL.position.set(-2, 5.5, 3); group.add(earL);
-      const earR = new THREE.Mesh(earGeo, pinkMat); earR.position.set(2, 5.5, 3); group.add(earR);
+      const earL = new THREE.Mesh(earGeo, pinkMat); earL.position.set(-1.0, 2.8, 1.6); group.add(earL);
+      const earR = new THREE.Mesh(earGeo, pinkMat); earR.position.set(1.0, 2.8, 1.6); group.add(earR);
 
-      // Glowing Sinister Red Eyes
-      const eyeGeo = new THREE.SphereGeometry(0.6, 6, 6);
+      // Glowing Red Eyes
+      const eyeGeo = new THREE.SphereGeometry(0.32, 6, 6);
       const redEyeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 1.2 });
-      const eyeL = new THREE.Mesh(eyeGeo, redEyeMat); eyeL.position.set(-1.2, 4.2, 5.2); group.add(eyeL);
-      const eyeR = new THREE.Mesh(eyeGeo, redEyeMat); eyeR.position.set(1.2, 4.2, 5.2); group.add(eyeR);
+      const eyeL = new THREE.Mesh(eyeGeo, redEyeMat); eyeL.position.set(-0.6, 2.1, 2.8); group.add(eyeL);
+      const eyeR = new THREE.Mesh(eyeGeo, redEyeMat); eyeR.position.set(0.6, 2.1, 2.8); group.add(eyeR);
 
-      // Sinuous Whipping Pink Tail
-      const tailGeo = new THREE.CylinderGeometry(0.6, 0.2, 14, 6);
+      // Sinuous Whipping Tail
+      const tailGeo = new THREE.CylinderGeometry(0.3, 0.1, 7.5, 6);
       tailGeo.rotateX(Math.PI / 2);
       const tail = new THREE.Mesh(tailGeo, pinkMat);
-      tail.position.set(0, 3.5, -9);
+      tail.position.set(0, 1.8, -4.8);
       tail.name = 'ratTail';
       group.add(tail);
 
       // 4 Paws
-      const pawGeo = new THREE.BoxGeometry(1.4, 2.5, 1.8);
-      const p1 = new THREE.Mesh(pawGeo, pinkMat); p1.position.set(-2.6, 1.2, 2.5); p1.name = 'paw1'; group.add(p1);
-      const p2 = new THREE.Mesh(pawGeo, pinkMat); p2.position.set(2.6, 1.2, 2.5); p2.name = 'paw2'; group.add(p2);
-      const p3 = new THREE.Mesh(pawGeo, pinkMat); p3.position.set(-2.6, 1.2, -2.5); group.add(p3);
-      const p4 = new THREE.Mesh(pawGeo, pinkMat); p4.position.set(2.6, 1.2, -2.5); group.add(p4);
+      const pawGeo = new THREE.BoxGeometry(0.8, 1.3, 0.9);
+      const p1 = new THREE.Mesh(pawGeo, pinkMat); p1.position.set(-1.3, 0.65, 1.3); p1.name = 'paw1'; group.add(p1);
+      const p2 = new THREE.Mesh(pawGeo, pinkMat); p2.position.set(1.3, 0.65, 1.3); p2.name = 'paw2'; group.add(p2);
+      const p3 = new THREE.Mesh(pawGeo, pinkMat); p3.position.set(-1.3, 0.65, -1.3); group.add(p3);
+      const p4 = new THREE.Mesh(pawGeo, pinkMat); p4.position.set(1.3, 0.65, -1.3); group.add(p4);
+    } else if (m.type === 'skeleton') {
+      // 3D Skeleton Warrior with Sword & Buckler
+      const boneMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.9 });
+      const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+
+      const torsoGeo = new THREE.BoxGeometry(2.4, 3.4, 1.6);
+      const torso = new THREE.Mesh(torsoGeo, boneMat);
+      torso.position.y = 4.6;
+      torso.castShadow = true;
+      group.add(torso);
+
+      const skullGeo = new THREE.SphereGeometry(1.2, 8, 8);
+      const skull = new THREE.Mesh(skullGeo, boneMat);
+      skull.position.y = 7.4;
+      skull.castShadow = true;
+      group.add(skull);
+
+      // Glowing Cyan Eye Sockets
+      const eyeGeo = new THREE.SphereGeometry(0.24, 6, 6);
+      const cyanEyeMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 1.5 });
+      const eL = new THREE.Mesh(eyeGeo, cyanEyeMat); eL.position.set(-0.45, 7.5, 0.9); group.add(eL);
+      const eR = new THREE.Mesh(eyeGeo, cyanEyeMat); eR.position.set(0.45, 7.5, 0.9); group.add(eR);
+
+      // Bone Legs
+      const legGeo = new THREE.BoxGeometry(0.7, 3.2, 0.7);
+      const leftLeg = new THREE.Mesh(legGeo, boneMat); leftLeg.position.set(-0.7, 1.6, 0); leftLeg.name = 'leftLeg'; group.add(leftLeg);
+      const rightLeg = new THREE.Mesh(legGeo, boneMat); rightLeg.position.set(0.7, 1.6, 0); rightLeg.name = 'rightLeg'; group.add(rightLeg);
+
+      // Left Arm with Buckler Shield
+      const armGeo = new THREE.BoxGeometry(0.7, 3.0, 0.7);
+      const leftArm = new THREE.Mesh(armGeo, boneMat); leftArm.position.set(-1.6, 5.0, 0); leftArm.name = 'leftArm'; group.add(leftArm);
+
+      const shieldGeo = new THREE.CylinderGeometry(1.4, 1.4, 0.3, 8);
+      shieldGeo.rotateX(Math.PI / 2);
+      const shieldMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+      const shield = new THREE.Mesh(shieldGeo, shieldMat);
+      shield.position.set(-1.9, 5.0, 0.8);
+      group.add(shield);
+
+      // Right Arm with Jagged Iron Sword
+      const armGroup = new THREE.Group();
+      armGroup.name = 'rightArm';
+      armGroup.position.set(1.6, 5.6, 0);
+
+      const arm = new THREE.Mesh(armGeo, boneMat);
+      arm.position.y = -1.0;
+      armGroup.add(arm);
+
+      const swordGeo = new THREE.BoxGeometry(0.4, 4.4, 0.2);
+      const sword = new THREE.Mesh(swordGeo, darkMat);
+      sword.position.set(0, -1.2, 1.8);
+      sword.rotation.x = Math.PI / 3;
+      armGroup.add(sword);
+
+      group.add(armGroup);
+    } else if (m.type === 'zombie') {
+      // Rotting Zombie Ghoul with Outstretched Claw Arms
+      const zombieMat = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 0.9 });
+      const clothMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.9 });
+
+      const torsoGeo = new THREE.BoxGeometry(2.8, 3.4, 1.8);
+      const torso = new THREE.Mesh(torsoGeo, clothMat);
+      torso.position.set(0, 4.4, 0.4);
+      torso.rotation.x = 0.2;
+      torso.castShadow = true;
+      group.add(torso);
+
+      const headGeo = new THREE.SphereGeometry(1.2, 8, 8);
+      const head = new THREE.Mesh(headGeo, zombieMat);
+      head.position.set(0, 6.8, 0.8);
+      head.castShadow = true;
+      group.add(head);
+
+      const legGeo = new THREE.BoxGeometry(0.85, 3.0, 0.85);
+      const leftLeg = new THREE.Mesh(legGeo, clothMat); leftLeg.position.set(-0.7, 1.5, 0); leftLeg.name = 'leftLeg'; group.add(leftLeg);
+      const rightLeg = new THREE.Mesh(legGeo, clothMat); rightLeg.position.set(0.7, 1.5, 0); rightLeg.name = 'rightLeg'; group.add(rightLeg);
+
+      // Outstretched Claws
+      const armGeo = new THREE.BoxGeometry(0.75, 3.2, 0.75);
+
+      const lArm = new THREE.Mesh(armGeo, zombieMat);
+      lArm.position.set(-1.6, 5.0, 0.8);
+      lArm.rotation.x = -0.4;
+      lArm.name = 'leftArm';
+      group.add(lArm);
+
+      const rArm = new THREE.Mesh(armGeo, zombieMat);
+      rArm.position.set(1.6, 5.0, 0.8);
+      rArm.rotation.x = -0.4;
+      rArm.name = 'rightArm';
+      group.add(rArm);
+    } else if (m.type === 'goblin_spearman') {
+      // Crafty Green Goblin with Flint Spear
+      const goblinMat = new THREE.MeshStandardMaterial({ color: 0x84cc16, roughness: 0.8 });
+      const leatherMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+
+      const torsoGeo = new THREE.BoxGeometry(2.2, 2.6, 1.6);
+      const torso = new THREE.Mesh(torsoGeo, leatherMat);
+      torso.position.y = 3.6;
+      group.add(torso);
+
+      const headGeo = new THREE.SphereGeometry(1.15, 8, 8);
+      const head = new THREE.Mesh(headGeo, goblinMat);
+      head.position.y = 5.8;
+      group.add(head);
+
+      // Goblin Pointed Ears
+      const earGeo = new THREE.ConeGeometry(0.4, 1.4, 4);
+      earGeo.rotateZ(Math.PI / 3);
+      const eL = new THREE.Mesh(earGeo, goblinMat); eL.position.set(-1.4, 6.0, 0); group.add(eL);
+      const eR = new THREE.Mesh(earGeo, goblinMat); eR.position.set(1.4, 6.0, 0); eR.rotation.z = -Math.PI / 1.5; group.add(eR);
+
+      const legGeo = new THREE.BoxGeometry(0.75, 2.4, 0.75);
+      const leftLeg = new THREE.Mesh(legGeo, leatherMat); leftLeg.position.set(-0.6, 1.2, 0); leftLeg.name = 'leftLeg'; group.add(leftLeg);
+      const rightLeg = new THREE.Mesh(legGeo, leatherMat); rightLeg.position.set(0.6, 1.2, 0); rightLeg.name = 'rightLeg'; group.add(rightLeg);
+
+      const leftArmGeo = new THREE.BoxGeometry(0.65, 2.4, 0.65);
+      const leftArm = new THREE.Mesh(leftArmGeo, goblinMat); leftArm.position.set(-1.4, 3.8, 0); leftArm.name = 'leftArm'; group.add(leftArm);
+
+      // Right Arm with Spear
+      const armGroup = new THREE.Group();
+      armGroup.name = 'rightArm';
+      armGroup.position.set(1.4, 4.4, 0);
+
+      const arm = new THREE.Mesh(leftArmGeo, goblinMat);
+      arm.position.y = -0.8;
+      armGroup.add(arm);
+
+      const spearGeo = new THREE.CylinderGeometry(0.16, 0.16, 5.8, 6);
+      const spearMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+      const spear = new THREE.Mesh(spearGeo, spearMat);
+      spear.position.set(0, 0, 1.8);
+      spear.rotation.x = Math.PI / 2;
+      armGroup.add(spear);
+
+      const tipGeo = new THREE.ConeGeometry(0.5, 1.6, 6);
+      tipGeo.rotateX(Math.PI / 2);
+      const tipMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+      const tip = new THREE.Mesh(tipGeo, tipMat);
+      tip.position.set(0, 0, 4.8);
+      armGroup.add(tip);
+
+      group.add(armGroup);
+    } else if (m.type === 'goblin_shaman') {
+      // Goblin Shaman with Skull Staff
+      const robeMat = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.8 });
+      const goblinMat = new THREE.MeshStandardMaterial({ color: 0x84cc16, roughness: 0.8 });
+
+      const torsoGeo = new THREE.ConeGeometry(1.8, 3.4, 6);
+      const torso = new THREE.Mesh(torsoGeo, robeMat);
+      torso.position.y = 3.0;
+      group.add(torso);
+
+      const headGeo = new THREE.SphereGeometry(1.15, 8, 8);
+      const head = new THREE.Mesh(headGeo, goblinMat);
+      head.position.y = 5.6;
+      group.add(head);
+
+      const legGeo = new THREE.BoxGeometry(0.7, 2.0, 0.7);
+      const leftLeg = new THREE.Mesh(legGeo, robeMat); leftLeg.position.set(-0.6, 1.0, 0); leftLeg.name = 'leftLeg'; group.add(leftLeg);
+      const rightLeg = new THREE.Mesh(legGeo, robeMat); rightLeg.position.set(0.6, 1.0, 0); rightLeg.name = 'rightLeg'; group.add(rightLeg);
+
+      // Shaman Staff
+      const armGroup = new THREE.Group();
+      armGroup.name = 'rightArm';
+      armGroup.position.set(1.4, 4.4, 0);
+
+      const staffGeo = new THREE.CylinderGeometry(0.2, 0.2, 5.5, 6);
+      const staffMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+      const staff = new THREE.Mesh(staffGeo, staffMat);
+      staff.position.set(0, 0, 1.2);
+      staff.rotation.x = Math.PI / 4;
+      armGroup.add(staff);
+
+      const orbGeo = new THREE.SphereGeometry(0.7, 8, 8);
+      const orbMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0x9333ea, emissiveIntensity: 1.2 });
+      const orb = new THREE.Mesh(orbGeo, orbMat);
+      orb.position.set(0, 2.2, 2.8);
+      armGroup.add(orb);
+
+      group.add(armGroup);
+    } else if (m.type === 'dire_wolf') {
+      // Muscular Quadruped Dire Wolf
+      const wolfMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.85 });
+
+      const bodyGeo = new THREE.SphereGeometry(2.4, 8, 8);
+      const body = new THREE.Mesh(bodyGeo, wolfMat);
+      body.position.y = 2.8;
+      body.scale.set(1.5, 0.95, 1.0);
+      body.castShadow = true;
+      body.name = 'wolfBody';
+      group.add(body);
+
+      // Wolf Muzzle & Head
+      const headGeo = new THREE.ConeGeometry(1.4, 3.6, 8);
+      headGeo.rotateX(-Math.PI / 2);
+      const head = new THREE.Mesh(headGeo, wolfMat);
+      head.position.set(0, 3.4, 3.0);
+      head.name = 'wolfHead';
+      group.add(head);
+
+      // Glowing Yellow Eyes
+      const eyeGeo = new THREE.SphereGeometry(0.3, 6, 6);
+      const yelEyeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xeab308, emissiveIntensity: 1.4 });
+      const eL = new THREE.Mesh(eyeGeo, yelEyeMat); eL.position.set(-0.65, 3.8, 3.2); group.add(eL);
+      const eR = new THREE.Mesh(eyeGeo, yelEyeMat); eR.position.set(0.65, 3.8, 3.2); group.add(eR);
+
+      // Bushy Wolf Tail
+      const tailGeo = new THREE.ConeGeometry(0.75, 4.5, 6);
+      tailGeo.rotateX(Math.PI / 3);
+      const tail = new THREE.Mesh(tailGeo, wolfMat);
+      tail.position.set(0, 2.8, -3.6);
+      tail.name = 'wolfTail';
+      group.add(tail);
+
+      // 4 Running Legs
+      const legGeo = new THREE.BoxGeometry(0.85, 2.4, 0.85);
+      const p1 = new THREE.Mesh(legGeo, wolfMat); p1.position.set(-1.2, 1.2, 1.6); p1.name = 'paw1'; group.add(p1);
+      const p2 = new THREE.Mesh(legGeo, wolfMat); p2.position.set(1.2, 1.2, 1.6); p2.name = 'paw2'; group.add(p2);
+      const p3 = new THREE.Mesh(legGeo, wolfMat); p3.position.set(-1.2, 1.2, -1.6); group.add(p3);
+      const p4 = new THREE.Mesh(legGeo, wolfMat); p4.position.set(1.2, 1.2, -1.6); group.add(p4);
+    } else if (m.type === 'minotaur') {
+      // Towering Muscular Minotaur Brute with Battleaxe
+      const bullMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.85 });
+
+      const torsoGeo = new THREE.BoxGeometry(5.2, 5.8, 3.4);
+      const torso = new THREE.Mesh(torsoGeo, bullMat);
+      torso.position.y = 7.5;
+      torso.castShadow = true;
+      group.add(torso);
+
+      const headGeo = new THREE.BoxGeometry(2.8, 3.0, 2.8);
+      const head = new THREE.Mesh(headGeo, bullMat);
+      head.position.set(0, 11.6, 1.0);
+      group.add(head);
+
+      // Horns
+      const hornGeo = new THREE.ConeGeometry(0.7, 4.5, 6);
+      hornGeo.rotateZ(Math.PI / 3);
+      const hornMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+      const hL = new THREE.Mesh(hornGeo, hornMat); hL.position.set(-2.6, 13.0, 0.8); group.add(hL);
+      const hR = new THREE.Mesh(hornGeo, hornMat); hR.position.set(2.6, 13.0, 0.8); hR.rotation.z = -Math.PI / 1.5; group.add(hR);
+
+      // Legs
+      const legGeo = new THREE.BoxGeometry(1.8, 4.8, 1.8);
+      const leftLeg = new THREE.Mesh(legGeo, bullMat); leftLeg.position.set(-1.4, 2.4, 0); leftLeg.name = 'leftLeg'; group.add(leftLeg);
+      const rightLeg = new THREE.Mesh(legGeo, bullMat); rightLeg.position.set(1.4, 2.4, 0); rightLeg.name = 'rightLeg'; group.add(rightLeg);
+
+      // Left Arm
+      const armGeo = new THREE.BoxGeometry(1.5, 4.8, 1.5);
+      const leftArm = new THREE.Mesh(armGeo, bullMat); leftArm.position.set(-3.2, 7.8, 0); leftArm.name = 'leftArm'; group.add(leftArm);
+
+      // Right Arm with Giant Battleaxe
+      const armGroup = new THREE.Group();
+      armGroup.name = 'rightArm';
+      armGroup.position.set(3.2, 9.0, 0);
+
+      const arm = new THREE.Mesh(armGeo, bullMat);
+      arm.position.y = -1.8;
+      armGroup.add(arm);
+
+      const axeShaftGeo = new THREE.CylinderGeometry(0.35, 0.35, 8.5, 6);
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+      const shaft = new THREE.Mesh(axeShaftGeo, woodMat);
+      shaft.position.set(0, -2.0, 2.8);
+      shaft.rotation.x = Math.PI / 3;
+      armGroup.add(shaft);
+
+      const axeBladeGeo = new THREE.BoxGeometry(3.6, 2.6, 0.4);
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+      const blade = new THREE.Mesh(axeBladeGeo, bladeMat);
+      blade.position.set(0, -4.5, 4.5);
+      armGroup.add(blade);
+
+      group.add(armGroup);
+    } else if (m.type === 'necromancer') {
+      // Dark Necromancer Boss with Hovering Scythe & Aura
+      const darkMat = new THREE.MeshStandardMaterial({ color: 0x3b0764, roughness: 0.7 });
+
+      const torsoGeo = new THREE.CylinderGeometry(1.6, 2.8, 5.5, 8);
+      const torso = new THREE.Mesh(torsoGeo, darkMat);
+      torso.position.y = 5.0;
+      torso.castShadow = true;
+      group.add(torso);
+
+      const hoodGeo = new THREE.SphereGeometry(1.4, 8, 8);
+      const hood = new THREE.Mesh(hoodGeo, darkMat);
+      hood.position.y = 8.4;
+      group.add(hood);
+
+      // Glowing Violet Skull Eyes
+      const eyeGeo = new THREE.SphereGeometry(0.3, 6, 6);
+      const purpEyeMat = new THREE.MeshStandardMaterial({ color: 0xc084fc, emissive: 0xa855f7, emissiveIntensity: 1.8 });
+      const eL = new THREE.Mesh(eyeGeo, purpEyeMat); eL.position.set(-0.5, 8.5, 1.0); group.add(eL);
+      const eR = new THREE.Mesh(eyeGeo, purpEyeMat); eR.position.set(0.5, 8.5, 1.0); group.add(eR);
+
+      // Arms & Scythe
+      const armGeo = new THREE.BoxGeometry(0.7, 3.2, 0.7);
+      const leftArm = new THREE.Mesh(armGeo, darkMat); leftArm.position.set(-1.8, 5.5, 0); leftArm.name = 'leftArm'; group.add(leftArm);
+
+      const armGroup = new THREE.Group();
+      armGroup.name = 'rightArm';
+      armGroup.position.set(1.8, 6.2, 0);
+
+      const arm = new THREE.Mesh(armGeo, darkMat);
+      arm.position.y = -1.0;
+      armGroup.add(arm);
+
+      const scytheGeo = new THREE.CylinderGeometry(0.2, 0.2, 7.0, 6);
+      const scMat = new THREE.MeshStandardMaterial({ color: 0x18181b });
+      const scythe = new THREE.Mesh(scytheGeo, scMat);
+      scythe.position.set(0, -0.5, 1.8);
+      scythe.rotation.x = Math.PI / 4;
+      armGroup.add(scythe);
+
+      const scBladeGeo = new THREE.BoxGeometry(3.0, 0.8, 0.2);
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x9333ea, emissive: 0x7e22ce, emissiveIntensity: 0.9 });
+      const scBlade = new THREE.Mesh(scBladeGeo, bladeMat);
+      scBlade.position.set(1.0, 2.5, 3.5);
+      armGroup.add(scBlade);
+
+      group.add(armGroup);
     } else {
-      const bodyGeo = new THREE.BoxGeometry(6, 9, 4);
+      const bodyGeo = new THREE.BoxGeometry(3.0, 4.5, 2.0);
       const bodyMat = new THREE.MeshStandardMaterial({ color: colorNum, roughness: 0.8 });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
-      body.position.y = 7;
+      body.position.y = 4.0;
       body.castShadow = true;
       group.add(body);
 
-      const headGeo = new THREE.SphereGeometry(3, 8, 8);
+      const headGeo = new THREE.SphereGeometry(1.4, 8, 8);
       const head = new THREE.Mesh(headGeo, bodyMat);
-      head.position.y = 13;
+      head.position.y = 7.0;
       head.castShadow = true;
       group.add(head);
     }
@@ -1679,45 +2542,40 @@ export class ThreeRenderer {
   // --- 3D TAX COLLECTOR ---
   private updateTaxCollectors(state: GameState) {
     const activeIds = new Set<string>();
+    const time = Date.now() * 0.01;
 
     for (const tc of state.taxCollectors) {
       activeIds.add(tc.id);
       let tcGroup = this.taxCollectorsMap.get(tc.id);
 
       if (!tcGroup) {
-        tcGroup = new THREE.Group();
-        const bodyGeo = new THREE.BoxGeometry(5.5, 8, 4);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6b21a8, roughness: 0.7 });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 8;
-        body.castShadow = true;
-        tcGroup.add(body);
-
-        const headGeo = new THREE.SphereGeometry(2.5, 8, 8);
-        const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.8 });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = 13.5;
-        tcGroup.add(head);
-
-        const capGeo = new THREE.CylinderGeometry(3.5, 3.5, 1.5, 8);
-        const capMat = new THREE.MeshStandardMaterial({ color: 0x581c87 });
-        const cap = new THREE.Mesh(capGeo, capMat);
-        cap.position.y = 15.5;
-        tcGroup.add(cap);
-
-        const sackGeo = new THREE.SphereGeometry(4.5, 8, 8);
-        const sackMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6 });
-        const sack = new THREE.Mesh(sackGeo, sackMat);
-        sack.position.set(0, 9, -3.5);
-        sack.castShadow = true;
-        tcGroup.add(sack);
-
+        tcGroup = this.create3DTaxCollectorMesh(tc);
         this.scene.add(tcGroup);
         this.taxCollectorsMap.set(tc.id, tcGroup);
       }
 
       tcGroup.position.set(tc.x, 0, tc.y);
       tcGroup.visible = this.gridManager.isPixelVisible(tc.x, tc.y);
+
+      // Facing Direction
+      if (tc.direction === 'left') tcGroup.rotation.y = -Math.PI / 2;
+      else if (tc.direction === 'right') tcGroup.rotation.y = Math.PI / 2;
+      else if (tc.direction === 'up') tcGroup.rotation.y = Math.PI;
+      else tcGroup.rotation.y = 0;
+
+      // Waddling gait
+      const legStride = Math.sin(time * 2.0) * 0.45;
+      const leftLeg = tcGroup.getObjectByName('leftLeg');
+      const rightLeg = tcGroup.getObjectByName('rightLeg');
+      if (leftLeg) leftLeg.rotation.x = legStride;
+      if (rightLeg) rightLeg.rotation.x = -legStride;
+
+      // Dynamic Gold Sack Expansion
+      const sack = tcGroup.getObjectByName('taxSack');
+      if (sack) {
+        const scaleFactor = 1.0 + Math.min(1.2, tc.goldCarried / 120);
+        sack.scale.setScalar(scaleFactor);
+      }
     }
 
     for (const [id, group] of this.taxCollectorsMap.entries()) {
@@ -1728,7 +2586,81 @@ export class ThreeRenderer {
     }
   }
 
-  // --- 3D PROJECTILES ---
+  private create3DTaxCollectorMesh(tc: TaxCollector): THREE.Group {
+    const group = new THREE.Group();
+
+    // Royal Purple Velvet Tunic
+    const bodyGeo = new THREE.BoxGeometry(2.8, 3.8, 2.0);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6b21a8, roughness: 0.7 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 4.6;
+    body.castShadow = true;
+    group.add(body);
+
+    // Head
+    const headGeo = new THREE.SphereGeometry(1.25, 8, 8);
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xfed7aa, roughness: 0.8 });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 7.4;
+    group.add(head);
+
+    // Left eye (stern look)
+    const eyeWhiteGeo = new THREE.SphereGeometry(0.24, 6, 6);
+    const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilGeo = new THREE.SphereGeometry(0.12, 6, 6);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x1c1917 });
+
+    const ewL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat); ewL.position.set(-0.4, 7.55, 1.15); group.add(ewL);
+    const pL = new THREE.Mesh(pupilGeo, pupilMat); pL.position.set(-0.4, 7.55, 1.32); group.add(pL);
+
+    // Right eye: Golden Aristocratic Monocle
+    const ewR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat); ewR.position.set(0.4, 7.55, 1.15); group.add(ewR);
+    const pR = new THREE.Mesh(pupilGeo, pupilMat); pR.position.set(0.4, 7.55, 1.32); group.add(pR);
+
+    const monocleGeo = new THREE.RingGeometry(0.24, 0.38, 12);
+    const monocleMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.9, roughness: 0.1 });
+    const monocle = new THREE.Mesh(monocleGeo, monocleMat);
+    monocle.position.set(0.4, 7.55, 1.38);
+    group.add(monocle);
+
+    // Curled Aristocratic Handlebar Mustache
+    const stacheGeo = new THREE.BoxGeometry(1.4, 0.32, 0.35);
+    const stacheMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+    const stache = new THREE.Mesh(stacheGeo, stacheMat);
+    stache.position.set(0, 7.05, 1.25);
+    group.add(stache);
+
+    // Feathered Purple Velvet Beret Cap
+    const capGeo = new THREE.CylinderGeometry(1.8, 1.8, 0.8, 8);
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x581c87 });
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.y = 8.4;
+    group.add(cap);
+
+    // Legs
+    const legGeo = new THREE.BoxGeometry(0.9, 3.2, 0.9);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x3b0764 });
+    const leftLeg = new THREE.Mesh(legGeo, legMat); leftLeg.position.set(-0.75, 1.6, 0); leftLeg.name = 'leftLeg'; group.add(leftLeg);
+    const rightLeg = new THREE.Mesh(legGeo, legMat); rightLeg.position.set(0.75, 1.6, 0); rightLeg.name = 'rightLeg'; group.add(rightLeg);
+
+    // Arms
+    const armGeo = new THREE.BoxGeometry(0.8, 3.2, 0.8);
+    const leftArm = new THREE.Mesh(armGeo, bodyMat); leftArm.position.set(-1.7, 4.4, 0); group.add(leftArm);
+    const rightArm = new THREE.Mesh(armGeo, bodyMat); rightArm.position.set(1.7, 4.4, 0); group.add(rightArm);
+
+    // Heavy Leather Tax Sack on Back
+    const sackGeo = new THREE.SphereGeometry(1.8, 8, 8);
+    const sackMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6 });
+    const sack = new THREE.Mesh(sackGeo, sackMat);
+    sack.position.set(0, 4.8, -1.6);
+    sack.castShadow = true;
+    sack.name = 'taxSack';
+    group.add(sack);
+
+    return group;
+  }
+
+  // --- 3D PROJECTILES (ARROWS, FIREBALLS, SPELLS) ---
   private updateProjectiles(state: GameState) {
     const activeIds = new Set<string>();
 
@@ -1738,18 +2670,78 @@ export class ThreeRenderer {
 
       if (!pMesh) {
         pMesh = new THREE.Group();
-        const sphereGeo = new THREE.SphereGeometry(p.type === 'fireball' ? 4 : 2, 8, 8);
-        const sphereMat = new THREE.MeshBasicMaterial({
-          color: p.type === 'fireball' ? 0xf97316 : (p.type === 'magic_missile' ? 0xc084fc : 0xfde047)
-        });
-        const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-        pMesh.add(sphere);
+
+        if (p.type === 'arrow') {
+          // Detailed 3D Feathered Arrow with Steel Broadhead
+          const shaftGeo = new THREE.CylinderGeometry(0.35, 0.35, 12, 6);
+          shaftGeo.rotateX(Math.PI / 2);
+          const shaftMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+          const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+          pMesh.add(shaft);
+
+          // Steel Arrowhead
+          const headGeo = new THREE.ConeGeometry(0.9, 3, 6);
+          headGeo.rotateX(Math.PI / 2);
+          const headMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.9, roughness: 0.1 });
+          const head = new THREE.Mesh(headGeo, headMat);
+          head.position.z = 6.5;
+          pMesh.add(head);
+
+          // White Feather Fletchings
+          const fletchGeo = new THREE.PlaneGeometry(1.8, 3.5);
+          const fletchMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc, side: THREE.DoubleSide });
+
+          const f1 = new THREE.Mesh(fletchGeo, fletchMat);
+          f1.position.z = -5;
+          pMesh.add(f1);
+
+          const f2 = new THREE.Mesh(fletchGeo, fletchMat);
+          f2.position.z = -5;
+          f2.rotation.z = Math.PI / 2;
+          pMesh.add(f2);
+        } else if (p.type === 'fireball' || p.type === 'dragon_breath') {
+          // Blazing Fireball Core
+          const sphereGeo = new THREE.SphereGeometry(4.5, 8, 8);
+          const sphereMat = new THREE.MeshStandardMaterial({
+            color: 0xf97316,
+            emissive: 0xfbbf24,
+            emissiveIntensity: 1.2,
+            roughness: 0.3
+          });
+          const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+          pMesh.add(sphere);
+        } else {
+          // Magic Missile / Holy Bolt
+          const boltGeo = new THREE.OctahedronGeometry(3, 0);
+          const boltMat = new THREE.MeshStandardMaterial({
+            color: p.type === 'holy_bolt' ? 0xfde047 : 0xc084fc,
+            emissive: p.type === 'holy_bolt' ? 0xfacc15 : 0xa855f7,
+            emissiveIntensity: 1.0
+          });
+          const bolt = new THREE.Mesh(boltGeo, boltMat);
+          pMesh.add(bolt);
+        }
 
         this.scene.add(pMesh);
         this.projectilesMap.set(p.id, pMesh);
       }
 
-      pMesh.position.set(p.currentX, 10, p.currentY);
+      // Compute Ballistic Flight Arc & 3D Orientation
+      const totalDist = Math.hypot(p.targetX - p.startX, p.targetY - p.startY);
+      const currentDist = Math.hypot(p.currentX - p.startX, p.currentY - p.startY);
+      const progress = Math.max(0, Math.min(1, currentDist / Math.max(1, totalDist)));
+
+      const arcHeight = p.type === 'arrow' ? Math.sin(progress * Math.PI) * Math.min(22, totalDist * 0.18) : 0;
+      const angleY = Math.atan2(p.targetX - p.startX, p.targetY - p.startY);
+
+      pMesh.position.set(p.currentX, 8 + arcHeight, p.currentY);
+      pMesh.rotation.y = angleY;
+
+      if (p.type === 'arrow') {
+        // Pitch arrow along trajectory arc
+        const pitchAngle = (0.5 - progress) * 0.8;
+        pMesh.rotation.x = pitchAngle;
+      }
     }
 
     for (const [id, mesh] of this.projectilesMap.entries()) {

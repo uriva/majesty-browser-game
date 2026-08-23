@@ -303,25 +303,36 @@ export class HeroAIManager {
     }
 
     // F. Default: Wander around town perimeter or explore
-    if (hero.stateTimer <= 0) {
+    if (hero.stateTimer <= 0 || !hero.targetX || !hero.targetY) {
       hero.state = 'wandering';
       hero.stateTimer = Math.random() * 4 + 3;
 
       let wanderRadius = 140;
       if (hero.heroClass === 'ranger') wanderRadius = 260; // rangers roam wider
 
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * wanderRadius;
-      
       const homeGuild = buildings.find(b => b.id === hero.homeGuildId);
       const originX = homeGuild ? (homeGuild.x + homeGuild.width / 2) * this.gridManager.tileSize : hero.x;
       const originY = homeGuild ? (homeGuild.y + homeGuild.height / 2) * this.gridManager.tileSize : hero.y;
 
-      const targetX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, originX + Math.cos(angle) * dist));
-      const targetY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, originY + Math.sin(angle) * dist));
+      let foundSpot = false;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * wanderRadius + 20;
+        const candidateX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, originX + Math.cos(angle) * dist));
+        const candidateY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, originY + Math.sin(angle) * dist));
 
-      hero.targetX = targetX;
-      hero.targetY = targetY;
+        if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs)) {
+          hero.targetX = candidateX;
+          hero.targetY = candidateY;
+          foundSpot = true;
+          break;
+        }
+      }
+
+      if (!foundSpot) {
+        hero.targetX = originX;
+        hero.targetY = originY;
+      }
       hero.currentThought = hero.heroClass === 'ranger' ? 'Scouting the perimeter' : 'Patrolling the kingdom';
     }
 
@@ -376,11 +387,21 @@ export class HeroAIManager {
     // Run towards nearest friendly guild or palace
     const safeBuilding = buildings.find(b => (b.id === hero.homeGuildId || b.type === 'palace') && b.hp > 0);
     if (safeBuilding) {
-      const bx = (safeBuilding.x + safeBuilding.width / 2) * this.gridManager.tileSize;
-      const by = (safeBuilding.y + safeBuilding.height / 2) * this.gridManager.tileSize;
-      this.moveTowards(hero, bx, by, delta, buildings, lairs, 1.2, safeBuilding.id); // sprint when fleeing
+      const ts = this.gridManager.tileSize;
+      const bLeft = safeBuilding.x * ts;
+      const bRight = (safeBuilding.x + safeBuilding.width) * ts;
+      const bTop = safeBuilding.y * ts;
+      const bBottom = (safeBuilding.y + safeBuilding.height) * ts;
 
-      if (Math.hypot(bx - hero.x, by - hero.y) < 30 || hero.stateTimer <= 0) {
+      const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, hero.x));
+      const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, hero.y));
+      const dist = Math.hypot(clampX - hero.x, clampY - hero.y);
+
+      if (dist > 18 && hero.stateTimer > 0) {
+        this.moveTowards(hero, clampX, clampY, delta, buildings, lairs, 1.2, safeBuilding.id); // sprint when fleeing
+      } else {
+        hero.targetX = undefined;
+        hero.targetY = undefined;
         hero.state = 'resting_at_guild';
         hero.stateTimer = 5.0;
         hero.currentThought = 'Resting in safety';
@@ -404,12 +425,23 @@ export class HeroAIManager {
       return;
     }
 
-    const bx = (building.x + building.width / 2) * this.gridManager.tileSize;
-    const by = (building.y + building.height / 2) * this.gridManager.tileSize;
+    const ts = this.gridManager.tileSize;
+    const bLeft = building.x * ts;
+    const bRight = (building.x + building.width) * ts;
+    const bTop = building.y * ts;
+    const bBottom = (building.y + building.height) * ts;
 
-    if (Math.hypot(bx - hero.x, by - hero.y) > 40) {
-      this.moveTowards(hero, bx, by, delta, buildings, lairs, 1.0, building.id);
+    const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, hero.x));
+    const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, hero.y));
+    const dist = Math.hypot(clampX - hero.x, clampY - hero.y);
+
+    if (dist > 20) {
+      this.moveTowards(hero, clampX, clampY, delta, buildings, lairs, 1.0, building.id);
     } else {
+      // Arrived at doorstep/entrance
+      hero.targetX = undefined;
+      hero.targetY = undefined;
+
       // Resting inside/at building: rapid recovery
       const healSpeed = building.type === 'royal_inn' ? 35 : 20;
       hero.hp = Math.min(hero.maxHp, hero.hp + healSpeed * delta);
@@ -447,12 +479,23 @@ export class HeroAIManager {
       return;
     }
 
-    const sx = (shop.x + shop.width / 2) * this.gridManager.tileSize;
-    const sy = (shop.y + shop.height / 2) * this.gridManager.tileSize;
+    const ts = this.gridManager.tileSize;
+    const bLeft = shop.x * ts;
+    const bRight = (shop.x + shop.width) * ts;
+    const bTop = shop.y * ts;
+    const bBottom = (shop.y + shop.height) * ts;
 
-    if (Math.hypot(sx - hero.x, sy - hero.y) > 35) {
-      this.moveTowards(hero, sx, sy, delta, buildings, lairs, 1.0, shop.id);
+    const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, hero.x));
+    const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, hero.y));
+    const dist = Math.hypot(clampX - hero.x, clampY - hero.y);
+
+    if (dist > 20) {
+      this.moveTowards(hero, clampX, clampY, delta, buildings, lairs, 1.0, shop.id);
     } else {
+      // Arrived at shop doorstep
+      hero.targetX = undefined;
+      hero.targetY = undefined;
+
       // At shop! Perform purchase with hero's gold -> transfers to shop.goldStored
       if (shop.type === 'marketplace') {
         if (hero.gold >= 35 && !hero.equipment.hasHealingPotion) {
@@ -725,6 +768,9 @@ export class HeroAIManager {
       return;
     }
 
+    const prevX = hero.x;
+    const prevY = hero.y;
+
     const moveDist = hero.speed * speedMultiplier * delta;
     const vx = (dx / dist) * moveDist;
     const vy = (dy / dist) * moveDist;
@@ -749,7 +795,21 @@ export class HeroAIManager {
         if (this.gridManager.isWalkablePosition(hero.x + perpX, hero.y + perpY, buildings, lairs, targetBuildingId)) {
           hero.x += perpX * 0.5;
           hero.y += perpY * 0.5;
+        } else if (this.gridManager.isWalkablePosition(hero.x - perpX, hero.y - perpY, buildings, lairs, targetBuildingId)) {
+          hero.x -= perpX * 0.5;
+          hero.y -= perpY * 0.5;
         }
+      }
+    }
+
+    const distMoved = Math.hypot(hero.x - prevX, hero.y - prevY);
+    if (distMoved < 0.05 * moveDist && moveDist > 0.01) {
+      // Hero cannot move towards target (blocked by solid obstacle/wall)
+      if (hero.state === 'wandering') {
+        hero.targetX = undefined;
+        hero.targetY = undefined;
+        hero.state = 'idle';
+        hero.stateTimer = Math.random() * 2 + 1;
       }
     }
 

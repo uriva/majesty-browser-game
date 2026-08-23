@@ -69,6 +69,7 @@ export class MonsterAIManager {
     allMonsters: Monster[],
     heroes: Hero[],
     buildings: Building[],
+    lairs: MonsterLair[],
     taxCollectors: TaxCollector[],
     onSpawnProjectile?: (proj: {
       type: 'arrow' | 'fireball' | 'magic_missile' | 'dragon_breath';
@@ -210,7 +211,7 @@ export class MonsterAIManager {
         // Attack!
         if (monster.currentCooldown <= 0) {
           monster.currentCooldown = monster.attackCooldown;
-          monster.isAttackingAnimation = 0.25;
+          monster.isAttackingAnimation = 0.35;
 
           if (monster.type === 'goblin_shaman' || monster.type === 'necromancer') {
             if (onSpawnProjectile) {
@@ -264,25 +265,46 @@ export class MonsterAIManager {
         }
       }
     } else {
-      // 5. ACTIVE AUTONOMOUS WANDERING & FORAGING
+      // 5. ACTIVE AUTONOMOUS TERRITORIAL WANDERING & FORAGING (Near their lair)
       monster.state = 'wandering';
       if (!monster.wanderTimer) monster.wanderTimer = 0;
       monster.wanderTimer -= delta;
 
       if (monster.wanderTimer <= 0 || !monster.targetX || !monster.targetY) {
-        monster.wanderTimer = monster.type === 'giant_rat' ? Math.random() * 2 + 1.5 : Math.random() * 4 + 3;
+        monster.wanderTimer = monster.type === 'giant_rat' ? Math.random() * 2.5 + 2 : Math.random() * 4 + 3;
 
-        const palace = buildings.find(b => b.type === 'palace');
-        const townX = palace ? (palace.x + palace.width / 2) * this.gridManager.tileSize : monster.x;
-        const townY = palace ? (palace.y + palace.height / 2) * this.gridManager.tileSize : monster.y;
+        const lair = lairs.find(l => l.id === monster.lairId);
+        const ts = this.gridManager.tileSize;
+        const originX = lair ? (lair.x + lair.width / 2) * ts : monster.x;
+        const originY = lair ? (lair.y + lair.height / 2) * ts : monster.y;
 
-        // Angle with bias towards town outskirts
-        const angleToTown = Math.atan2(townY - monster.y, townX - monster.x);
-        const roamAngle = angleToTown + (Math.random() - 0.5) * 1.8;
-        const roamDist = monster.type === 'giant_rat' ? Math.random() * 60 + 30 : Math.random() * 90 + 40;
+        // Radius based on monster type (rats stay close to sewers, wolves/goblins roam further)
+        let maxRadius = 90;
+        if (monster.type === 'giant_rat') maxRadius = 75;
+        else if (monster.type === 'dire_wolf') maxRadius = 160;
+        else if (monster.type === 'goblin_spearman' || monster.type === 'goblin_shaman') maxRadius = 140;
+        else if (monster.type === 'skeleton' || monster.type === 'zombie') maxRadius = 110;
 
-        monster.targetX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, monster.x + Math.cos(roamAngle) * roamDist));
-        monster.targetY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, monster.y + Math.sin(roamAngle) * roamDist));
+        // Pick a clear walkable destination within lair territory
+        let foundSpot = false;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Math.random() * maxRadius + 15;
+          const candidateX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, originX + Math.cos(angle) * dist));
+          const candidateY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, originY + Math.sin(angle) * dist));
+
+          if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs, monster.lairId)) {
+            monster.targetX = candidateX;
+            monster.targetY = candidateY;
+            foundSpot = true;
+            break;
+          }
+        }
+
+        if (!foundSpot) {
+          monster.targetX = originX + (Math.random() * 40 - 20);
+          monster.targetY = originY + (Math.random() * 40 - 20);
+        }
       }
 
       if (monster.targetX !== undefined && monster.targetY !== undefined) {
@@ -327,6 +349,11 @@ export class MonsterAIManager {
         monster.x = nextX;
       } else if (this.gridManager.isWalkablePosition(monster.x, nextY, buildings, [], targetBuildingId)) {
         monster.y = nextY;
+      } else {
+        // Obstructed -> reset wander target immediately so it doesn't get stuck bumping
+        monster.targetX = undefined;
+        monster.targetY = undefined;
+        monster.wanderTimer = 0;
       }
     }
 
