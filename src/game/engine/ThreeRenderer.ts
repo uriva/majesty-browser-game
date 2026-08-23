@@ -49,6 +49,7 @@ export class ThreeRenderer {
   public cameraPitch: number = 0.85; // Angle above horizon (~50 deg)
   public cameraYaw: number = 0.0;    // Rotation around Y axis
   public cameraMode: 'isometric' | 'free' | 'top_down' | 'follow' = 'isometric';
+  private lastRenderTime: number = performance.now();
 
   constructor(container: HTMLDivElement, gridManager: GridManager) {
     this.container = container;
@@ -272,11 +273,7 @@ export class ThreeRenderer {
     this.terrainGroup.add(groundMesh);
 
     // Natural features (trees, rocks, roads, water)
-    const treeGeo = new THREE.ConeGeometry(8, 22, 5);
-    const trunkGeo = new THREE.CylinderGeometry(2, 2.5, 8, 5);
-    const treeMat = new THREE.MeshStandardMaterial({ color: 0x064e3b, roughness: 0.8 });
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x542608, roughness: 0.9 });
-    const rockGeo = new THREE.DodecahedronGeometry(6, 0);
+    const rockGeo = new THREE.DodecahedronGeometry(5.5, 0);
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
 
     for (let y = 0; y < h; y++) {
@@ -313,39 +310,114 @@ export class ThreeRenderer {
           waterMesh.position.set(px, 0.4, pz);
           this.terrainGroup.add(waterMesh);
         } else if (tile === 3) {
-          // Pine Tree
-          const tree = new THREE.Group();
-          const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-          trunk.position.y = 4;
-          trunk.castShadow = true;
-          trunk.receiveShadow = true;
-          tree.add(trunk);
-
-          const canopy1 = new THREE.Mesh(treeGeo, treeMat);
-          canopy1.position.y = 15;
-          canopy1.castShadow = true;
-          tree.add(canopy1);
-
-          const canopy2 = new THREE.Mesh(treeGeo, treeMat);
-          canopy2.position.y = 20;
-          canopy2.scale.set(0.7, 0.7, 0.7);
-          canopy2.castShadow = true;
-          tree.add(canopy2);
-
-          tree.position.set(px, 0, pz);
+          // Beautiful Organic Medieval Fantasy Tree (Oak, Pine, Birch variants)
+          const variant = (x * 7 + y * 13) % 3;
+          const tree = this.create3DTreeMesh(variant);
+          const scale = 0.85 + ((x * 3 + y * 5) % 5) * 0.08;
+          tree.scale.set(scale, scale, scale);
+          tree.rotation.y = ((x * 11 + y * 17) % 360) * (Math.PI / 180);
+          tree.position.set(px + ((x * 3) % 5 - 2), 0, pz + ((y * 3) % 5 - 2));
           this.terrainGroup.add(tree);
         } else if (tile === 4) {
-          // Mountain Rock Formation
+          // Mountain Rock Formation with natural facets
           const rock = new THREE.Mesh(rockGeo, rockMat);
-          rock.position.set(px, 4, pz);
+          rock.position.set(px, 3.5, pz);
           rock.scale.set(1.4, 1.2, 1.3);
-          rock.rotation.set(Math.random(), Math.random(), Math.random());
+          rock.rotation.set((x * 0.4) % Math.PI, (y * 0.6) % Math.PI, 0.2);
           rock.castShadow = true;
           rock.receiveShadow = true;
           this.terrainGroup.add(rock);
         }
       }
     }
+  }
+
+  private create3DTreeMesh(variant: number): THREE.Group {
+    const tree = new THREE.Group();
+
+    if (variant === 0) {
+      // 1. Lush Royal Broadleaf Oak Tree (Gnarled trunk + 5 fluffy organic foliage cloud clusters)
+      const trunkGeo = new THREE.CylinderGeometry(1.4, 2.2, 8, 7);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 4;
+      trunk.castShadow = true;
+      tree.add(trunk);
+
+      // Overlapping foliage cloud spheres
+      const leafColors = [0x15803d, 0x16a34a, 0x166534, 0x4d7c0f];
+      const cloudClusters = [
+        { x: 0, y: 11, z: 0, r: 5.5, col: leafColors[0] },
+        { x: -2.6, y: 9.5, z: 1.5, r: 4.2, col: leafColors[1] },
+        { x: 2.6, y: 10.0, z: -1.2, r: 4.0, col: leafColors[2] },
+        { x: 1.2, y: 13.0, z: 1.8, r: 3.8, col: leafColors[3] },
+        { x: -1.0, y: 13.5, z: -1.8, r: 3.5, col: leafColors[1] },
+      ];
+
+      cloudClusters.forEach(c => {
+        const leafGeo = new THREE.DodecahedronGeometry(c.r, 1);
+        const leafMat = new THREE.MeshStandardMaterial({ color: c.col, roughness: 0.8 });
+        const cloud = new THREE.Mesh(leafGeo, leafMat);
+        cloud.position.set(c.x, c.y, c.z);
+        cloud.castShadow = true;
+        cloud.receiveShadow = true;
+        tree.add(cloud);
+      });
+    } else if (variant === 1) {
+      // 2. Majestic Tiered Nordic Pine / Fir Tree (4 Layered Scalloped Boughs)
+      const trunkGeo = new THREE.CylinderGeometry(1.2, 1.8, 10, 6);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x381e05, roughness: 0.95 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 5;
+      trunk.castShadow = true;
+      tree.add(trunk);
+
+      const tiers = [
+        { y: 8.5, r: 6.8, h: 7.5, col: 0x064e3b },
+        { y: 13.0, r: 5.4, h: 6.5, col: 0x047857 },
+        { y: 17.0, r: 4.2, h: 5.5, col: 0x065f46 },
+        { y: 20.5, r: 2.8, h: 4.5, col: 0x0f766e },
+      ];
+
+      tiers.forEach((t, i) => {
+        const tierGeo = new THREE.ConeGeometry(t.r, t.h, 7);
+        const tierMat = new THREE.MeshStandardMaterial({ color: t.col, roughness: 0.8 });
+        const bough = new THREE.Mesh(tierGeo, tierMat);
+        bough.position.y = t.y;
+        bough.rotation.y = (i * Math.PI) / 4;
+        bough.castShadow = true;
+        bough.receiveShadow = true;
+        tree.add(bough);
+      });
+    } else {
+      // 3. Golden Autumn Birch Tree (Pale bark with warm amber/golden foliage)
+      const trunkGeo = new THREE.CylinderGeometry(1.1, 1.5, 9, 6);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.7 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 4.5;
+      trunk.castShadow = true;
+      tree.add(trunk);
+
+      const goldColors = [0xd97706, 0xeab308, 0xca8a04, 0x84cc16];
+      const clusters = [
+        { x: 0, y: 11.5, z: 0, r: 4.8, col: goldColors[0] },
+        { x: -2.2, y: 10.0, z: 1.2, r: 3.6, col: goldColors[1] },
+        { x: 2.0, y: 11.0, z: -1.0, r: 3.5, col: goldColors[2] },
+        { x: 0.5, y: 14.0, z: 1.0, r: 3.2, col: goldColors[3] },
+      ];
+
+      clusters.forEach(c => {
+        const leafGeo = new THREE.DodecahedronGeometry(c.r, 1);
+        const leafMat = new THREE.MeshStandardMaterial({ color: c.col, roughness: 0.8 });
+        const cloud = new THREE.Mesh(leafGeo, leafMat);
+        cloud.position.set(c.x, c.y, c.z);
+        cloud.castShadow = true;
+        cloud.receiveShadow = true;
+        tree.add(cloud);
+      });
+    }
+
+    return tree;
   }
 
   // --- BUILD SELECTION HIGHLIGHT MESHES ---
@@ -466,8 +538,20 @@ export class ThreeRenderer {
     }
   }
 
+  // --- SMOOTH ROTATION HELPER ---
+  private smoothRotate(group: THREE.Group, targetAngle: number, delta: number, speed: number = 14) {
+    let diff = targetAngle - group.rotation.y;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    group.rotation.y += diff * Math.min(1.0, speed * delta);
+  }
+
   // --- MAIN RENDER METHOD ---
   public render(state: GameState, mouseWorldPos: { x: number; y: number } | null) {
+    const now = performance.now();
+    const delta = Math.min(0.1, (now - this.lastRenderTime) / 1000);
+    this.lastRenderTime = now;
+
     this.updateCamera(state);
     this.updateDayNightLighting(state);
     this.updateFogOfWar(state);
@@ -476,10 +560,10 @@ export class ThreeRenderer {
     this.updateLairs(state);
     this.updateTreasures(state);
     this.updateFlags(state);
-    this.updateTaxCollectors(state);
-    this.updatePeasants(state);
-    this.updateHeroes(state);
-    this.updateMonsters(state);
+    this.updateTaxCollectors(state, delta);
+    this.updatePeasants(state, delta);
+    this.updateHeroes(state, delta);
+    this.updateMonsters(state, delta);
     this.updateCorpses(state);
     this.updateProjectiles(state);
 
@@ -1572,7 +1656,7 @@ export class ThreeRenderer {
   }
 
   // --- 3D PEASANT BUILDERS ---
-  private updatePeasants(state: GameState) {
+  private updatePeasants(state: GameState, delta: number) {
     const activeIds = new Set<string>();
     const time = Date.now() * 0.01;
 
@@ -1590,11 +1674,20 @@ export class ThreeRenderer {
       pGroup.position.set(p.x, 0, p.y);
       pGroup.visible = this.gridManager.isPixelVisible(p.x, p.y);
 
-      // Facing direction
-      if (p.direction === 'left') pGroup.rotation.y = -Math.PI / 2;
-      else if (p.direction === 'right') pGroup.rotation.y = Math.PI / 2;
-      else if (p.direction === 'up') pGroup.rotation.y = Math.PI;
-      else pGroup.rotation.y = 0;
+      // Smooth Natural 360-degree Facing Direction
+      let targetAngle = pGroup.rotation.y;
+      if (p.path && p.path.length > 0) {
+        const wp = p.path[0];
+        if (Math.hypot(wp.x - p.x, wp.y - p.y) > 1.5) {
+          targetAngle = Math.atan2(wp.x - p.x, wp.y - p.y);
+        }
+      } else {
+        if (p.direction === 'left') targetAngle = -Math.PI / 2;
+        else if (p.direction === 'right') targetAngle = Math.PI / 2;
+        else if (p.direction === 'up') targetAngle = Math.PI;
+        else if (p.direction === 'down') targetAngle = 0;
+      }
+      this.smoothRotate(pGroup, targetAngle, delta, 16);
 
       // Walk Stride
       const isMoving = p.state === 'walking_to_site' || p.state === 'fleeing';
@@ -1731,7 +1824,7 @@ export class ThreeRenderer {
   }
 
   // --- 3D HEROES ---
-  private updateHeroes(state: GameState) {
+  private updateHeroes(state: GameState, delta: number) {
     const activeIds = new Set<string>();
     const time = Date.now() * 0.01;
 
@@ -1749,10 +1842,22 @@ export class ThreeRenderer {
       heroGroup.position.set(h.x, 0, h.y);
       heroGroup.visible = this.gridManager.isPixelVisible(h.x, h.y);
 
-      if (h.direction === 'left') heroGroup.rotation.y = -Math.PI / 2;
-      else if (h.direction === 'right') heroGroup.rotation.y = Math.PI / 2;
-      else if (h.direction === 'up') heroGroup.rotation.y = Math.PI;
-      else heroGroup.rotation.y = 0;
+      // Smooth Natural 360-degree Facing Direction
+      let targetAngle = heroGroup.rotation.y;
+      if (h.path && h.path.length > 0) {
+        const wp = h.path[0];
+        if (Math.hypot(wp.x - h.x, wp.y - h.y) > 1.5) {
+          targetAngle = Math.atan2(wp.x - h.x, wp.y - h.y);
+        }
+      } else if (h.targetX !== undefined && h.targetY !== undefined && Math.hypot(h.targetX - h.x, h.targetY - h.y) > 2) {
+        targetAngle = Math.atan2(h.targetX - h.x, h.targetY - h.y);
+      } else {
+        if (h.direction === 'left') targetAngle = -Math.PI / 2;
+        else if (h.direction === 'right') targetAngle = Math.PI / 2;
+        else if (h.direction === 'up') targetAngle = Math.PI;
+        else if (h.direction === 'down') targetAngle = 0;
+      }
+      this.smoothRotate(heroGroup, targetAngle, delta, 16);
 
       const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 6;
       const legStride = isMoving ? Math.sin(time * 2.0) * 0.45 : 0;
@@ -1997,7 +2102,7 @@ export class ThreeRenderer {
   }
 
   // --- 3D MONSTERS WITH COMPLETE ATTACK ANIMATIONS ---
-  private updateMonsters(state: GameState) {
+  private updateMonsters(state: GameState, delta: number) {
     const activeIds = new Set<string>();
     const time = Date.now() * 0.01;
 
@@ -2015,11 +2120,22 @@ export class ThreeRenderer {
       mGroup.position.set(m.x, 0, m.y);
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
-      // Rotate monster to face where it is moving or attacking
-      if (m.direction === 'left') mGroup.rotation.y = -Math.PI / 2;
-      else if (m.direction === 'right') mGroup.rotation.y = Math.PI / 2;
-      else if (m.direction === 'up') mGroup.rotation.y = Math.PI;
-      else mGroup.rotation.y = 0;
+      // Smooth Natural 360-degree Facing Direction
+      let targetAngle = mGroup.rotation.y;
+      if (m.path && m.path.length > 0) {
+        const wp = m.path[0];
+        if (Math.hypot(wp.x - m.x, wp.y - m.y) > 1.5) {
+          targetAngle = Math.atan2(wp.x - m.x, wp.y - m.y);
+        }
+      } else if (m.targetX !== undefined && m.targetY !== undefined && Math.hypot(m.targetX - m.x, m.targetY - m.y) > 2) {
+        targetAngle = Math.atan2(m.targetX - m.x, m.targetY - m.y);
+      } else {
+        if (m.direction === 'left') targetAngle = -Math.PI / 2;
+        else if (m.direction === 'right') targetAngle = Math.PI / 2;
+        else if (m.direction === 'up') targetAngle = Math.PI;
+        else if (m.direction === 'down') targetAngle = 0;
+      }
+      this.smoothRotate(mGroup, targetAngle, delta, 14);
 
       const isAttacking = m.isAttackingAnimation > 0;
       const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
@@ -2671,7 +2787,7 @@ export class ThreeRenderer {
   }
 
   // --- 3D TAX COLLECTOR ---
-  private updateTaxCollectors(state: GameState) {
+  private updateTaxCollectors(state: GameState, delta: number) {
     const activeIds = new Set<string>();
     const time = Date.now() * 0.01;
 
@@ -2688,11 +2804,20 @@ export class ThreeRenderer {
       tcGroup.position.set(tc.x, 0, tc.y);
       tcGroup.visible = this.gridManager.isPixelVisible(tc.x, tc.y);
 
-      // Facing Direction
-      if (tc.direction === 'left') tcGroup.rotation.y = -Math.PI / 2;
-      else if (tc.direction === 'right') tcGroup.rotation.y = Math.PI / 2;
-      else if (tc.direction === 'up') tcGroup.rotation.y = Math.PI;
-      else tcGroup.rotation.y = 0;
+      // Smooth Natural 360-degree Facing Direction
+      let targetAngle = tcGroup.rotation.y;
+      if (tc.path && tc.path.length > 0) {
+        const wp = tc.path[0];
+        if (Math.hypot(wp.x - tc.x, wp.y - tc.y) > 1.5) {
+          targetAngle = Math.atan2(wp.x - tc.x, wp.y - tc.y);
+        }
+      } else {
+        if (tc.direction === 'left') targetAngle = -Math.PI / 2;
+        else if (tc.direction === 'right') targetAngle = Math.PI / 2;
+        else if (tc.direction === 'up') targetAngle = Math.PI;
+        else if (tc.direction === 'down') targetAngle = 0;
+      }
+      this.smoothRotate(tcGroup, targetAngle, delta, 16);
 
       // Waddling gait
       const legStride = Math.sin(time * 2.0) * 0.45;
