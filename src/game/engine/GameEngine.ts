@@ -922,6 +922,7 @@ export class GameEngine {
 
     // Soft unit-to-unit separation to prevent peasants from ever overlapping or stacking
     const minDist = 9.0;
+    const minDistSq = minDist * minDist;
     for (let i = 0; i < this.state.peasants.length; i++) {
       const p1 = this.state.peasants[i];
       if (p1.hp <= 0) continue;
@@ -931,10 +932,13 @@ export class GameEngine {
         if (p2.hp <= 0) continue;
 
         const dx = p2.x - p1.x;
+        if (dx > minDist || dx < -minDist) continue;
         const dy = p2.y - p1.y;
-        const dist = Math.hypot(dx, dy);
+        if (dy > minDist || dy < -minDist) continue;
+        const distSq = dx * dx + dy * dy;
 
-        if (dist < minDist && dist > 0.01) {
+        if (distSq < minDistSq && distSq > 0.01) {
+          const dist = Math.sqrt(distSq);
           const overlap = (minDist - dist) * 0.5;
           const nx = dx / dist;
           const ny = dy / dist;

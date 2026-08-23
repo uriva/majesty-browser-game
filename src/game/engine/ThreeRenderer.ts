@@ -45,6 +45,8 @@ export class ThreeRenderer {
   private fogCanvas: HTMLCanvasElement;
   private fogCtx: CanvasRenderingContext2D;
   private fogTexture: THREE.CanvasTexture;
+  private lastFogUpdate: number = 0;
+  private shadowFrameToggle: boolean = true;
   private fogMesh: THREE.Mesh | null = null;
 
   // Object pools / mappings
@@ -150,7 +152,7 @@ export class ThreeRenderer {
     // 3. WebGL Renderer with Shadows & Antialiasing
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -175,8 +177,8 @@ export class ThreeRenderer {
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.4);
     this.dirLight.position.set(250, 400, 200);
     this.dirLight.castShadow = true;
-    this.dirLight.shadow.mapSize.width = 4096;
-    this.dirLight.shadow.mapSize.height = 4096;
+    this.dirLight.shadow.mapSize.width = 2048;
+    this.dirLight.shadow.mapSize.height = 2048;
     this.dirLight.shadow.camera.near = 10;
     this.dirLight.shadow.camera.far = 1500;
     const shadowD = 600;
@@ -2797,8 +2799,19 @@ export class ThreeRenderer {
 
     this.updateCamera(state, delta);
     this.updateDayNightLighting(state);
-    this.updateFogOfWar(state);
+
+    // Fog of war only repaints at ~7Hz — vision changes slowly and a full grid
+    // repaint + 512px texture upload every frame is pure waste.
+    if (now - this.lastFogUpdate > 140) {
+      this.lastFogUpdate = now;
+      this.updateFogOfWar(state);
+    }
+
     this.updateTerrainRoads(state);
+
+    // Re-render shadow maps every other frame (sun drifts slowly, characters barely move in 16ms)
+    this.shadowFrameToggle = !this.shadowFrameToggle;
+    this.renderer.shadowMap.autoUpdate = this.shadowFrameToggle;
 
     // Real-Time Flowing Water & Cascading Waterfall Animation
     if (this.riverTexture) {

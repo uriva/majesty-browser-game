@@ -100,14 +100,18 @@ export class MonsterAIManager {
 
     // 1. CROWD SEPARATION: Repulse from other nearby monsters so they NEVER stack! (Flying monsters fly free in the air)
     if (!monster.isFlying && monster.type !== 'red_dragon') {
+      const minSeparation = monster.type === 'giant_rat' ? 16 : 22;
+      const minSepSq = minSeparation * minSeparation;
       for (const other of allMonsters) {
         if (other.id === monster.id || other.hp <= 0 || other.isFlying) continue;
         const dx = monster.x - other.x;
+        if (dx > minSeparation || dx < -minSeparation) continue;
         const dy = monster.y - other.y;
-        const dist = Math.hypot(dx, dy);
-        const minSeparation = monster.type === 'giant_rat' ? 16 : 22;
+        if (dy > minSeparation || dy < -minSeparation) continue;
+        const distSq = dx * dx + dy * dy;
 
-        if (dist < minSeparation && dist > 0.1) {
+        if (distSq < minSepSq && distSq > 0.01) {
+          const dist = Math.sqrt(distSq);
           const pushForce = ((minSeparation - dist) / minSeparation) * 40 * delta;
           monster.x += (dx / dist) * pushForce;
           monster.y += (dy / dist) * pushForce;

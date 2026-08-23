@@ -35,13 +35,14 @@ export const GameView: React.FC = () => {
   const [activeSpellId, setActiveSpellId] = useState<string | null>(null);
 
   const [isScenarioModalOpen, setIsScenarioModalOpen] = useState<boolean>(false);
-  const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
+  const mouseWorldPosRef = useRef<{ x: number; y: number } | null>(null);
   const [cameraMode, setCameraMode] = useState<'isometric' | 'free' | 'top_down' | 'follow'>('isometric');
 
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isRotating, setIsRotating] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [trackingHeroId, setTrackingHeroId] = useState<string | null>(null);
+  const trackingHeroIdRef = useRef<string | null>(null);
+  const lastHudSyncRef = useRef<number>(0);
 
   // Initialize Game Engine & 3D Three.js Renderer
   const initEngine = useCallback((scenario: Scenario) => {
@@ -62,7 +63,7 @@ export const GameView: React.FC = () => {
     initEngine(SCENARIOS[0]);
   }, [initEngine]);
 
-  // Main 60 FPS Render & Simulation Loop
+  // Main 60 FPS Render & Simulation Loop (HUD state sync is throttled separately)
   useEffect(() => {
     const loop = (timestamp: number) => {
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
@@ -77,37 +78,41 @@ export const GameView: React.FC = () => {
         engine.update(delta);
 
         // Follow hero in 3D if active
-        if (trackingHeroId) {
-          const hero = engine.state.heroes.find(h => h.id === trackingHeroId);
+        if (trackingHeroIdRef.current) {
+          const hero = engine.state.heroes.find(h => h.id === trackingHeroIdRef.current);
           if (hero && !hero.isDead) {
             engine.state.camera.x = hero.x;
             engine.state.camera.y = hero.y;
           } else {
-            setTrackingHeroId(null);
+            trackingHeroIdRef.current = null;
           }
         }
 
         // Render 3D WebGL Scene
         if (renderer) {
-          renderer.render(engine.state, mouseWorldPos);
+          renderer.render(engine.state, mouseWorldPosRef.current);
         }
 
-        // Sync React State
-        setGameState({
-          ...engine.state,
-          heroes: [...engine.state.heroes],
-          buildings: engine.state.buildings.map(b => ({
-            ...b,
-            trainingQueue: b.trainingQueue ? b.trainingQueue.map(q => ({ ...q })) : [],
-            researchQueue: b.researchQueue ? b.researchQueue.map(r => ({ ...r })) : []
-          })),
-          monsters: [...engine.state.monsters],
-          lairs: [...engine.state.lairs],
-          treasures: [...engine.state.treasures],
-          taxCollectors: [...engine.state.taxCollectors]
-        });
+        // Sync React HUD state at 8Hz (NOT every frame — full state cloning is expensive)
+        const now = performance.now();
+        if (now - lastHudSyncRef.current > 125) {
+          lastHudSyncRef.current = now;
+          setGameState({
+            ...engine.state,
+            heroes: [...engine.state.heroes],
+            buildings: engine.state.buildings.map(b => ({
+              ...b,
+              trainingQueue: b.trainingQueue ? b.trainingQueue.map(q => ({ ...q })) : [],
+              researchQueue: b.researchQueue ? b.researchQueue.map(r => ({ ...r })) : []
+            })),
+            monsters: [...engine.state.monsters],
+            lairs: [...engine.state.lairs],
+            treasures: [...engine.state.treasures],
+            taxCollectors: [...engine.state.taxCollectors]
+          });
+        }
       } else if (engine && engine.state.isGameOver && renderer) {
-        renderer.render(engine.state, mouseWorldPos);
+        renderer.render(engine.state, mouseWorldPosRef.current);
       }
 
       requestRef.current = requestAnimationFrame(loop);
@@ -118,7 +123,7 @@ export const GameView: React.FC = () => {
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [mouseWorldPos, trackingHeroId]);
+  }, []);
 
   // Resize Listener
   useEffect(() => {
@@ -154,7 +159,7 @@ export const GameView: React.FC = () => {
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const world = get3DWorldCoords(e.clientX, e.clientY);
     if (world) {
-      setMouseWorldPos(world);
+      mouseWorldPosRef.current = world;
     }
 
     const renderer = threeRendererRef.current;
@@ -182,7 +187,7 @@ export const GameView: React.FC = () => {
       engine.state.camera.y += moveZ;
 
       setDragStart({ x: e.clientX, y: e.clientY });
-      setTrackingHeroId(null);
+      trackingHeroIdRef.current = null;
     }
   };
 
@@ -390,7 +395,7 @@ export const GameView: React.FC = () => {
     if (engineRef.current) {
       engineRef.current.state.camera.x = worldX;
       engineRef.current.state.camera.y = worldY;
-      setTrackingHeroId(null);
+      trackingHeroIdRef.current = null;
     }
   };
 
@@ -463,7 +468,7 @@ export const GameView: React.FC = () => {
                 engineRef.current.state.selectedEntity = { type: 'hero', id: hero.id };
                 engineRef.current.state.camera.x = hero.x;
                 engineRef.current.state.camera.y = hero.y;
-                setTrackingHeroId(hero.id);
+                trackingHeroIdRef.current = hero.id;
               }
             }}
           />
@@ -594,7 +599,7 @@ export const GameView: React.FC = () => {
               if (engineRef.current) engineRef.current.state.selectedEntity = null;
             }}
             onTrackHero={(hero) => {
-              setTrackingHeroId(hero.id);
+              trackingHeroIdRef.current = hero.id;
               setCameraPreset('follow');
             }}
           />
