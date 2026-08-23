@@ -88,7 +88,8 @@ export class ThreeRenderer {
     this.dirLight.shadow.camera.right = shadowD;
     this.dirLight.shadow.camera.top = shadowD;
     this.dirLight.shadow.camera.bottom = -shadowD;
-    this.dirLight.shadow.bias = -0.0005;
+    this.dirLight.shadow.bias = -0.0001;
+    this.dirLight.shadow.normalBias = 0.05;
     this.scene.add(this.dirLight);
 
     // 5. Groups
@@ -211,31 +212,7 @@ export class ThreeRenderer {
 
   // --- BUILD SELECTION HIGHLIGHT MESHES ---
   private buildSelectionMeshes() {
-    // Golden pulsating ground ring / box
-    const ringGeo = new THREE.RingGeometry(12, 14, 32);
-    ringGeo.rotateX(-Math.PI / 2);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xfbbf24,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.9
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.y = 0.8;
-    ring.name = 'selectionRing';
-    this.selectionGroup.add(ring);
-
-    // 4 Corner Brackets for Buildings
-    const cornerMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
-    const cornerGeo = new THREE.BoxGeometry(4, 1, 4);
-
-    for (let i = 0; i < 4; i++) {
-      const corner = new THREE.Mesh(cornerGeo, cornerMat);
-      corner.name = `corner_${i}`;
-      corner.position.y = 1.0;
-      this.selectionGroup.add(corner);
-    }
-
+    this.selectionGroup.clear();
     this.selectionGroup.visible = false;
   }
 
@@ -285,31 +262,6 @@ export class ThreeRenderer {
         }
       }
     }
-  }
-
-  // --- MAIN RENDER CYCLE ---
-  public render(state: GameState, mouseWorldPos: { x: number; y: number } | null) {
-    this.updateCamera(state);
-    this.updateDayNightLighting(state);
-    this.updateFogOfWar(state);
-
-    this.updateBuildings(state);
-    this.updateLairs(state);
-    this.updateTreasures(state);
-    this.updateFlags(state);
-    this.updateTaxCollectors(state);
-    this.updatePeasants(state);
-    this.updateHeroes(state);
-    this.updateMonsters(state);
-    this.updateProjectiles(state);
-
-    // Update Selection Visuals
-    this.updateSelectionVisuals(state);
-
-    // Update Placement Preview Hover Hologram
-    this.updatePlacementPreview(state, mouseWorldPos);
-
-    this.renderer.render(this.scene, this.camera);
   }
 
   private updateCamera(state: GameState) {
@@ -375,50 +327,180 @@ export class ThreeRenderer {
     }
   }
 
+  // --- MAIN RENDER METHOD ---
+  public render(state: GameState, mouseWorldPos: { x: number; y: number } | null) {
+    this.updateCamera(state);
+    this.updateDayNightLighting(state);
+    this.updateFogOfWar(state);
+
+    this.updateBuildings(state);
+    this.updateLairs(state);
+    this.updateTreasures(state);
+    this.updateFlags(state);
+    this.updateTaxCollectors(state);
+    this.updatePeasants(state);
+    this.updateHeroes(state);
+    this.updateMonsters(state);
+    this.updateProjectiles(state);
+
+    // Update Selection Visuals
+    this.updateSelectionVisuals(state);
+
+    // Update Placement Preview Hover Hologram
+    this.updatePlacementPreview(state, mouseWorldPos);
+
+    this.renderer.render(this.scene, this.camera);
+  }
+
   // --- SELECTION HIGHLIGHT ---
+  private currentSelectionKey: string = '';
+
   private updateSelectionVisuals(state: GameState) {
     if (!state.selectedEntity) {
       this.selectionGroup.visible = false;
+      this.currentSelectionKey = '';
       return;
     }
 
+    const key = `${state.selectedEntity.type}_${state.selectedEntity.id}`;
     const ts = this.gridManager.tileSize;
-    const pulse = (Math.sin(Date.now() * 0.008) + 1) * 0.5;
+    const pulse = 0.75 + Math.sin(Date.now() * 0.006) * 0.2;
 
+    if (this.currentSelectionKey !== key) {
+      this.currentSelectionKey = key;
+      this.selectionGroup.clear();
+
+      if (state.selectedEntity.type === 'building' || state.selectedEntity.type === 'lair') {
+        const b = state.selectedEntity.type === 'building'
+          ? state.buildings.find(build => build.id === state.selectedEntity?.id)
+          : state.lairs.find(l => l.id === state.selectedEntity?.id);
+
+        if (b) {
+          const bw = b.width * ts;
+          const bh = b.height * ts;
+          const halfW = bw / 2 + 1.5;
+          const halfH = bh / 2 + 1.5;
+          const colorHex = state.selectedEntity.type === 'lair' ? 0xf43f5e : 0xfbbf24;
+
+          // 1. Soft glowing ground plane
+          const glowGeo = new THREE.PlaneGeometry(bw, bh);
+          glowGeo.rotateX(-Math.PI / 2);
+          const glowMat = new THREE.MeshBasicMaterial({
+            color: colorHex,
+            transparent: true,
+            opacity: 0.16,
+            depthWrite: false
+          });
+          const glow = new THREE.Mesh(glowGeo, glowMat);
+          glow.position.y = 0.5;
+          this.selectionGroup.add(glow);
+
+          // 2. Crisp perimeter line frame
+          const points = [
+            new THREE.Vector3(-halfW, 0.7, -halfH),
+            new THREE.Vector3(halfW, 0.7, -halfH),
+            new THREE.Vector3(halfW, 0.7, halfH),
+            new THREE.Vector3(-halfW, 0.7, halfH)
+          ];
+          const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+          const lineMat = new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 });
+          const lineLoop = new THREE.LineLoop(lineGeo, lineMat);
+          this.selectionGroup.add(lineLoop);
+
+          // 3. Four Elegant Corner Brackets
+          const armLen = Math.min(10, halfW * 0.4);
+          const corners = [
+            // Top-Left
+            [-halfW, -halfH, armLen, 0, 0, armLen],
+            // Top-Right
+            [halfW, -halfH, -armLen, 0, 0, armLen],
+            // Bottom-Left
+            [-halfW, halfH, armLen, 0, 0, -armLen],
+            // Bottom-Right
+            [halfW, halfH, -armLen, 0, 0, -armLen]
+          ];
+
+          corners.forEach(([cx, cz, dx, , , dz]) => {
+            const cPoints = [
+              new THREE.Vector3(cx + dx, 0.9, cz),
+              new THREE.Vector3(cx, 0.9, cz),
+              new THREE.Vector3(cx, 0.9, cz + dz)
+            ];
+            const cGeo = new THREE.BufferGeometry().setFromPoints(cPoints);
+            const cMat = new THREE.LineBasicMaterial({ color: colorHex, linewidth: 3 });
+            const cLine = new THREE.Line(cGeo, cMat);
+            this.selectionGroup.add(cLine);
+          });
+        }
+      } else {
+        // Unit Selection (Hero, Monster, Tax Collector, Peasant)
+        let colorHex = 0x38bdf8; // Default blue for hero
+        let radius = 10;
+
+        if (state.selectedEntity.type === 'monster') {
+          colorHex = 0xf43f5e;
+          radius = 12;
+        } else if (state.selectedEntity.type === 'tax_collector') {
+          colorHex = 0xc084fc;
+          radius = 10;
+        } else if (state.selectedEntity.type === 'peasant') {
+          colorHex = 0xf59e0b;
+          radius = 9;
+        }
+
+        // Outer smooth thin ring
+        const ringGeo = new THREE.RingGeometry(radius - 1.5, radius, 48);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.9,
+          depthWrite: false
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.y = 0.7;
+        this.selectionGroup.add(ring);
+
+        // Soft inner glow disc
+        const innerGeo = new THREE.CircleGeometry(radius - 1.5, 32);
+        innerGeo.rotateX(-Math.PI / 2);
+        const innerMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          transparent: true,
+          opacity: 0.18,
+          depthWrite: false
+        });
+        const inner = new THREE.Mesh(innerGeo, innerMat);
+        inner.position.y = 0.6;
+        this.selectionGroup.add(inner);
+      }
+    }
+
+    // Position the selection group at the entity location
     if (state.selectedEntity.type === 'building') {
       const b = state.buildings.find(build => build.id === state.selectedEntity?.id);
       if (b) {
-        const px = (b.x + b.width / 2) * ts;
-        const pz = (b.y + b.height / 2) * ts;
-        const halfW = (b.width * ts) / 2 + 3;
-        const halfH = (b.height * ts) / 2 + 3;
-
-        this.selectionGroup.position.set(px, 0, pz);
+        this.selectionGroup.position.set((b.x + b.width / 2) * ts, 0, (b.y + b.height / 2) * ts);
         this.selectionGroup.visible = true;
-
-        // Position 4 corner brackets
-        const c0 = this.selectionGroup.getObjectByName('corner_0');
-        const c1 = this.selectionGroup.getObjectByName('corner_1');
-        const c2 = this.selectionGroup.getObjectByName('corner_2');
-        const c3 = this.selectionGroup.getObjectByName('corner_3');
-
-        if (c0) c0.position.set(-halfW, 0.8, -halfH);
-        if (c1) c1.position.set(halfW, 0.8, -halfH);
-        if (c2) c2.position.set(-halfW, 0.8, halfH);
-        if (c3) c3.position.set(halfW, 0.8, halfH);
-
-        const ring = this.selectionGroup.getObjectByName('selectionRing');
-        if (ring) {
-          ring.scale.set(b.width * 1.5, b.height * 1.5, 1);
-        }
+      }
+    } else if (state.selectedEntity.type === 'lair') {
+      const l = state.lairs.find(lair => lair.id === state.selectedEntity?.id);
+      if (l) {
+        this.selectionGroup.position.set((l.x + l.width / 2) * ts, 0, (l.y + l.height / 2) * ts);
+        this.selectionGroup.visible = true;
       }
     } else if (state.selectedEntity.type === 'hero') {
       const h = state.heroes.find(hero => hero.id === state.selectedEntity?.id);
       if (h) {
         this.selectionGroup.position.set(h.x, 0, h.y);
         this.selectionGroup.visible = true;
-        const ring = this.selectionGroup.getObjectByName('selectionRing');
-        if (ring) ring.scale.set(1.0, 1.0, 1.0);
+      }
+    } else if (state.selectedEntity.type === 'monster') {
+      const m = state.monsters.find(mon => mon.id === state.selectedEntity?.id);
+      if (m) {
+        this.selectionGroup.position.set(m.x, 0, m.y);
+        this.selectionGroup.visible = true;
       }
     } else if (state.selectedEntity.type === 'tax_collector') {
       const tc = state.taxCollectors.find(collector => collector.id === state.selectedEntity?.id);
@@ -432,8 +514,6 @@ export class ThreeRenderer {
         this.selectionGroup.position.set(p.x, 0, p.y);
         this.selectionGroup.visible = true;
       }
-    } else {
-      this.selectionGroup.visible = false;
     }
   }
 
@@ -967,11 +1047,13 @@ export class ThreeRenderer {
       if (leftLeg) leftLeg.rotation.x = legStride;
       if (rightLeg) rightLeg.rotation.x = -legStride;
 
-      // Hammering Swing
+      // Smooth Realistic Hammering Swing (no high frequency jitter)
       const rightArm = pGroup.getObjectByName('rightArm');
       if (rightArm) {
         if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
-          rightArm.rotation.x = -Math.sin(time * 6) * 1.2;
+          const hammerPhase = (Date.now() * 0.0035) % (Math.PI * 2);
+          const swing = Math.sin(hammerPhase);
+          rightArm.rotation.x = -0.2 - Math.max(0, swing) * 1.2;
         } else {
           rightArm.rotation.x = isMoving ? -legStride * 0.8 : 0;
         }

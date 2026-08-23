@@ -7,6 +7,7 @@ import { Hammer, Heart, Locate, X, Footprints, Wrench } from 'lucide-react';
 interface PeasantInspectorProps {
   peasant: Peasant;
   buildings: Building[];
+  dayPhase?: 'day' | 'dusk' | 'night' | 'dawn';
   onClose: () => void;
   onTrackPeasant: (p: Peasant) => void;
 }
@@ -14,6 +15,7 @@ interface PeasantInspectorProps {
 export const PeasantInspector: React.FC<PeasantInspectorProps> = ({
   peasant,
   buildings,
+  dayPhase = 'day',
   onClose,
   onTrackPeasant
 }) => {
@@ -78,18 +80,20 @@ export const PeasantInspector: React.FC<PeasantInspectorProps> = ({
           <Wrench className="w-3.5 h-3.5" /> Current Duty:
         </div>
         <div className="italic text-slate-200 text-[11px]">
-          {peasant.state === 'walking_to_site'
+          {dayPhase === 'night'
+            ? `Sleeping in the Palace through the night to stay safe from nocturnal monsters.`
+            : (peasant.state === 'walking_to_site'
             ? `Walking to work at ${targetBuilding?.name || 'construction site'}`
             : (peasant.state === 'hammering_construction'
             ? `Hammering & building ${targetBuilding?.name || 'structure'}!`
             : (peasant.state === 'repairing_building'
             ? `Repairing damaged masonry at ${targetBuilding?.name}`
-            : `Resting at the Palace, awaiting new royal construction orders.`))}
+            : `Resting at the Palace, awaiting new daytime royal construction orders.`)))}
         </div>
       </div>
 
       <div className="bg-amber-950/30 border border-amber-900/50 rounded-lg p-2 text-[11px] text-slate-300 leading-snug">
-        Peasants physically construct all placed foundations and repair damaged structures. Protect them from roaming monsters!
+        Peasants physically construct placed foundations and repair damaged structures by day, and sleep safely through the night.
       </div>
     </div>
   );

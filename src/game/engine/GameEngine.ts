@@ -510,12 +510,26 @@ export class GameEngine {
       });
     }
 
+    const isNight = this.state.dayPhase === 'night';
+
     // Process each peasant builder
     for (const p of this.state.peasants) {
       if (p.hp <= 0) continue;
 
+      if (isNight) {
+        // At night, peasants retreat to the safety of the Palace/Cottage to sleep
+        const distToPalace = Math.hypot(palaceCenter.x - p.x, palaceCenter.y - p.y);
+        if (distToPalace > 35) {
+          this.movePeasantTowards(p, palaceCenter.x, palaceCenter.y, delta);
+        } else {
+          p.state = 'idle_at_palace';
+          p.targetBuildingId = undefined;
+        }
+        continue;
+      }
+
       if (p.state === 'idle_at_palace') {
-        // Look for unfinished construction sites or damaged buildings
+        // Look for unfinished construction sites or damaged buildings (Daytime only)
         const unbuilt = this.state.buildings.find(b => b.isConstructing && b.hp > 0);
         const damaged = this.state.buildings.find(b => !b.isConstructing && b.hp > 0 && b.hp < b.maxHp * 0.95);
         const target = unbuilt || damaged;
@@ -533,10 +547,10 @@ export class GameEngine {
         }
 
         const bx = (targetBuilding.x + targetBuilding.width / 2) * this.gridManager.tileSize;
-        const by = (targetBuilding.y + targetBuilding.height / 2) * this.gridManager.tileSize;
+        const by = (targetBuilding.y + targetBuilding.height) * this.gridManager.tileSize + 6;
         const dist = Math.hypot(bx - p.x, by - p.y);
 
-        if (dist > 30) {
+        if (dist > 15) {
           this.movePeasantTowards(p, bx, by, delta);
         } else {
           p.state = targetBuilding.isConstructing ? 'hammering_construction' : 'repairing_building';
