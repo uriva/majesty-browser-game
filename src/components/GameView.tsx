@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GameEngine } from '../game/engine/GameEngine';
-import { CanvasRenderer } from '../game/engine/Renderer';
+import { ThreeRenderer } from '../game/engine/ThreeRenderer';
 import { SCENARIOS } from '../game/scenarios';
 import { BuildingType, FlagType, GameState, Hero, HeroClass, Scenario } from '../game/types';
 import { GameHUD } from './GameHUD';
@@ -15,12 +15,12 @@ import { BuildingInspector } from './BuildingInspector';
 import { MonsterInspector } from './MonsterInspector';
 import { TaxCollectorInspector } from './TaxCollectorInspector';
 import { ScenarioModal } from './ScenarioModal';
-import { Hammer, Coins, Zap, MapPin } from 'lucide-react';
+import { Hammer, Coins, Zap, Eye, RotateCw, Video } from 'lucide-react';
 
 export const GameView: React.FC = () => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
-  const rendererRef = useRef<CanvasRenderer | null>(null);
+  const threeRendererRef = useRef<ThreeRenderer | null>(null);
   const requestRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
 
@@ -33,18 +33,25 @@ export const GameView: React.FC = () => {
 
   const [isScenarioModalOpen, setIsScenarioModalOpen] = useState<boolean>(false);
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
+  const [cameraMode, setCameraMode] = useState<'isometric' | 'free' | 'top_down' | 'follow'>('isometric');
+
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isRotating, setIsRotating] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [trackingHeroId, setTrackingHeroId] = useState<string | null>(null);
 
-  // Initialize Game Engine
+  // Initialize Game Engine & 3D Three.js Renderer
   const initEngine = useCallback((scenario: Scenario) => {
     const engine = new GameEngine(scenario);
     engineRef.current = engine;
     setGameState({ ...engine.state });
 
-    if (canvasRef.current) {
-      rendererRef.current = new CanvasRenderer(canvasRef.current, engine.gridManager);
+    if (containerRef.current) {
+      if (threeRendererRef.current) {
+        threeRendererRef.current.renderer.dispose();
+        containerRef.current.innerHTML = '';
+      }
+      threeRendererRef.current = new ThreeRenderer(containerRef.current, engine.gridManager);
     }
   }, []);
 
@@ -52,7 +59,7 @@ export const GameView: React.FC = () => {
     initEngine(SCENARIOS[0]);
   }, [initEngine]);
 
-  // Main Render & Game Loop
+  // Main 60 FPS Render & Simulation Loop
   useEffect(() => {
     const loop = (timestamp: number) => {
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
@@ -60,12 +67,13 @@ export const GameView: React.FC = () => {
       lastTimeRef.current = timestamp;
 
       const engine = engineRef.current;
+      const renderer = threeRendererRef.current;
+
       if (engine && !engine.state.isGameOver) {
-        // Delta clamp for tab switches
         const delta = Math.min(rawDelta, 0.1);
         engine.update(delta);
 
-        // Follow tracked hero if active
+        // Follow hero in 3D if active
         if (trackingHeroId) {
           const hero = engine.state.heroes.find(h => h.id === trackingHeroId);
           if (hero && !hero.isDead) {
@@ -76,21 +84,23 @@ export const GameView: React.FC = () => {
           }
         }
 
-        // Render Canvas
-        if (rendererRef.current) {
-          rendererRef.current.render(engine.state, mouseWorldPos);
+        // Render 3D WebGL Scene
+        if (renderer) {
+          renderer.render(engine.state, mouseWorldPos);
         }
 
-        // Sync react state with fresh arrays for reactive inspectors
+        // Sync React State
         setGameState({
           ...engine.state,
           heroes: [...engine.state.heroes],
           buildings: [...engine.state.buildings],
           monsters: [...engine.state.monsters],
-          lairs: [...engine.state.lairs]
+          lairs: [...engine.state.lairs],
+          treasures: [...engine.state.treasures],
+          taxCollectors: [...engine.state.taxCollectors]
         });
-      } else if (engine && engine.state.isGameOver && rendererRef.current) {
-        rendererRef.current.render(engine.state, mouseWorldPos);
+      } else if (engine && engine.state.isGameOver && renderer) {
+        renderer.render(engine.state, mouseWorldPos);
       }
 
       requestRef.current = requestAnimationFrame(loop);
@@ -103,72 +113,85 @@ export const GameView: React.FC = () => {
     };
   }, [mouseWorldPos, trackingHeroId]);
 
-  // Handle Resize
+  // Resize Listener
   useEffect(() => {
     const handleResize = () => {
-      if (canvasRef.current) {
-        canvasRef.current.width = window.innerWidth;
-        canvasRef.current.height = window.innerHeight;
+      if (threeRendererRef.current) {
+        threeRendererRef.current.handleResize();
       }
     };
-    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Screen to World Coordinate Conversion
-  const screenToWorld = useCallback((screenX: number, screenY: number) => {
-    const canvas = canvasRef.current;
-    const engine = engineRef.current;
-    if (!canvas || !engine) return { x: 0, y: 0 };
-
-    const cam = engine.state.camera;
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-
-    const worldX = (screenX - centerX) / cam.zoom + cam.x;
-    const worldY = (screenY - centerY) / cam.zoom + cam.y;
-
-    return { x: worldX, y: worldY };
+  // 3D Screen to World Intersection
+  const get3DWorldCoords = useCallback((clientX: number, clientY: number) => {
+    if (!threeRendererRef.current) return null;
+    const hit = threeRendererRef.current.screenToWorld3D(clientX, clientY);
+    return hit ? { x: hit.x, y: hit.z } : null;
   }, []);
 
-  // Mouse & Touch Controls
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (e.button === 1 || e.button === 2 || (!activeBuildingType && !activeFlagType && !activeSpellId && e.button === 0)) {
-      // Start camera drag
+  // Mouse Controls for 3D Panning, Rotating & Zooming
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 2 || (e.button === 0 && e.altKey)) {
+      // Right Click / Alt+Click -> 3D Orbit Rotate
+      setIsRotating(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+    } else if (e.button === 0 || e.button === 1) {
+      // Left Click / Middle Click -> 3D Terrain Pan
       setIsDragging(true);
       setDragStart({ x: e.clientX, y: e.clientY });
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const world = screenToWorld(e.clientX, e.clientY);
-    setMouseWorldPos(world);
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const world = get3DWorldCoords(e.clientX, e.clientY);
+    if (world) {
+      setMouseWorldPos(world);
+    }
 
-    if (isDragging && engineRef.current) {
-      const dx = (e.clientX - dragStart.x) / engineRef.current.state.camera.zoom;
-      const dy = (e.clientY - dragStart.y) / engineRef.current.state.camera.zoom;
+    const renderer = threeRendererRef.current;
+    const engine = engineRef.current;
 
-      engineRef.current.state.camera.x -= dx;
-      engineRef.current.state.camera.y -= dy;
+    if (isRotating && renderer) {
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+
+      renderer.cameraYaw -= dx * 0.008;
+      renderer.cameraPitch = Math.max(0.2, Math.min(1.45, renderer.cameraPitch + dy * 0.008));
+      setDragStart({ x: e.clientX, y: e.clientY });
+    } else if (isDragging && engine && renderer) {
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+
+      const panSpeed = (renderer.cameraDistance / 400) * 0.7;
+      const sinYaw = Math.sin(renderer.cameraYaw);
+      const cosYaw = Math.cos(renderer.cameraYaw);
+
+      const moveX = (-dx * cosYaw - dy * sinYaw) * panSpeed;
+      const moveZ = (dx * sinYaw - dy * cosYaw) * panSpeed;
+
+      engine.state.camera.x += moveX;
+      engine.state.camera.y += moveZ;
+
       setDragStart({ x: e.clientX, y: e.clientY });
       setTrackingHeroId(null);
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDragging) {
-      setIsDragging(false);
-      return;
-    }
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsRotating(false);
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (e.button !== 0) return;
+  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || e.altKey) return;
     const engine = engineRef.current;
     if (!engine) return;
 
-    const world = screenToWorld(e.clientX, e.clientY);
+    const world = get3DWorldCoords(e.clientX, e.clientY);
+    if (!world) return;
+
     const tileX = Math.floor(world.x / engine.state.tileSize);
     const tileY = Math.floor(world.y / engine.state.tileSize);
 
@@ -184,12 +207,11 @@ export const GameView: React.FC = () => {
 
     // 2. PLACING BOUNTY FLAG
     if (activeFlagType) {
-      // Check if clicked directly on a monster or lair
-      let targetMonster = engine.state.monsters.find(m => Math.hypot(m.x - world.x, m.y - world.y) < 24);
+      let targetMonster = engine.state.monsters.find(m => Math.hypot(m.x - world.x, m.y - world.y) < 26);
       let targetLair = engine.state.lairs.find(l => {
         const lx = (l.x + l.width / 2) * engine.state.tileSize;
         const ly = (l.y + l.height / 2) * engine.state.tileSize;
-        return Math.hypot(lx - world.x, ly - world.y) < 32;
+        return Math.hypot(lx - world.x, ly - world.y) < 36;
       });
 
       if (targetMonster) {
@@ -218,21 +240,24 @@ export const GameView: React.FC = () => {
     }
 
     // 4. ENTITY SELECTION
-    // Check heroes
-    const clickedHero = engine.state.heroes.find(h => !h.isDead && Math.hypot(h.x - world.x, h.y - world.y) < 18);
+    const clickedHero = engine.state.heroes.find(h => !h.isDead && Math.hypot(h.x - world.x, h.y - world.y) < 20);
     if (clickedHero) {
       engine.state.selectedEntity = { type: 'hero', id: clickedHero.id };
       return;
     }
 
-    // Check monsters
-    const clickedMonster = engine.state.monsters.find(m => Math.hypot(m.x - world.x, m.y - world.y) < 20);
+    const clickedMonster = engine.state.monsters.find(m => Math.hypot(m.x - world.x, m.y - world.y) < 24);
     if (clickedMonster) {
       engine.state.selectedEntity = { type: 'monster', id: clickedMonster.id };
       return;
     }
 
-    // Check buildings
+    const clickedTaxCollector = engine.state.taxCollectors.find(tc => Math.hypot(tc.x - world.x, tc.y - world.y) < 20);
+    if (clickedTaxCollector) {
+      engine.state.selectedEntity = { type: 'tax_collector', id: clickedTaxCollector.id };
+      return;
+    }
+
     const clickedBuilding = engine.state.buildings.find(b => {
       const px = b.x * engine.state.tileSize;
       const py = b.y * engine.state.tileSize;
@@ -245,7 +270,6 @@ export const GameView: React.FC = () => {
       return;
     }
 
-    // Check lairs
     const clickedLair = engine.state.lairs.find(l => {
       const px = l.x * engine.state.tileSize;
       const py = l.y * engine.state.tileSize;
@@ -258,27 +282,40 @@ export const GameView: React.FC = () => {
       return;
     }
 
-    // Check tax collectors
-    const clickedTaxCollector = engine.state.taxCollectors.find(tc => Math.hypot(tc.x - world.x, tc.y - world.y) < 18);
-    if (clickedTaxCollector) {
-      engine.state.selectedEntity = { type: 'tax_collector', id: clickedTaxCollector.id };
-      return;
-    }
-
-    // Clicked empty ground -> clear selection
+    // Clicked open ground -> deselect
     engine.state.selectedEntity = null;
   };
 
   // Zoom with wheel
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!engineRef.current) return;
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    const newZoom = Math.max(0.5, Math.min(2.2, engineRef.current.state.camera.zoom * zoomFactor));
-    engineRef.current.state.camera.zoom = newZoom;
+    if (!threeRendererRef.current) return;
+    const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
+    threeRendererRef.current.cameraDistance = Math.max(120, Math.min(850, threeRendererRef.current.cameraDistance * zoomFactor));
   };
 
-  // Keyboard controls
+  // Switch Camera Presets
+  const setCameraPreset = (preset: 'isometric' | 'free' | 'top_down' | 'follow') => {
+    setCameraMode(preset);
+    const renderer = threeRendererRef.current;
+    if (!renderer) return;
+
+    renderer.cameraMode = preset;
+    if (preset === 'isometric') {
+      renderer.cameraPitch = 0.85;
+      renderer.cameraYaw = 0.0;
+      renderer.cameraDistance = 380;
+    } else if (preset === 'top_down') {
+      renderer.cameraPitch = 1.45;
+      renderer.cameraYaw = 0.0;
+      renderer.cameraDistance = 460;
+    } else if (preset === 'free') {
+      renderer.cameraPitch = 0.65;
+      renderer.cameraDistance = 320;
+    }
+  };
+
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!engineRef.current) return;
@@ -313,7 +350,7 @@ export const GameView: React.FC = () => {
     }
   };
 
-  // Selected Entity references
+  // Selected Entities
   const selectedHero = gameState?.selectedEntity?.type === 'hero'
     ? gameState.heroes.find(h => h.id === gameState.selectedEntity?.id)
     : null;
@@ -336,9 +373,9 @@ export const GameView: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none">
-      {/* Canvas Viewport */}
-      <canvas
-        ref={canvasRef}
+      {/* 3D WebGL Three.js Container */}
+      <div
+        ref={containerRef}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -367,7 +404,7 @@ export const GameView: React.FC = () => {
         </div>
       )}
 
-      {/* Bottom Control Deck */}
+      {/* Bottom Left: 3D Camera Controls & Menus */}
       <div className="absolute bottom-4 left-4 z-20 flex items-end gap-3 pointer-events-none">
         {/* Navigation Tabs */}
         <div className="bg-slate-950/95 border-2 border-amber-600/80 rounded-xl p-1.5 flex flex-col gap-1.5 shadow-2xl backdrop-blur pointer-events-auto">
@@ -404,6 +441,17 @@ export const GameView: React.FC = () => {
           >
             <Zap className="w-5 h-5" />
           </button>
+
+          {/* 3D Camera Preset Switcher */}
+          <div className="border-t border-amber-900/60 pt-1 flex flex-col gap-1">
+            <button
+              onClick={() => setCameraPreset(cameraMode === 'isometric' ? 'free' : (cameraMode === 'free' ? 'top_down' : 'isometric'))}
+              title={`Camera Mode: ${cameraMode.toUpperCase()} (Click to toggle)`}
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-amber-300 hover:bg-slate-800 flex items-center justify-center"
+            >
+              <RotateCw className="w-4 h-4 text-amber-400" />
+            </button>
+          </div>
         </div>
 
         {/* Selected Deck Drawer */}
@@ -471,7 +519,7 @@ export const GameView: React.FC = () => {
         </div>
       )}
 
-      {/* Right Drawer: Active Inspector (Hero / Building / Monster) */}
+      {/* Right Drawer: Active Inspector (Hero / Building / Monster / Taxman) */}
       <div className="absolute top-20 right-4 z-20 pointer-events-auto">
         {selectedHero && (
           <HeroInspector
@@ -479,7 +527,10 @@ export const GameView: React.FC = () => {
             onClose={() => {
               if (engineRef.current) engineRef.current.state.selectedEntity = null;
             }}
-            onTrackHero={(hero) => setTrackingHeroId(hero.id)}
+            onTrackHero={(hero) => {
+              setTrackingHeroId(hero.id);
+              setCameraPreset('follow');
+            }}
           />
         )}
 
