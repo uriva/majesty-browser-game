@@ -5,10 +5,11 @@
   },
   "deploy": {
     "org": "uriva",
-    "app": "majesty-game",
+    "app": "majesty-rts-game",
     "entrypoint": "main.ts"
   }
 }
+
 
 
 

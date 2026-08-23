@@ -795,14 +795,35 @@ export class GameEngine {
       }
 
       if (p.state === 'idle_at_palace') {
-        // Look for unfinished construction sites or damaged buildings (Daytime only)
-        const unbuilt = this.state.buildings.find(b => b.isConstructing && b.hp > 0);
-        const damaged = this.state.buildings.find(b => !b.isConstructing && b.hp > 0 && b.hp < b.maxHp * 0.95);
-        const target = unbuilt || damaged;
+        // Priority 1: Unfinished construction sites (Prioritize sites with 0 active workers first, then highest progress)
+        const unbuiltSites = this.state.buildings.filter(b => b.isConstructing && b.hp > 0);
+        let bestTarget: Building | null = null;
 
-        if (target) {
-          p.targetBuildingId = target.id;
+        if (unbuiltSites.length > 0) {
+          unbuiltSites.sort((a, b) => {
+            const countA = (peasantsOnBuilding.get(a.id) || []).length;
+            const countB = (peasantsOnBuilding.get(b.id) || []).length;
+            if (countA !== countB) return countA - countB; // Fewest workers first!
+            return (b.constructionProgress || 0) - (a.constructionProgress || 0); // Highest progress first
+          });
+          bestTarget = unbuiltSites[0];
+        }
+
+        // Priority 2: Damaged buildings needing repair
+        if (!bestTarget) {
+          const damaged = this.state.buildings.filter(b => !b.isConstructing && b.hp > 0 && b.hp < b.maxHp * 0.95);
+          if (damaged.length > 0) {
+            damaged.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp));
+            bestTarget = damaged[0];
+          }
+        }
+
+        if (bestTarget) {
+          p.targetBuildingId = bestTarget.id;
           p.state = 'walking_to_site';
+          const list = peasantsOnBuilding.get(bestTarget.id) || [];
+          list.push(p);
+          peasantsOnBuilding.set(bestTarget.id, list);
         } else {
           // Wander/idle in courtyard at personal resting coordinates
           const courtyardX = palaceGate.x + Math.sin(pIdx * 1.4) * (16 + (pIdx % 2) * 8);
@@ -824,10 +845,10 @@ export class GameEngine {
         const workSlot = this.getBuildingWorkSlot(targetBuilding, slotIdx, ts);
         const distToSlot = Math.hypot(workSlot.x - p.x, workSlot.y - p.y);
 
-        if (distToSlot > 8) {
-          this.movePeasantTowards(p, workSlot.x, workSlot.y, delta);
-        } else {
-          // Reached assigned perimeter work slot
+        const reached = this.movePeasantTowards(p, workSlot.x, workSlot.y, delta);
+
+        if (distToSlot <= 16 || reached) {
+          // Reached perimeter work slot! Start hammering
           const bCenterX = (targetBuilding.x + targetBuilding.width / 2) * ts;
           const bCenterY = (targetBuilding.y + targetBuilding.height / 2) * ts;
           const dx = bCenterX - p.x;
@@ -920,14 +941,14 @@ export class GameEngine {
     const bH = b.height * ts;
 
     const slots: { x: number; y: number }[] = [
-      { x: bLeft + bW * 0.25, y: bBottom + 4 }, // South-left
-      { x: bLeft + bW * 0.75, y: bBottom + 4 }, // South-right
-      { x: bRight + 4, y: bTop + bH * 0.35 },  // East-upper
-      { x: bLeft - 4, y: bTop + bH * 0.35 },   // West-upper
-      { x: bRight + 4, y: bTop + bH * 0.75 },  // East-lower
-      { x: bLeft - 4, y: bTop + bH * 0.75 },   // West-lower
-      { x: bLeft + bW * 0.4, y: bTop - 4 },    // North-left
-      { x: bLeft + bW * 0.7, y: bTop - 4 }     // North-right
+      { x: bLeft + bW * 0.25, y: bBottom + 6 }, // South-left
+      { x: bLeft + bW * 0.75, y: bBottom + 6 }, // South-right
+      { x: bRight + 6, y: bTop + bH * 0.35 },  // East-upper
+      { x: bLeft - 6, y: bTop + bH * 0.35 },   // West-upper
+      { x: bRight + 6, y: bTop + bH * 0.75 },  // East-lower
+      { x: bLeft - 6, y: bTop + bH * 0.75 },   // West-lower
+      { x: bLeft + bW * 0.35, y: bTop - 6 },   // North-left
+      { x: bLeft + bW * 0.65, y: bTop - 6 }    // North-right
     ];
 
     const idx = Math.max(0, slotIndex) % slots.length;
