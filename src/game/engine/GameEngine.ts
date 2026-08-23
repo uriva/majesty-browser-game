@@ -17,6 +17,7 @@ export class GameEngine {
   public combatManager: CombatManager;
   public flagManager: FlagManager;
   private cottageSproutTimer: number = 18.0;
+  private peasantReplenishTimer: number = 0;
 
   private onStateChangeCallback?: (state: GameState) => void;
 
@@ -80,7 +81,7 @@ export class GameEngine {
         buildingsConstructed: 0,
         lairsDestroyed: 0,
         spellsCast: 0,
-        dayTime: 600, // starts at 6:00 AM
+        dayTime: 800, // Starts at 8:00 AM in bright, clear morning daylight
         daysPassed: 1
       },
       selectedEntity: null,
@@ -119,6 +120,8 @@ export class GameEngine {
       goldStored: 0,
       heroSlots: 0,
       recruitedHeroIds: [],
+      trainingQueue: [],
+      researchQueue: [],
       researchedUpgrades: [],
       availableUpgrades: palaceDef.upgrades?.map(u => u.id) || [],
       taxRate: 0.15,
@@ -129,12 +132,13 @@ export class GameEngine {
       currentAttackCooldown: 0
     };
     this.state.buildings.push(palace);
+    this.gridManager.paveRoadToBuilding(palace);
 
-    // Spawn 3 initial Peasant Cottages around Palace outskirts generating initial kingdom taxes
+    // Spawn 3 initial Peasant Cottages snug around Palace outskirts generating initial kingdom taxes
     const cottageOffsets = [
-      { dx: -7, dy: -5 },
-      { dx: 7, dy: -4 },
-      { dx: -6, dy: 6 }
+      { dx: -5, dy: -4 },
+      { dx: 5, dy: -4 },
+      { dx: -4, dy: 5 }
     ];
 
     const cottageDef = BUILDING_DEFINITIONS['peasant_cottage'];
@@ -160,11 +164,14 @@ export class GameEngine {
           goldStored: 12, // initial land rent awaiting collection
           heroSlots: 0,
           recruitedHeroIds: [],
+          trainingQueue: [],
+          researchQueue: [],
           researchedUpgrades: [],
           availableUpgrades: [],
           taxRate: 0.15
         };
         this.state.buildings.push(initCottage);
+        this.gridManager.paveRoadToBuilding(initCottage);
       }
     });
 
@@ -177,7 +184,7 @@ export class GameEngine {
         y: (palace.y + palace.height) * MAP_CONFIG.TILE_SIZE + 10,
         hp: 120,
         maxHp: 120,
-        speed: 40,
+        speed: 24,
         state: 'idle_at_palace',
         hammerTimer: 0,
         direction: 'down'
@@ -260,6 +267,7 @@ export class GameEngine {
       if (hero.hp <= 0 && !hero.isDead) {
         hero.isDead = true;
         this.state.stats.heroesLost += 1;
+        audioManager.playVoice(`${hero.heroClass}_death`, hero.x, hero.y);
         this.addNotification('Hero Fallen', `${hero.title} has fallen in battle!`, 'danger', { x: hero.x, y: hero.y });
 
         // Spawn persistent hero corpse on battlefield
@@ -274,6 +282,25 @@ export class GameEngine {
           createdAt: Date.now(),
           lifetime: 45.0
         });
+
+        // Clean up hero from all guild rosters so guilds accurately free up member slots
+        for (const b of this.state.buildings) {
+          if (b.recruitedHeroIds && b.recruitedHeroIds.includes(hero.id)) {
+            b.recruitedHeroIds = b.recruitedHeroIds.filter(id => id !== hero.id);
+          }
+        }
+
+        // Clean up hero from bounty flags
+        for (const f of this.state.flags) {
+          if (f.assignedHeroIds && f.assignedHeroIds.includes(hero.id)) {
+            f.assignedHeroIds = f.assignedHeroIds.filter(id => id !== hero.id);
+          }
+        }
+
+        // Deselect if currently inspected
+        if (this.state.selectedEntity?.type === 'hero' && this.state.selectedEntity.id === hero.id) {
+          this.state.selectedEntity = null;
+        }
 
         this.state.heroes.splice(i, 1);
         continue;
@@ -296,7 +323,7 @@ export class GameEngine {
             ownerHeroId: hero.id,
             currentX: proj.startX,
             currentY: proj.startY,
-            speed: proj.type === 'arrow' ? 320 : 250,
+            speed: proj.type === 'arrow' ? 220 : 180,
             isHeroProjectile: true,
             progress: 0
           });
@@ -316,21 +343,22 @@ export class GameEngine {
         this.state.stats.monstersKilled += 1;
         audioManager.playSwordClash();
 
-        // Award kill XP & gold bounty to the hero(es) involved
+        // Award kill XP (and optional pocket loot) to the hero(es) involved
         const nearbyHeroes = this.state.heroes.filter(
           h => !h.isDead && (h.targetEntityId === monster.id || Math.hypot(h.x - monster.x, h.y - monster.y) < 180)
         );
 
         if (nearbyHeroes.length > 0) {
           nearbyHeroes.sort((a, b) => Math.hypot(a.x - monster.x, a.y - monster.y) - Math.hypot(b.x - monster.x, b.y - monster.y));
-          
+
           // Primary killer
           const killer = nearbyHeroes[0];
           killer.kills += 1;
           killer.xp += monster.xpReward;
-          killer.gold += monster.goldBountyReward;
           this.addFloatingText(`+${monster.xpReward} XP`, killer.x, killer.y - 20, '#38bdf8');
+
           if (monster.goldBountyReward > 0) {
+            killer.gold += monster.goldBountyReward;
             this.addFloatingText(`+${monster.goldBountyReward}g`, killer.x, killer.y - 32, '#fbbf24');
           }
 
@@ -341,10 +369,6 @@ export class GameEngine {
             assistHero.xp += assistXp;
             this.addFloatingText(`+${assistXp} XP (Assist)`, assistHero.x, assistHero.y - 20, '#38bdf8');
           }
-        } else {
-          // Monster slain by defenses
-          this.state.treasuryGold += monster.goldBountyReward;
-          this.addFloatingText(`+${monster.goldBountyReward}g Bounty`, monster.x, monster.y - 10, '#fbbf24');
         }
 
         // Spawn monster corpse / carcass on battlefield
@@ -360,14 +384,14 @@ export class GameEngine {
           lifetime: monster.isBoss ? 60.0 : 25.0
         });
 
-        // Chance to drop a treasure coin bag / chest on the ground!
-        const dropChance = monster.isBoss ? 1.0 : 0.35;
+        // Bosses or high-tier beasts drop ground loot for heroes to collect
+        const dropChance = monster.isBoss ? 1.0 : (monster.type === 'minotaur' || monster.type === 'goblin_shaman' ? 0.35 : 0);
         if (Math.random() < dropChance) {
           this.state.treasures.push({
             id: `loot_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
             x: monster.x,
             y: monster.y,
-            goldAmount: monster.isBoss ? 180 : Math.floor(Math.random() * 25) + 15,
+            goldAmount: monster.isBoss ? 150 : Math.floor(Math.random() * 20) + 15,
             type: monster.isBoss ? 'chest' : 'gold_bag',
             createdAt: Date.now()
           });
@@ -385,6 +409,7 @@ export class GameEngine {
         this.state.buildings,
         this.state.lairs,
         this.state.taxCollectors,
+        this.state.peasants,
         (proj) => {
           this.state.projectiles.push({
             id: `m_proj_${Date.now()}_${Math.random()}`,
@@ -417,7 +442,8 @@ export class GameEngine {
         audioManager.playCoinSound();
       },
       (tc) => this.state.taxCollectors.push(tc),
-      (text, x, y, color) => this.addFloatingText(text, x, y, color)
+      (text, x, y, color) => this.addFloatingText(text, x, y, color),
+      (treasure) => this.state.treasures.push(treasure)
     );
 
     // 10. Update Projectiles & Combat Particles
@@ -458,10 +484,25 @@ export class GameEngine {
         const plunderGold = lair.type === 'dragon_cavern' ? 1000 : (lair.type === 'ancient_ruins' ? 450 : 250);
         this.state.treasuryGold += plunderGold;
         this.state.stats.goldEarned += plunderGold;
-        audioManager.playCoinSound();
 
         const lx = (lair.x + lair.width / 2) * this.gridManager.tileSize;
         const ly = (lair.y + lair.height / 2) * this.gridManager.tileSize;
+
+        audioManager.playBuildingDestroyed(lx, ly);
+        audioManager.playCoinSound(lx, ly);
+
+        // Spawn ground plunder loot on the ruins for heroes to collect
+        for (let l = 0; l < 2; l++) {
+          this.state.treasures.push({
+            id: `loot_lair_${Date.now()}_${l}`,
+            x: lx + (Math.random() * 24 - 12),
+            y: ly + (Math.random() * 24 - 12),
+            goldAmount: Math.floor(plunderGold * 0.12) + 25,
+            type: lair.type === 'dragon_cavern' ? 'chest' : 'gold_bag',
+            createdAt: Date.now()
+          });
+        }
+
         this.addFloatingText(`+${plunderGold}g Plunder!`, lx, ly - 20, '#fbbf24');
         this.addNotification('Lair Destroyed & Plundered!', `The ${lair.name} was razed! +${plunderGold}g deposited to Treasury!`, 'success');
         this.state.lairs.splice(i, 1);
@@ -493,7 +534,7 @@ export class GameEngine {
   }
 
   private updateDayNight(delta: number) {
-    this.state.stats.dayTime += delta * 15; // 2400 = 1 full day (~160 seconds realtime)
+    this.state.stats.dayTime += delta * 5.0; // 2400 = 1 full day (~480 seconds / 8 minutes realtime)
     if (this.state.stats.dayTime >= 2400) {
       this.state.stats.dayTime = 0;
       this.state.stats.daysPassed += 1;
@@ -501,11 +542,11 @@ export class GameEngine {
     }
 
     const time = this.state.stats.dayTime;
-    if (time >= 500 && time < 1700) {
+    if (time >= 600 && time < 1900) {
       this.state.dayPhase = 'day';
-    } else if (time >= 1700 && time < 2000) {
+    } else if (time >= 1900 && time < 2150) {
       this.state.dayPhase = 'dusk';
-    } else if (time >= 2000 || time < 400) {
+    } else if (time >= 2150 || time < 450) {
       this.state.dayPhase = 'night';
     } else {
       this.state.dayPhase = 'dawn';
@@ -558,7 +599,46 @@ export class GameEngine {
           this.addNotification('Defeat!', this.state.scenario.defeatText, 'danger');
           return;
         }
+
+        const ts = this.gridManager.tileSize;
+        const centerBx = (b.x + b.width / 2) * ts;
+        const centerBy = (b.y + b.height / 2) * ts;
+
+        audioManager.playBuildingDestroyed(centerBx, centerBy);
         this.addNotification('Building Destroyed', `The ${b.name} was reduced to rubble!`, 'danger');
+
+        // Spawn smoke and rubble destruction particles
+        for (let p = 0; p < 18; p++) {
+          this.state.particles.push({
+            id: `p_ruin_${Date.now()}_${p}`,
+            x: centerBx + (Math.random() - 0.5) * b.width * ts * 0.7,
+            y: centerBy + (Math.random() - 0.5) * b.height * ts * 0.7,
+            vx: (Math.random() - 0.5) * 35,
+            vy: (Math.random() - 0.5) * 35,
+            life: 1.8 + Math.random() * 0.8,
+            maxLife: 2.6,
+            color: p % 2 === 0 ? '#475569' : '#1c1917',
+            size: 6 + Math.random() * 6,
+            alpha: 1.0,
+            type: 'smoke'
+          });
+        }
+
+        // Spawn persistent smoking ruins on the building footprint
+        this.state.corpses.push({
+          id: `ruin_${Date.now()}_${b.id}`,
+          type: 'building_ruin',
+          subType: b.type,
+          name: `${b.name} Ruins`,
+          x: centerBx,
+          y: centerBy,
+          rotation: 0,
+          createdAt: Date.now(),
+          lifetime: 180.0, // Persists for 3 minutes as smoking ruins
+          width: b.width,
+          height: b.height
+        });
+
         this.state.buildings.splice(i, 1);
         continue;
       }
@@ -571,6 +651,39 @@ export class GameEngine {
         if (currentRecruit.progress >= 100) {
           b.trainingQueue.shift();
           this.spawnTrainedHero(b, currentRecruit.heroClass);
+        }
+      }
+
+      if (b.researchQueue && b.researchQueue.length > 0 && !b.isConstructing) {
+        // Process upgrade / technology research over time
+        const currentResearch = b.researchQueue[0];
+        currentResearch.progress += (100 / currentResearch.totalTime) * delta;
+
+        if (currentResearch.progress >= 100) {
+          b.researchQueue.shift();
+          const upgId = currentResearch.upgradeId;
+          b.researchedUpgrades.push(upgId);
+
+          const bDef = BUILDING_DEFINITIONS[b.type];
+          const upg = bDef.upgrades?.find(u => u.id === upgId);
+          const upgName = upg?.name || 'Upgrade';
+
+          // Apply building upgrade stats
+          if (upgId === 'palace_lvl2') {
+            b.level = 2;
+            b.maxHp += 1500;
+            b.hp += 1500;
+            this.state.maxMana += 100;
+          } else if (upgId === 'palace_lvl3') {
+            b.level = 3;
+            b.maxHp += 2000;
+            b.hp += 2000;
+            this.state.maxMana += 200;
+          }
+
+          audioManager.playAdvisorChime();
+          audioManager.playBuildingPlaced((b.x + b.width / 2) * this.gridManager.tileSize, (b.y + b.height / 2) * this.gridManager.tileSize);
+          this.addNotification('Upgrade Complete', `${upgName} completed at the ${b.name}!`, 'success');
         }
       }
     }
@@ -590,37 +703,85 @@ export class GameEngine {
       y: (palace.y + palace.height) * this.gridManager.tileSize + 6
     };
 
-    // Ensure adequate peasant workforce
+    // 1. Clean up slain peasants, spawn corpses and trigger replenishment timer
+    for (let i = this.state.peasants.length - 1; i >= 0; i--) {
+      const p = this.state.peasants[i];
+      if (p.hp <= 0) {
+        audioManager.playVoice('peasant_death', p.x, p.y);
+        this.addNotification('Peasant Slain', `${p.name} was slain by monsters! A new builder will arrive at the palace in 20 seconds.`, 'danger', { x: p.x, y: p.y });
+        this.state.corpses.push({
+          id: `corpse_peasant_${Date.now()}_${p.id}`,
+          type: 'hero',
+          subType: 'peasant',
+          name: p.name,
+          x: p.x,
+          y: p.y,
+          rotation: Math.random() * Math.PI * 2,
+          createdAt: Date.now(),
+          lifetime: 40.0
+        });
+        this.state.peasants.splice(i, 1);
+        if (this.peasantReplenishTimer <= 0) {
+          this.peasantReplenishTimer = 20.0;
+        }
+      }
+    }
+
+    // 2. Replenish peasant builders over time up to workforce capacity
     const peasantCottages = this.state.buildings.filter(b => b.type === 'peasant_cottage' && !b.isConstructing && b.hp > 0).length;
     const targetPeasantCount = 2 + (palace.level - 1) + Math.floor(peasantCottages / 2);
 
     if (this.state.peasants.length < targetPeasantCount) {
-      const pIdx = this.state.peasants.length;
-      this.state.peasants.push({
-        id: `peasant_${Date.now()}_${pIdx}`,
-        name: pIdx % 2 === 0 ? 'Robin the Carpenter' : 'Will the Mason',
-        x: palaceGate.x + (pIdx % 2 === 0 ? -8 : 8),
-        y: palaceGate.y + 4,
-        hp: 120,
-        maxHp: 120,
-        speed: 40,
-        state: 'idle_at_palace',
-        hammerTimer: 0,
-        direction: 'down'
-      });
+      if (this.peasantReplenishTimer > 0) {
+        this.peasantReplenishTimer -= delta;
+      }
+      if (this.peasantReplenishTimer <= 0) {
+        const pIdx = this.state.peasants.length;
+        const newPeasant: Peasant = {
+          id: `peasant_${Date.now()}_${pIdx}`,
+          name: pIdx % 2 === 0 ? 'Robin the Carpenter' : 'Will the Mason',
+          x: palaceGate.x + (pIdx % 2 === 0 ? -8 : 8),
+          y: palaceGate.y + 4,
+          hp: 120,
+          maxHp: 120,
+          speed: 24,
+          state: 'idle_at_palace',
+          hammerTimer: 0,
+          direction: 'down'
+        };
+        this.state.peasants.push(newPeasant);
+        this.addNotification('New Builder Recruited', `${newPeasant.name} reported for royal construction duty at the Palace!`, 'info');
+        this.peasantReplenishTimer = 20.0;
+      }
+    } else {
+      this.peasantReplenishTimer = 0;
     }
 
     const isNight = this.state.dayPhase === 'night';
+    const ts = this.gridManager.tileSize;
+
+    // Group active peasants by target building to assign distinct perimeter work slots
+    const peasantsOnBuilding = new Map<string, Peasant[]>();
+    for (const p of this.state.peasants) {
+      if (p.hp > 0 && p.targetBuildingId) {
+        const list = peasantsOnBuilding.get(p.targetBuildingId) || [];
+        list.push(p);
+        peasantsOnBuilding.set(p.targetBuildingId, list);
+      }
+    }
 
     // Process each peasant builder
-    for (const p of this.state.peasants) {
+    for (let pIdx = 0; pIdx < this.state.peasants.length; pIdx++) {
+      const p = this.state.peasants[pIdx];
       if (p.hp <= 0) continue;
 
       if (isNight) {
-        // At night, peasants walk to the Palace Front Gate and enter inside to sleep
-        const distToGate = Math.hypot(palaceGate.x - p.x, palaceGate.y - p.y);
-        if (distToGate > 14) {
-          this.movePeasantTowards(p, palaceGate.x, palaceGate.y, delta);
+        // At night, peasants walk to individual spaced resting spots in the Palace Courtyard
+        const idleSpotX = palaceGate.x + Math.sin(pIdx * 1.6) * (14 + (pIdx % 3) * 6);
+        const idleSpotY = palaceGate.y + 12 + Math.cos(pIdx * 1.6) * 10;
+        const distToGate = Math.hypot(idleSpotX - p.x, idleSpotY - p.y);
+        if (distToGate > 8) {
+          this.movePeasantTowards(p, idleSpotX, idleSpotY, delta);
         } else {
           p.state = 'idle_at_palace';
           p.targetBuildingId = undefined;
@@ -637,6 +798,13 @@ export class GameEngine {
         if (target) {
           p.targetBuildingId = target.id;
           p.state = 'walking_to_site';
+        } else {
+          // Wander/idle in courtyard at personal resting coordinates
+          const courtyardX = palaceGate.x + Math.sin(pIdx * 1.4) * (16 + (pIdx % 2) * 8);
+          const courtyardY = palaceGate.y + 14 + Math.cos(pIdx * 1.4) * 8;
+          if (Math.hypot(courtyardX - p.x, courtyardY - p.y) > 10) {
+            this.movePeasantTowards(p, courtyardX, courtyardY, delta);
+          }
         }
       } else if (p.state === 'walking_to_site') {
         const targetBuilding = this.state.buildings.find(b => b.id === p.targetBuildingId && b.hp > 0);
@@ -646,21 +814,15 @@ export class GameEngine {
           continue;
         }
 
-        const ts = this.gridManager.tileSize;
-        const bLeft = targetBuilding.x * ts;
-        const bRight = (targetBuilding.x + targetBuilding.width) * ts;
-        const bTop = targetBuilding.y * ts;
-        const bBottom = (targetBuilding.y + targetBuilding.height) * ts;
+        const buildersList = peasantsOnBuilding.get(targetBuilding.id) || [p];
+        const slotIdx = buildersList.indexOf(p);
+        const workSlot = this.getBuildingWorkSlot(targetBuilding, slotIdx, ts);
+        const distToSlot = Math.hypot(workSlot.x - p.x, workSlot.y - p.y);
 
-        // Find nearest point on building perimeter to peasant
-        const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, p.x));
-        const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, p.y));
-        const distToPerimeter = Math.hypot(clampX - p.x, clampY - p.y);
-
-        if (distToPerimeter > 10) {
-          this.movePeasantTowards(p, clampX, clampY, delta);
+        if (distToSlot > 8) {
+          this.movePeasantTowards(p, workSlot.x, workSlot.y, delta);
         } else {
-          // Reached nearest perimeter edge without walking through!
+          // Reached assigned perimeter work slot
           const bCenterX = (targetBuilding.x + targetBuilding.width / 2) * ts;
           const bCenterY = (targetBuilding.y + targetBuilding.height / 2) * ts;
           const dx = bCenterX - p.x;
@@ -689,6 +851,7 @@ export class GameEngine {
           targetBuilding.hp = targetBuilding.maxHp;
           targetBuilding.isConstructing = false;
           this.state.stats.buildingsConstructed += 1;
+          this.gridManager.paveRoadToBuilding(targetBuilding);
           audioManager.playBuildingPlaced();
           this.addFloatingText('Building Complete!', p.x, p.y - 20, '#22c55e');
           this.addNotification('Construction Complete', `${targetBuilding.name} was built by your peasants!`, 'success');
@@ -714,6 +877,56 @@ export class GameEngine {
         }
       }
     }
+
+    // Soft unit-to-unit separation to prevent peasants from ever overlapping or stacking
+    const minDist = 9.0;
+    for (let i = 0; i < this.state.peasants.length; i++) {
+      const p1 = this.state.peasants[i];
+      if (p1.hp <= 0) continue;
+
+      for (let j = i + 1; j < this.state.peasants.length; j++) {
+        const p2 = this.state.peasants[j];
+        if (p2.hp <= 0) continue;
+
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < minDist && dist > 0.01) {
+          const overlap = (minDist - dist) * 0.5;
+          const nx = dx / dist;
+          const ny = dy / dist;
+
+          p1.x -= nx * overlap * Math.min(1.0, delta * 10);
+          p1.y -= ny * overlap * Math.min(1.0, delta * 10);
+          p2.x += nx * overlap * Math.min(1.0, delta * 10);
+          p2.y += ny * overlap * Math.min(1.0, delta * 10);
+        }
+      }
+    }
+  }
+
+  private getBuildingWorkSlot(b: Building, slotIndex: number, ts: number): { x: number; y: number } {
+    const bLeft = b.x * ts;
+    const bRight = (b.x + b.width) * ts;
+    const bTop = b.y * ts;
+    const bBottom = (b.y + b.height) * ts;
+    const bW = b.width * ts;
+    const bH = b.height * ts;
+
+    const slots: { x: number; y: number }[] = [
+      { x: bLeft + bW * 0.25, y: bBottom + 4 }, // South-left
+      { x: bLeft + bW * 0.75, y: bBottom + 4 }, // South-right
+      { x: bRight + 4, y: bTop + bH * 0.35 },  // East-upper
+      { x: bLeft - 4, y: bTop + bH * 0.35 },   // West-upper
+      { x: bRight + 4, y: bTop + bH * 0.75 },  // East-lower
+      { x: bLeft - 4, y: bTop + bH * 0.75 },   // West-lower
+      { x: bLeft + bW * 0.4, y: bTop - 4 },    // North-left
+      { x: bLeft + bW * 0.7, y: bTop - 4 }     // North-right
+    ];
+
+    const idx = Math.max(0, slotIndex) % slots.length;
+    return slots[idx];
   }
 
   private movePeasantTowards(p: Peasant, targetX: number, targetY: number, delta: number) {
@@ -732,8 +945,12 @@ export class GameEngine {
     const palace = this.state.buildings.find(b => b.type === 'palace' && b.hp > 0);
     if (!palace) return;
 
+    // Authentic Majesty Rule: As you recruit more heroes, their families build cottages outside the walls
+    const activeHeroes = this.state.heroes.filter(h => !h.isDead).length;
     const palaceLevel = palace.level || 1;
-    const maxCottages = palaceLevel === 1 ? 4 : (palaceLevel === 2 ? 8 : 14);
+
+    // Max allowed cottages is proportional to hero families + palace tier (starts at 2 for a quiet town, expanding as hero guild roster grows)
+    const maxCottages = Math.min(14, Math.max(2, Math.floor(activeHeroes * 0.75) + (palaceLevel - 1)));
     const currentCottages = this.state.buildings.filter(b => b.type === 'peasant_cottage').length;
 
     if (currentCottages >= maxCottages) return;
@@ -742,27 +959,42 @@ export class GameEngine {
     if (this.cottageSproutTimer <= 0) {
       this.cottageSproutTimer = Math.random() * 20 + 25; // Sprout comfortably every 25-45s
 
-      const centerX = Math.floor(palace.x + palace.width / 2);
-      const centerY = Math.floor(palace.y + palace.height / 2);
+      const palaceCenterX = Math.floor(palace.x + palace.width / 2);
+      const palaceCenterY = Math.floor(palace.y + palace.height / 2);
 
-      // Try finding a spacious, open grassy spot with plenty of room around it
-      for (let attempt = 0; attempt < 25; attempt++) {
+      // Anchor near the Palace or existing royal buildings (guilds, markets, blacksmiths)
+      const mainBuildings = this.state.buildings.filter(b => b.type !== 'peasant_cottage' && b.hp > 0);
+      const anchors = mainBuildings.length > 0 ? mainBuildings : [palace];
+
+      for (let attempt = 0; attempt < 35; attempt++) {
+        const anchor = anchors[Math.floor(Math.random() * anchors.length)];
+        const anchorX = Math.floor(anchor.x + anchor.width / 2);
+        const anchorY = Math.floor(anchor.y + anchor.height / 2);
+
         const angle = Math.random() * Math.PI * 2;
-        const dist = Math.floor(Math.random() * 14) + 9; // 9 to 23 tiles from palace
-        const tx = Math.floor(centerX + Math.cos(angle) * dist);
-        const ty = Math.floor(centerY + Math.sin(angle) * dist);
+        // Sprout within 4 to 8 tiles of anchor, staying snug around the settlement
+        const dist = Math.floor(Math.random() * 4) + 4;
+        const tx = Math.floor(anchorX + Math.cos(angle) * dist);
+        const ty = Math.floor(anchorY + Math.sin(angle) * dist);
 
-        // Ensure minimum 5 tiles distance from ANY other building/cottage so they don't cluster!
-        const tooCloseToOtherBuilding = this.state.buildings.some(b => {
-          const bx = b.x + b.width / 2;
-          const by = b.y + b.height / 2;
-          return Math.hypot(bx - (tx + 1), by - (ty + 1)) < 5.5;
+        // Keep all cottages within 12 tiles of the palace center (cozy royal settlement)
+        const distToPalace = Math.hypot(tx - palaceCenterX, ty - palaceCenterY);
+        if (distToPalace > 12) continue;
+
+        // Keep distance from monster lairs so commoners don't settle near monster nests
+        const nearLair = this.state.lairs.some(l => {
+          const lx = l.x + l.width / 2;
+          const ly = l.y + l.height / 2;
+          return Math.hypot(lx - tx, ly - ty) < 9;
         });
-
-        if (tooCloseToOtherBuilding) continue;
+        if (nearLair) continue;
 
         if (this.gridManager.canPlaceBuilding(tx, ty, 2, 2, this.state.buildings, this.state.lairs)) {
           const cottageDef = BUILDING_DEFINITIONS['peasant_cottage'];
+          const dx = palaceCenterX - tx;
+          const dy = palaceCenterY - ty;
+          const facing: 'south' | 'north' | 'east' | 'west' = Math.abs(dy) >= Math.abs(dx) ? (dy < 0 ? 'north' : 'south') : (dx < 0 ? 'west' : 'east');
+
           const newCottage: Building = {
             id: `cottage_${Date.now()}_${attempt}`,
             type: 'peasant_cottage',
@@ -777,17 +1009,20 @@ export class GameEngine {
             maxLevel: 1,
             isConstructing: true,
             constructionProgress: 0,
-            constructionTime: 6.0,
+            constructionTime: cottageDef.constructionTime || 16.0,
             goldStored: 0,
             heroSlots: 0,
             recruitedHeroIds: [],
+            trainingQueue: [],
+            researchQueue: [],
             researchedUpgrades: [],
             availableUpgrades: [],
-            taxRate: 0.15
+            taxRate: 0.15,
+            facing
           };
 
           this.state.buildings.push(newCottage);
-          this.addNotification('New Hamlet Sprouting', 'Commoners are building a new thatched cottage in the outskirts!', 'info');
+          this.addNotification('New Hamlet Sprouting', 'Commoners are building a new thatched cottage in the settlement outskirts!', 'info');
           break;
         }
       }
@@ -829,6 +1064,38 @@ export class GameEngine {
     this.state.treasuryGold -= bDef.cost;
     this.state.stats.goldSpent += bDef.cost;
 
+    // Clear any pre-existing road tiles directly under the new building's foundation
+    for (let by = tileY; by < tileY + bDef.height; by++) {
+      for (let bx = tileX; bx < tileX + bDef.width; bx++) {
+        if (this.gridManager.isValid(bx, by) && this.gridManager.grid[by][bx] === 1) {
+          this.gridManager.grid[by][bx] = 0;
+        }
+      }
+    }
+    this.gridManager.roadVersion++;
+
+    // Calculate facing towards the closest existing road or palace
+    const centerBx = tileX + bDef.width / 2;
+    const centerBy = tileY + bDef.height / 2;
+    let closestRoad = { x: this.state.scenario.mapWidth / 2, y: this.state.scenario.mapHeight / 2 };
+    let minD = Infinity;
+
+    for (let gy = 0; gy < this.gridManager.height; gy++) {
+      for (let gx = 0; gx < this.gridManager.width; gx++) {
+        if (this.gridManager.grid[gy][gx] === 1) {
+          const d = Math.hypot(gx - centerBx, gy - centerBy);
+          if (d < minD) {
+            minD = d;
+            closestRoad = { x: gx, y: gy };
+          }
+        }
+      }
+    }
+
+    const fdx = closestRoad.x - centerBx;
+    const fdy = closestRoad.y - centerBy;
+    const facing: 'south' | 'north' | 'east' | 'west' = Math.abs(fdy) >= Math.abs(fdx) ? (fdy < 0 ? 'north' : 'south') : (fdx < 0 ? 'west' : 'east');
+
     const newBuilding: Building = {
       id: `b_${Date.now()}_${type}`,
       type,
@@ -843,13 +1110,16 @@ export class GameEngine {
       maxLevel: 3,
       isConstructing: true,
       constructionProgress: 0,
-      constructionTime: 6.0,
+      constructionTime: bDef.constructionTime || 20.0,
       goldStored: 0,
       heroSlots: bDef.maxHeroSlots || 0,
       recruitedHeroIds: [],
+      trainingQueue: [],
+      researchQueue: [],
       researchedUpgrades: [],
       availableUpgrades: bDef.upgrades?.map(u => u.id) || [],
       taxRate: 0.15,
+      facing,
       isDefense: bDef.isDefense,
       attackPower: bDef.attackPower,
       attackRange: bDef.attackRange,
@@ -878,6 +1148,11 @@ export class GameEngine {
     if (!building.trainingQueue) {
       building.trainingQueue = [];
     }
+
+    // Sanitize recruitedHeroIds to ensure only living heroes count towards guild capacity
+    building.recruitedHeroIds = building.recruitedHeroIds.filter(id =>
+      this.state.heroes.some(h => h.id === id && !h.isDead)
+    );
 
     const currentTotal = building.recruitedHeroIds.length + building.trainingQueue.length;
     if (currentTotal >= (building.heroSlots || 4)) {
@@ -970,9 +1245,25 @@ export class GameEngine {
     const building = this.state.buildings.find(b => b.id === buildingId);
     if (!building) return false;
 
+    if (building.isConstructing) {
+      this.addNotification('Under Construction', `The ${building.name} must be fully constructed before researching upgrades!`, 'warning');
+      return false;
+    }
+
     const bDef = BUILDING_DEFINITIONS[building.type];
     const upg = bDef.upgrades?.find(u => u.id === upgradeId);
     if (!upg) return false;
+
+    if (!building.researchQueue) {
+      building.researchQueue = [];
+    }
+    if (building.researchQueue.length > 0) {
+      this.addNotification('Already Upgrading', `${building.name} is already busy researching!`, 'warning');
+      return false;
+    }
+    if (building.researchedUpgrades.includes(upgradeId)) {
+      return false;
+    }
 
     // Check Hero Count Requirement (e.g. Palace Lv.2 requires 4+ heroes, Palace Lv.3 requires 8+ heroes)
     const livingHeroes = this.state.heroes.filter(h => !h.isDead).length;
@@ -998,27 +1289,43 @@ export class GameEngine {
 
     this.state.treasuryGold -= upg.cost;
     this.state.stats.goldSpent += upg.cost;
-    building.researchedUpgrades.push(upgradeId);
 
-    // Apply immediate global benefits if applicable
-    if (upgradeId === 'palace_lvl2') {
-      building.level = 2;
-      building.maxHp += 1500;
-      building.hp += 1500;
-      this.state.maxMana += 100;
-    } else if (upgradeId === 'palace_lvl3') {
-      building.level = 3;
-      building.maxHp += 2000;
-      building.hp += 2000;
-      this.state.maxMana += 200;
-    }
+    const isBuildingUpgrade = upgradeId.startsWith('palace_') || upgradeId.includes('_lvl');
+    const researchTime = upg.researchTime || (upgradeId === 'palace_lvl3' ? 24.0 : (upgradeId === 'palace_lvl2' ? 16.0 : 8.0));
 
-    audioManager.playAdvisorChime();
-    this.addNotification('Research Complete', `${upg.name} researched at the ${building.name}!`, 'success');
+    building.researchQueue.push({
+      upgradeId,
+      progress: 0,
+      totalTime: researchTime,
+      isBuildingUpgrade
+    });
+
+    audioManager.playVoice('peasant_upgrade', (building.x + building.width / 2) * this.gridManager.tileSize, (building.y + building.height / 2) * this.gridManager.tileSize);
+    this.addNotification(isBuildingUpgrade ? 'Upgrade Begun' : 'Research Begun', `Started ${upg.name} at ${building.name}!`, 'info');
     return true;
   }
 
   public placeFlag(type: FlagType, x: number, y: number, bountyAmount: number, targetEntityId?: string, targetEntityType?: 'monster' | 'lair' | 'building'): boolean {
+    if (type === 'attack') {
+      if (!targetEntityId || (targetEntityType !== 'monster' && targetEntityType !== 'lair')) {
+        this.addNotification('Invalid Target', 'Attack flags can only be placed on enemy monsters or monster lairs!', 'warning');
+        return false;
+      }
+      if (targetEntityType === 'monster') {
+        const monster = this.state.monsters.find(m => m.id === targetEntityId && m.hp > 0);
+        if (!monster) {
+          this.addNotification('Invalid Target', 'Target monster is no longer valid.', 'warning');
+          return false;
+        }
+      } else if (targetEntityType === 'lair') {
+        const lair = this.state.lairs.find(l => l.id === targetEntityId && l.hp > 0);
+        if (!lair) {
+          this.addNotification('Invalid Target', 'Target monster lair is no longer valid.', 'warning');
+          return false;
+        }
+      }
+    }
+
     if (this.state.treasuryGold < bountyAmount) {
       this.addNotification('Insufficient Gold', `You need ${bountyAmount}g to set this bounty.`, 'warning');
       return false;
@@ -1045,6 +1352,49 @@ export class GameEngine {
     audioManager.playFlagPlaced();
     this.state.activePlacement = null;
     this.addNotification('Bounty Posted', `${type.toUpperCase()} bounty of ${bountyAmount}g placed!`, 'info', { x, y });
+    return true;
+  }
+
+  public cancelFlag(flagId: string): boolean {
+    const flagIndex = this.state.flags.findIndex(f => f.id === flagId);
+    if (flagIndex === -1) return false;
+    const flag = this.state.flags[flagIndex];
+
+    // Check if any friendly unit (hero, peasant, tax collector) is near the flag (within 120px)
+    const nearDist = 120;
+    const hasNearbyFriendly =
+      this.state.heroes.some(h => !h.isDead && Math.hypot(h.x - flag.x, h.y - flag.y) < nearDist) ||
+      this.state.peasants.some(p => p.hp > 0 && Math.hypot(p.x - flag.x, p.y - flag.y) < nearDist) ||
+      this.state.taxCollectors.some(tc => tc.hp > 0 && Math.hypot(tc.x - flag.x, tc.y - flag.y) < nearDist);
+
+    if (hasNearbyFriendly) {
+      this.addNotification('Cannot Cancel Bounty', 'Friendly units are already nearby or engaging the target!', 'warning');
+      return false;
+    }
+
+    // Refund gold to kingdom treasury
+    const refund = flag.goldReward;
+    this.state.treasuryGold += refund;
+    this.addFloatingText(`+${refund}g Refunded`, flag.x, flag.y - 20, '#fbbf24');
+    audioManager.playCoinSound(flag.x, flag.y);
+    this.addNotification('Bounty Cancelled', `Cancelled ${flag.type.toUpperCase()} flag. Refunded ${refund}g to Treasury.`, 'info');
+
+    // Unassign heroes pursuing this flag
+    for (const h of this.state.heroes) {
+      if (h.targetFlagId === flag.id) {
+        h.targetFlagId = undefined;
+        if (h.state === 'pursuing_flag') {
+          h.state = 'idle';
+          h.targetX = undefined;
+          h.targetY = undefined;
+        }
+      }
+    }
+
+    this.state.flags.splice(flagIndex, 1);
+    if (this.state.selectedEntity?.type === 'flag' && this.state.selectedEntity.id === flagId) {
+      this.state.selectedEntity = null;
+    }
     return true;
   }
 

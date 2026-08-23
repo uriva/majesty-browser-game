@@ -131,7 +131,7 @@ export interface Monster {
   lairId?: string;
   state: 'wandering' | 'attacking' | 'raiding' | 'returning_to_lair';
   targetEntityId?: string;
-  targetEntityType?: 'hero' | 'building' | 'tax_collector';
+  targetEntityType?: 'hero' | 'building' | 'tax_collector' | 'peasant';
   direction: 'left' | 'right' | 'up' | 'down';
   isAttackingAnimation: number;
   isBoss?: boolean;
@@ -141,6 +141,13 @@ export interface Monster {
   wanderTimer?: number;
   path?: Position[];
   pathTargetKey?: string;
+}
+
+export interface ResearchItem {
+  upgradeId: string;
+  progress: number;
+  totalTime: number;
+  isBuildingUpgrade?: boolean;
 }
 
 export interface Building {
@@ -162,9 +169,11 @@ export interface Building {
   heroSlots: number;
   recruitedHeroIds: string[];
   trainingQueue?: { heroClass: HeroClass; progress: number; totalTime: number }[];
+  researchQueue?: ResearchItem[];
   researchedUpgrades: string[];
   availableUpgrades: string[];
   taxRate: number;
+  facing?: 'south' | 'north' | 'east' | 'west';
   isDefense?: boolean;
   attackCooldown?: number;
   currentAttackCooldown?: number;
@@ -238,14 +247,16 @@ export interface Peasant {
 
 export interface Corpse {
   id: string;
-  type: 'hero' | 'monster' | 'peasant' | 'tax_collector';
+  type: 'hero' | 'monster' | 'peasant' | 'tax_collector' | 'building_ruin';
   subType: string;
   name: string;
   x: number;
   y: number;
   rotation: number;
   createdAt: number;
-  lifetime: number; // in seconds (e.g. 35s)
+  lifetime: number; // in seconds (e.g. 35s or 180s for ruins)
+  width?: number;
+  height?: number;
 }
 
 export interface Treasure {

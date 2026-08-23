@@ -167,12 +167,19 @@ class SoundManager {
     this.playAudioFile('/audio/sfx/sword_swing.wav', x, y, 0.6);
   }
 
-  public playArrowShoot(x?: number, y?: number) {
-    this.playAudioFile('/audio/sfx/bow_fire.wav', x, y, 0.8, () => this.synthArrowShoot(x, y));
+  public playArrowShoot(x?: number, y?: number, isCrossbow?: boolean) {
+    const bowVariations = ['/audio/sfx/bow_fire.wav', '/audio/sfx/bow_fire_2.wav', '/audio/sfx/bow_fire_3.wav'];
+    const chosen = isCrossbow ? '/audio/sfx/crossbow_fire.wav' : bowVariations[Math.floor(Math.random() * bowVariations.length)];
+    this.playAudioFile(chosen, x, y, 0.85, () => this.synthArrowShoot(x, y));
   }
 
-  public playArrowHit(x?: number, y?: number) {
-    this.playAudioFile('/audio/sfx/arrow_hit.wav', x, y, 0.75);
+  public playTowerBolt(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/tower_bolt.wav', x, y, 0.85, () => this.playArrowShoot(x, y, true));
+  }
+
+  public playArrowHit(x?: number, y?: number, isWood?: boolean) {
+    const hitFile = isWood ? '/audio/sfx/arrow_hit_wood.wav' : '/audio/sfx/arrow_hit.wav';
+    this.playAudioFile(hitFile, x, y, 0.8);
   }
 
   public playSpellCast(x?: number, y?: number) {
@@ -243,10 +250,18 @@ class SoundManager {
     this.playAudioFile('/audio/sfx/dragon_death.wav', x, y, 0.95);
   }
 
+  private voiceCooldowns: Map<string, number> = new Map();
+
   // --- 3D POSITIONAL CHARACTER & ADVISOR VOICE CLIPS ---
   public playVoice(voiceKey: string, x?: number, y?: number) {
+    const now = Date.now();
+    const lastPlayed = this.voiceCooldowns.get(voiceKey) || 0;
+    // Debounce duplicate voice lines to keep soundscape authentic and clear
+    if (now - lastPlayed < 3500) return;
+    this.voiceCooldowns.set(voiceKey, now);
+
     const path = `/audio/voices/${voiceKey}.wav`;
-    this.playAudioFile(path, x, y, 0.9);
+    this.playAudioFile(path, x, y, 0.92);
   }
 
   // --- SYNTHESIZED AUDIO FALLBACKS WITH SPATIAL GAIN ---
@@ -301,17 +316,44 @@ class SoundManager {
     try {
       const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
+
+      // 1. Sharp Bowstring Twang (Fast pitched oscillator with sharp pluck decay)
       const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      const oscGain = this.ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(800, now);
-      osc.frequency.exponentialRampToValueAtTime(200, now + 0.12);
-      gain.gain.setValueAtTime(this.volume * 0.25 * spatial.volumeMult, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      osc.frequency.setValueAtTime(540, now);
+      osc.frequency.exponentialRampToValueAtTime(140, now + 0.09);
+      oscGain.gain.setValueAtTime(this.volume * 0.4 * spatial.volumeMult, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(oscGain);
+      oscGain.connect(this.ctx.destination);
       osc.start(now);
-      osc.stop(now + 0.12);
+      osc.stop(now + 0.09);
+
+      // 2. High-speed Aerodynamic Arrow Whoosh / Friction Noise Burst
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.14);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1800, now);
+      filter.frequency.exponentialRampToValueAtTime(750, now + 0.14);
+      filter.Q.value = 3.5;
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(this.volume * 0.3 * spatial.volumeMult, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(this.ctx.destination);
+      noise.start(now);
     } catch {}
   }
 

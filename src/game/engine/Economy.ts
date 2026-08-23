@@ -1,4 +1,4 @@
-import { Building, MonsterLair, TaxCollector } from '../types';
+import { Building, MonsterLair, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 import { audioManager } from './Audio';
 
@@ -18,7 +18,8 @@ export class EconomyManager {
     taxCollectors: TaxCollector[],
     onTaxDelivery: (amount: number) => void,
     onSpawnTaxCollector: (tc: TaxCollector) => void,
-    onFloatingText?: (text: string, x: number, y: number, color: string) => void
+    onFloatingText?: (text: string, x: number, y: number, color: string) => void,
+    onDropTreasure?: (treasure: Treasure) => void
   ) {
     const palace = buildings.find(b => b.type === 'palace' && b.hp > 0);
     if (!palace) return;
@@ -80,9 +81,21 @@ export class EconomyManager {
       const tc = taxCollectors[i];
 
       if (tc.hp <= 0) {
-        // Tax collector slain!
+        // Tax collector slain! Drop any carried tax gold as loot on the ground
         if (onFloatingText) onFloatingText('Tax Collector Slain!', tc.x, tc.y - 20, '#ef4444');
         audioManager.playVoice('tax_death', tc.x, tc.y);
+
+        if (tc.goldCarried > 0 && onDropTreasure) {
+          onDropTreasure({
+            id: `loot_tax_${Date.now()}_${tc.id}`,
+            x: tc.x,
+            y: tc.y,
+            goldAmount: tc.goldCarried,
+            type: tc.goldCarried > 100 ? 'chest' : 'gold_bag',
+            createdAt: Date.now()
+          });
+        }
+
         taxCollectors.splice(i, 1);
         continue;
       }
@@ -127,7 +140,7 @@ export class EconomyManager {
       } else if (tc.state === 'returning_to_palace') {
         const dist = Math.hypot(palaceGate.x - tc.x, palaceGate.y - tc.y);
         if (dist > 16) {
-          this.moveTowards(tc, palaceGate.x, palaceGate.y, delta, buildings, lairs, palace.id);
+          this.moveTowards(tc, palaceGate.x, palaceGate.y, delta, buildings, lairs);
         } else {
           // Safely reached palace front gate! Deposit into Royal Treasury
           if (tc.goldCarried > 0) {

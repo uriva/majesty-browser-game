@@ -1,22 +1,28 @@
 'use client';
 
 import React from 'react';
-import { Monster, MonsterLair } from '../game/types';
+import { Flag, Monster, MonsterLair } from '../game/types';
 import { MONSTER_DEFINITIONS } from '../game/constants';
-import { Skull, Heart, Sword, Shield, Coins, X, Target } from 'lucide-react';
+import { Skull, Heart, Sword, Shield, Coins, X, Target, Ban, ShieldAlert } from 'lucide-react';
 
 interface MonsterInspectorProps {
   entity: Monster | MonsterLair;
   isLair: boolean;
+  existingFlag?: Flag;
+  hasNearbyFriendly?: boolean;
   onClose: () => void;
   onSetAttackBounty: (entityId: string, isLair: boolean) => void;
+  onCancelAttackBounty?: (flagId: string) => void;
 }
 
 export const MonsterInspector: React.FC<MonsterInspectorProps> = ({
   entity,
   isLair,
+  existingFlag,
+  hasNearbyFriendly,
   onClose,
-  onSetAttackBounty
+  onSetAttackBounty,
+  onCancelAttackBounty
 }) => {
   const hpPercent = Math.max(0, Math.min(100, (entity.hp / entity.maxHp) * 100));
 
@@ -81,13 +87,41 @@ export const MonsterInspector: React.FC<MonsterInspectorProps> = ({
         </div>
       )}
 
-      {/* Set Attack Bounty Action */}
-      <button
-        onClick={() => onSetAttackBounty(entity.id, isLair)}
-        className="w-full mt-2 py-2.5 px-3 bg-gradient-to-r from-rose-700 to-red-600 hover:from-rose-600 hover:to-red-500 text-white font-bold text-xs rounded-lg shadow-lg border border-rose-400/40 flex items-center justify-center gap-2 transition-all"
-      >
-        <Target className="w-4 h-4" /> Place Attack Bounty Flag
-      </button>
+      {/* Attack Bounty Actions */}
+      {existingFlag ? (
+        <div className="space-y-2 mt-2">
+          <div className="p-2 bg-rose-950/70 rounded-lg border border-rose-800/80 flex items-center justify-between text-xs font-semibold text-amber-300">
+            <span className="flex items-center gap-1.5">
+              <Coins className="w-4 h-4 text-amber-400" /> Active Bounty:
+            </span>
+            <span className="font-mono text-amber-200">{existingFlag.goldReward}g</span>
+          </div>
+
+          <button
+            onClick={() => onCancelAttackBounty && onCancelAttackBounty(existingFlag.id)}
+            disabled={hasNearbyFriendly}
+            className={`w-full py-2.5 px-3 font-bold text-xs rounded-lg shadow-lg border flex items-center justify-center gap-2 transition-all ${
+              hasNearbyFriendly
+                ? 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed opacity-60'
+                : 'bg-gradient-to-r from-red-700 to-rose-600 hover:from-red-600 hover:to-rose-500 text-white border-red-400/40 cursor-pointer'
+            }`}
+          >
+            <Ban className="w-4 h-4" /> Cancel Bounty & Refund {existingFlag.goldReward}g
+          </button>
+          {hasNearbyFriendly && (
+            <p className="text-[10px] text-amber-400/90 text-center flex items-center justify-center gap-1">
+              <ShieldAlert className="w-3 h-3 text-amber-400" /> Heroes nearby (cannot cancel)
+            </p>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => onSetAttackBounty(entity.id, isLair)}
+          className="w-full mt-2 py-2.5 px-3 bg-gradient-to-r from-rose-700 to-red-600 hover:from-rose-600 hover:to-red-500 text-white font-bold text-xs rounded-lg shadow-lg border border-rose-400/40 flex items-center justify-center gap-2 transition-all"
+        >
+          <Target className="w-4 h-4" /> Place Attack Bounty Flag
+        </button>
+      )}
     </div>
   );
 };

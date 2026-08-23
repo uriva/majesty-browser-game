@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "build": "npm run build",
+    "start": "deno run -A main.ts"
+  },
+  "deploy": {
+    "org": "uriva",
+    "app": "majesty-game",
+    "entrypoint": "main.ts"
+  }
+}
+
+
+
+
+
+
+
+

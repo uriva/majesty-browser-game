@@ -15,6 +15,8 @@ import { BuildingInspector } from './BuildingInspector';
 import { MonsterInspector } from './MonsterInspector';
 import { TaxCollectorInspector } from './TaxCollectorInspector';
 import { PeasantInspector } from './PeasantInspector';
+import { FlagInspector } from './FlagInspector';
+import { HeroRosterBar } from './HeroRosterBar';
 import { ScenarioModal } from './ScenarioModal';
 import { Hammer, Coins, Zap, Eye, RotateCw, Video } from 'lucide-react';
 
@@ -208,12 +210,30 @@ export const GameView: React.FC = () => {
 
     // 2. PLACING BOUNTY FLAG
     if (activeFlagType) {
-      let targetMonster = engine.state.monsters.find(m => Math.hypot(m.x - world.x, m.y - world.y) < 26);
+      let targetMonster = engine.state.monsters.find(m => m.hp > 0 && Math.hypot(m.x - world.x, m.y - world.y) < 26);
       let targetLair = engine.state.lairs.find(l => {
+        if (l.hp <= 0) return false;
         const lx = (l.x + l.width / 2) * engine.state.tileSize;
         const ly = (l.y + l.height / 2) * engine.state.tileSize;
         return Math.hypot(lx - world.x, ly - world.y) < 36;
       });
+
+      if (activeFlagType === 'attack') {
+        if (targetMonster) {
+          engine.placeFlag('attack', targetMonster.x, targetMonster.y, bountyAmount, targetMonster.id, 'monster');
+          setActiveFlagType(null);
+          engine.state.activePlacement = null;
+        } else if (targetLair) {
+          const lx = (targetLair.x + targetLair.width / 2) * engine.state.tileSize;
+          const ly = (targetLair.y + targetLair.height / 2) * engine.state.tileSize;
+          engine.placeFlag('attack', lx, ly, bountyAmount, targetLair.id, 'lair');
+          setActiveFlagType(null);
+          engine.state.activePlacement = null;
+        } else {
+          engine.addNotification('Invalid Target', 'Attack flags can only be placed on enemy monsters or monster lairs!', 'warning');
+        }
+        return;
+      }
 
       if (targetMonster) {
         engine.placeFlag(activeFlagType, targetMonster.x, targetMonster.y, bountyAmount, targetMonster.id, 'monster');
@@ -241,13 +261,19 @@ export const GameView: React.FC = () => {
     }
 
     // 4. ENTITY SELECTION
+    const clickedFlag = engine.state.flags.find(f => Math.hypot(f.x - world.x, f.y - world.y) < 24);
+    if (clickedFlag) {
+      engine.state.selectedEntity = { type: 'flag', id: clickedFlag.id };
+      return;
+    }
+
     const clickedHero = engine.state.heroes.find(h => !h.isDead && Math.hypot(h.x - world.x, h.y - world.y) < 20);
     if (clickedHero) {
       engine.state.selectedEntity = { type: 'hero', id: clickedHero.id };
       return;
     }
 
-    const clickedMonster = engine.state.monsters.find(m => Math.hypot(m.x - world.x, m.y - world.y) < 24);
+    const clickedMonster = engine.state.monsters.find(m => m.hp > 0 && Math.hypot(m.x - world.x, m.y - world.y) < 24);
     if (clickedMonster) {
       engine.state.selectedEntity = { type: 'monster', id: clickedMonster.id };
       return;
@@ -293,14 +319,18 @@ export const GameView: React.FC = () => {
     engine.state.selectedEntity = null;
   };
 
-  // Zoom with wheel
+  // Zoom with wheel (Continuous smooth interpolation)
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!threeRendererRef.current || !engineRef.current) return;
-    const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
-    const newDist = Math.max(120, Math.min(850, threeRendererRef.current.cameraDistance * zoomFactor));
-    threeRendererRef.current.cameraDistance = newDist;
-    engineRef.current.state.camera.zoom = 380 / newDist;
+    const renderer = threeRendererRef.current;
+    const engine = engineRef.current;
+    if (!renderer || !engine) return;
+
+    const normalizedDelta = Math.max(-60, Math.min(60, e.deltaY));
+    const zoomMultiplier = 1 + normalizedDelta * 0.0016;
+    const newDist = Math.max(100, Math.min(850, renderer.targetCameraDistance * zoomMultiplier));
+    renderer.targetCameraDistance = newDist;
+    engine.state.camera.zoom = 380 / newDist;
   };
 
   // Switch Camera Presets
@@ -311,16 +341,17 @@ export const GameView: React.FC = () => {
 
     renderer.cameraMode = preset;
     if (preset === 'isometric') {
-      renderer.cameraPitch = 0.85;
-      renderer.cameraYaw = 0.0;
-      renderer.cameraDistance = 380;
+      renderer.cameraPitch = 0.82;
+      renderer.cameraYaw = Math.PI / 4;
+      renderer.targetCameraDistance = 380;
     } else if (preset === 'top_down') {
       renderer.cameraPitch = 1.45;
       renderer.cameraYaw = 0.0;
-      renderer.cameraDistance = 460;
+      renderer.targetCameraDistance = 460;
     } else if (preset === 'free') {
-      renderer.cameraPitch = 0.65;
-      renderer.cameraDistance = 320;
+      renderer.cameraPitch = 0.70;
+      renderer.cameraYaw = Math.PI / 6;
+      renderer.targetCameraDistance = 320;
     }
   };
 
@@ -414,6 +445,24 @@ export const GameView: React.FC = () => {
               onShowAdvisorModal={() => {}}
             />
           </div>
+        </div>
+      )}
+
+      {/* Top Left: Hero Roster Bar */}
+      {gameState && (
+        <div className="absolute top-16 left-4 z-20 pointer-events-none">
+          <HeroRosterBar
+            heroes={gameState.heroes}
+            selectedHeroId={gameState.selectedEntity?.type === 'hero' ? gameState.selectedEntity.id : null}
+            onSelectHero={(hero) => {
+              if (engineRef.current) {
+                engineRef.current.state.selectedEntity = { type: 'hero', id: hero.id };
+                engineRef.current.state.camera.x = hero.x;
+                engineRef.current.state.camera.y = hero.y;
+                setTrackingHeroId(hero.id);
+              }
+            }}
+          />
         </div>
       )}
 
@@ -551,6 +600,7 @@ export const GameView: React.FC = () => {
           <BuildingInspector
             building={selectedBuilding}
             allBuildings={gameState.buildings}
+            heroes={gameState.heroes}
             heroesCount={gameState.heroes.filter(h => !h.isDead).length}
             treasuryGold={gameState.treasuryGold}
             onClose={() => {
@@ -561,6 +611,14 @@ export const GameView: React.FC = () => {
             }}
             onResearchUpgrade={(bId, upgId) => {
               engineRef.current?.researchUpgrade(bId, upgId);
+            }}
+            onSelectHero={(hero) => {
+              if (engineRef.current) {
+                engineRef.current.state.selectedEntity = { type: 'hero', id: hero.id };
+                engineRef.current.state.camera.x = hero.x;
+                engineRef.current.state.camera.y = hero.y;
+              }
+              setCameraPreset('follow');
             }}
           />
         )}

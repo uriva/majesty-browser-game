@@ -37,6 +37,7 @@ export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
           const tile = state.grid[y][x];
           if (tile === 1) ctx.fillStyle = '#78716c'; // road
           else if (tile === 2) ctx.fillStyle = '#0284c7'; // water
+          else if (tile === 5) ctx.fillStyle = '#94a3b8'; // bridge
           else if (tile === 3) ctx.fillStyle = '#14532d'; // trees
           else if (tile === 4) ctx.fillStyle = '#475569'; // rock
           else ctx.fillStyle = '#22543d'; // grass

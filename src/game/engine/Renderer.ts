@@ -1,5 +1,5 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
-import { Building, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Projectile, TaxCollector, Treasure } from '../types';
+import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 
 export class CanvasRenderer {
@@ -42,6 +42,11 @@ export class CanvasRenderer {
     // 4. Render Buildings (including Peasant Cottages)
     for (const building of state.buildings) {
       this.renderBuilding(building, state);
+    }
+
+    // 4.5. Render Corpses & Building Ruins
+    for (const corpse of state.corpses) {
+      this.renderCorpse(corpse, state);
     }
 
     // 5. Render Treasures & Chests
@@ -140,6 +145,18 @@ export class CanvasRenderer {
           ctx.fillRect(px, py, ts, ts);
           ctx.fillStyle = '#38bdf8';
           ctx.fillRect(px + 4, py + 8 + wave * 0.2, ts - 8, 3);
+        } else if (tileType === 5) {
+          // Stone Bridge over Water
+          ctx.fillStyle = '#0284c7';
+          ctx.fillRect(px, py, ts, ts);
+          ctx.fillStyle = '#64748b';
+          ctx.fillRect(px, py + 2, ts, ts - 4);
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(px + 2, py + 4, ts - 4, ts - 8);
+          // Railings
+          ctx.fillStyle = '#334155';
+          ctx.fillRect(px, py + 1, ts, 2);
+          ctx.fillRect(px, py + ts - 3, ts, 2);
         } else if (tileType === 3) {
           // Forest base
           ctx.fillStyle = '#1b4332';
@@ -244,7 +261,28 @@ export class CanvasRenderer {
     ctx.fillRect(px + 6, py + 6, w, h);
 
     if (b.isConstructing) {
-      // Scaffolding
+      if (b.constructionProgress <= 0) {
+        // Blueprint Schematic (Before Builder Arrives)
+        ctx.fillStyle = 'rgba(2, 132, 199, 0.45)';
+        ctx.fillRect(px, py, w, h);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(px + 2, py + 2, w - 4, h - 4);
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#f0f9ff';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('📐 BLUEPRINT', px + w / 2, py + h / 2 - 5);
+        ctx.font = '9px sans-serif';
+        ctx.fillStyle = '#7dd3fc';
+        ctx.fillText('Awaiting Builder', px + w / 2, py + h / 2 + 7);
+        return;
+      }
+
+      // Scaffolding & Active Construction
       ctx.fillStyle = '#78350f';
       ctx.fillRect(px, py, w, h);
       ctx.strokeStyle = '#d97706';
@@ -673,6 +711,58 @@ export class CanvasRenderer {
     ctx.fillRect(px, py - 8, barW, barH);
     ctx.fillStyle = '#dc2626';
     ctx.fillRect(px, py - 8, barW * hpPercent, barH);
+  }
+
+  private renderCorpse(c: Corpse, state: GameState) {
+    const { ctx } = this;
+    if (!this.gridManager.isPixelVisible(c.x, c.y)) return;
+
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rotation || 0);
+
+    if (c.type === 'building_ruin') {
+      const ts = this.gridManager.tileSize;
+      const w = (c.width || 3) * ts;
+      const h = (c.height || 3) * ts;
+
+      // Charred foundation plinth
+      ctx.fillStyle = '#1c1917';
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+
+      // Crumbling stone walls
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(-w * 0.45, -h * 0.45, w * 0.4, 4);
+      ctx.fillRect(w * 0.1, -h * 0.45, 4, h * 0.4);
+      ctx.fillRect(-w * 0.3, h * 0.35, w * 0.5, 4);
+
+      // Broken timber beams
+      ctx.fillStyle = '#292524';
+      ctx.fillRect(-w * 0.25, -2, w * 0.5, 3);
+
+      // Glowing ash embers
+      ctx.fillStyle = '#f97316';
+      ctx.fillRect(-4, -4, 2, 2);
+      ctx.fillRect(6, 4, 2, 2);
+      ctx.fillRect(-8, 6, 2, 2);
+    } else if (c.type === 'hero') {
+      // Grave cross
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(-2, -10, 4, 20);
+      ctx.fillRect(-7, -5, 14, 4);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(4, 2, 6, 5); // helmet
+    } else if (c.type === 'monster') {
+      ctx.fillStyle = '#44403c';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 8, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#57534e';
+      ctx.fillRect(-5, -3, 10, 6);
+    }
+
+    ctx.restore();
   }
 
   private renderTreasure(t: Treasure, state: GameState) {
@@ -1336,7 +1426,7 @@ export class CanvasRenderer {
       ctx.fillStyle = 'rgba(180, 83, 9, 0.15)';
       ctx.fillRect(0, 0, mapW, mapH);
     } else if (state.dayPhase === 'dawn') {
-      ctx.fillStyle = 'rgba(236, 72, 153, 0.1)';
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.1)';
       ctx.fillRect(0, 0, mapW, mapH);
     }
   }
@@ -1361,7 +1451,9 @@ export class CanvasRenderer {
       ctx.fillRect(tileX * ts, tileY * ts, bDef.width * ts, bDef.height * ts);
       ctx.strokeRect(tileX * ts, tileY * ts, bDef.width * ts, bDef.height * ts);
     } else if (state.activePlacement.type === 'flag') {
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.5)';
+      const flagType = state.activePlacement.subType;
+      const color = flagType === 'attack' ? 'rgba(239, 68, 68, 0.6)' : (flagType === 'explore' ? 'rgba(59, 130, 246, 0.6)' : 'rgba(251, 191, 36, 0.6)');
+      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(mousePos.x, mousePos.y, 25, 0, Math.PI * 2);
       ctx.fill();

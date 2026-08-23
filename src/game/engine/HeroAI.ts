@@ -1,5 +1,6 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS } from '../constants';
 import { Building, Flag, Hero, Monster, MonsterLair, Treasure } from '../types';
+import { audioManager } from './Audio';
 import { GridManager } from './Grid';
 
 export class HeroAIManager {
@@ -96,6 +97,7 @@ export class HeroAIManager {
       hero.stateTimer = 4.0;
       hero.targetEntityId = undefined;
       hero.currentThought = 'Tactical retreat! Low health!';
+      audioManager.playVoice(`${hero.heroClass}_flee`, hero.x, hero.y);
     }
 
     // 2. State Actions & Transitions
@@ -131,10 +133,71 @@ export class HeroAIManager {
         break;
 
       case 'wandering':
+        this.handleWandering(hero, delta, buildings, lairs, monsters, flags, treasures);
+        break;
+
       case 'idle':
       default:
-        this.decideNextGoal(hero, delta, allHeroes, monsters, lairs, buildings, flags, treasures);
+        if (hero.stateTimer <= 0) {
+          this.decideNextGoal(hero, delta, allHeroes, monsters, lairs, buildings, flags, treasures);
+        }
         break;
+    }
+  }
+
+  private handleWandering(
+    hero: Hero,
+    delta: number,
+    buildings: Building[],
+    lairs: MonsterLair[],
+    monsters: Monster[],
+    flags: Flag[],
+    treasures: Treasure[]
+  ) {
+    // 1. Self Defense: Interrupt wandering immediately if an active monster threat is near
+    const searchRadius = hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' ? 220 : 160;
+    const nearbyMonster = monsters.find(
+      m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < searchRadius && this.gridManager.isPixelVisible(m.x, m.y)
+    );
+    if (nearbyMonster) {
+      hero.state = 'attacking_target';
+      hero.targetEntityId = nearbyMonster.id;
+      hero.targetEntityType = 'monster';
+      hero.targetX = undefined;
+      hero.targetY = undefined;
+      hero.currentThought = `Engaging ${nearbyMonster.name}!`;
+      return;
+    }
+
+    // 2. Interrupt if a visible treasure chest or gold bag is nearby
+    const nearbyTreasure = treasures.find(
+      t => Math.hypot(t.x - hero.x, t.y - hero.y) < 120 && this.gridManager.isPixelVisible(t.x, t.y)
+    );
+    if (nearbyTreasure) {
+      hero.state = 'collecting_treasure';
+      hero.targetEntityId = nearbyTreasure.id;
+      hero.targetX = nearbyTreasure.x;
+      hero.targetY = nearbyTreasure.y;
+      hero.currentThought = `Spotted a ${nearbyTreasure.type === 'chest' ? 'Treasure Chest' : 'Gold Sack'}!`;
+      return;
+    }
+
+    // 3. Continue moving towards destination
+    if (hero.targetX !== undefined && hero.targetY !== undefined) {
+      const dist = Math.hypot(hero.targetX - hero.x, hero.targetY - hero.y);
+      if (dist > 8) {
+        this.moveTowards(hero, hero.targetX, hero.targetY, delta, buildings, lairs);
+      } else {
+        // Destination reached! Pause and stand guard
+        hero.state = 'idle';
+        hero.stateTimer = Math.random() * 2.0 + 1.5;
+        hero.targetX = undefined;
+        hero.targetY = undefined;
+        hero.currentThought = 'Standing guard over the realm';
+      }
+    } else {
+      hero.state = 'idle';
+      hero.stateTimer = 0.5;
     }
   }
 
@@ -162,75 +225,14 @@ export class HeroAIManager {
       }
     }
 
-    // B. Check for visible Treasures & Chests (Rogues & Rangers are especially keen!)
-    const treasureDetectRadius = hero.heroClass === 'rogue' ? 240 : (hero.heroClass === 'ranger' ? 200 : 130);
-    let nearestTreasure: Treasure | null = null;
-    let nearestTreasureDist = treasureDetectRadius;
-
-    for (const t of treasures) {
-      const dist = Math.hypot(t.x - hero.x, t.y - hero.y);
-      if (dist < nearestTreasureDist && this.gridManager.isPixelVisible(t.x, t.y)) {
-        nearestTreasureDist = dist;
-        nearestTreasure = t;
-      }
-    }
-
-    if (nearestTreasure) {
-      hero.state = 'collecting_treasure';
-      hero.targetEntityId = nearestTreasure.id;
-      hero.targetX = nearestTreasure.x;
-      hero.targetY = nearestTreasure.y;
-      hero.currentThought = `Spotted a ${nearestTreasure.type === 'chest' ? 'Treasure Chest' : 'Gold Sack'}!`;
-      return;
-    }
-
-    // C. Check if hero wants to shop or upgrade gear with their earned bounty gold
-    if (hero.gold >= 30) {
-      // 1. Visit Marketplace for healing potions or travel rations
-      if (!hero.equipment.hasHealingPotion || (!hero.equipment.hasSpeedPotion && hero.gold >= 60)) {
-        const market = buildings.find(b => b.type === 'marketplace' && !b.isConstructing && b.hp > 0);
-        if (market) {
-          hero.state = 'visiting_marketplace';
-          hero.targetEntityId = market.id;
-          hero.targetEntityType = 'building';
-          hero.currentThought = 'Heading to Marketplace to buy potions & gear';
-          return;
-        }
-      }
-
-      // 2. Visit Blacksmith for Weapon or Armor forged upgrades
-      if (hero.gold >= 60 && (hero.equipment.weaponLevel < 3 || hero.equipment.armorLevel < 3)) {
-        const blacksmith = buildings.find(b => b.type === 'blacksmith' && !b.isConstructing && b.hp > 0);
-        if (blacksmith) {
-          hero.state = 'visiting_blacksmith';
-          hero.targetEntityId = blacksmith.id;
-          hero.targetEntityType = 'building';
-          hero.currentThought = 'Visiting Blacksmith to forge weapon & armor';
-          return;
-        }
-      }
-
-      // 3. Visit Inn to celebrate, drink ale, gamble, and socialize
-      if (hero.gold >= 25 && Math.random() < 0.25) {
-        const inn = buildings.find(b => b.type === 'royal_inn' && !b.isConstructing && b.hp > 0);
-        if (inn) {
-          hero.state = 'visiting_inn';
-          hero.targetEntityId = inn.id;
-          hero.targetEntityType = 'building';
-          hero.currentThought = 'Heading to the Inn for ale & celebration';
-          return;
-        }
-      }
-    }
-
-    // C. Check if hero needs to rest at Inn or Guild hall
-    if (hero.hp < hero.maxHp * 0.75) {
+    // B. Critical HP Recovery: Rest at Inn or Guild Hall
+    if (hero.hp < hero.maxHp * 0.6) {
       const inn = buildings.find(b => b.type === 'royal_inn' && !b.isConstructing && b.hp > 0);
       if (inn && hero.gold >= 15) {
         hero.state = 'visiting_inn';
         hero.targetEntityId = inn.id;
         hero.targetEntityType = 'building';
-        hero.currentThought = 'Resting at the Inn with warm food & ale';
+        hero.currentThought = 'Resting at the Inn to recover health';
         return;
       } else {
         const homeGuild = buildings.find(b => b.id === hero.homeGuildId && b.hp > 0);
@@ -244,7 +246,7 @@ export class HeroAIManager {
       }
     }
 
-    // D. Evaluate Active Flags (Majesty Bounty System)
+    // C. Evaluate Active Bounty Flags (Majesty Bounty System)
     let bestFlag: Flag | null = null;
     let highestAppeal = -999;
 
@@ -276,11 +278,12 @@ export class HeroAIManager {
       hero.targetFlagId = bestFlag.id;
       hero.targetX = bestFlag.x;
       hero.targetY = bestFlag.y;
-      hero.currentThought = `Answering ${bestFlag.type.toUpperCase()} bounty (${bestFlag.goldReward}g)`;
+      hero.currentThought = `Answering ${bestFlag.type} bounty flag (${bestFlag.goldReward}g)!`;
+      audioManager.playVoice(`${hero.heroClass}_flag`, hero.x, hero.y);
       return;
     }
 
-    // E. Look for nearby monsters & kingdom threats within hero's awareness radius
+    // D. Look for nearby monsters (Combat Priority!)
     const searchRadius = hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' ? 240 : (hero.heroClass === 'ranger' ? 200 : 160);
     let closestMonster: Monster | null = null;
     let closestDist = searchRadius;
@@ -288,7 +291,6 @@ export class HeroAIManager {
     for (const m of monsters) {
       if (m.hp <= 0) continue;
       const dist = Math.hypot(m.x - hero.x, m.y - hero.y);
-      // Target visible monsters in explored/visible tile
       if (dist < closestDist && this.gridManager.isPixelVisible(m.x, m.y)) {
         closestDist = dist;
         closestMonster = m;
@@ -305,31 +307,97 @@ export class HeroAIManager {
       return;
     }
 
-    // F. Purposeful Autonomous Life & Patrol Cycles
-    // If hero is currently walking towards an active destination, continue walking until reached!
-    if (hero.state === 'wandering' && hero.targetX !== undefined && hero.targetY !== undefined) {
-      const distToDestination = Math.hypot(hero.targetX - hero.x, hero.targetY - hero.y);
-      if (distToDestination > 8) {
-        this.moveTowards(hero, hero.targetX, hero.targetY, delta, buildings, lairs);
-        return;
-      } else {
-        // Reached destination! Pause to look around / stand guard
-        hero.state = 'idle';
-        hero.stateTimer = Math.random() * 2.5 + 1.5;
+    // E. Autonomous Enemy Lair Attack (Only if NO monsters are nearby!)
+    const isBraveAgainstLairs = hero.traits.bravery >= 55 || hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' || hero.level >= 3;
+    if (isBraveAgainstLairs) {
+      let closestLair: MonsterLair | null = null;
+      let closestLairDist = searchRadius * 0.85;
+
+      for (const l of lairs) {
+        if (l.hp <= 0) continue;
+        const lcx = (l.x + l.width / 2) * this.gridManager.tileSize;
+        const lcy = (l.y + l.height / 2) * this.gridManager.tileSize;
+        const dist = Math.hypot(lcx - hero.x, lcy - hero.y);
+
+        if (dist < closestLairDist && this.gridManager.isPixelExplored(lcx, lcy)) {
+          closestLairDist = dist;
+          closestLair = l;
+        }
+      }
+
+      if (closestLair) {
+        hero.state = 'attacking_target';
+        hero.targetEntityId = closestLair.id;
+        hero.targetEntityType = 'lair';
         hero.targetX = undefined;
         hero.targetY = undefined;
+        hero.currentThought = `Razing enemy stronghold: ${closestLair.name}!`;
         return;
       }
     }
 
-    // If hero is pausing / standing guard, wait until stateTimer expires
-    if (hero.state === 'idle' && hero.stateTimer > 0) {
+    // F. Check for visible Treasures & Chests
+    const treasureDetectRadius = hero.heroClass === 'rogue' ? 240 : (hero.heroClass === 'ranger' ? 200 : 130);
+    let nearestTreasure: Treasure | null = null;
+    let nearestTreasureDist = treasureDetectRadius;
+
+    for (const t of treasures) {
+      const dist = Math.hypot(t.x - hero.x, t.y - hero.y);
+      if (dist < nearestTreasureDist && this.gridManager.isPixelVisible(t.x, t.y)) {
+        nearestTreasureDist = dist;
+        nearestTreasure = t;
+      }
+    }
+
+    if (nearestTreasure) {
+      hero.state = 'collecting_treasure';
+      hero.targetEntityId = nearestTreasure.id;
+      hero.targetX = nearestTreasure.x;
+      hero.targetY = nearestTreasure.y;
+      hero.currentThought = `Spotted a ${nearestTreasure.type === 'chest' ? 'Treasure Chest' : 'Gold Sack'}!`;
       return;
     }
 
-    // Pick new purposeful destination based on hero class
+    // G. Equipment & Potion Shopping (Only if building has available researched stock!)
+    if (hero.gold >= 25) {
+      // 1. Marketplace
+      const market = buildings.find(b => b.type === 'marketplace' && !b.isConstructing && b.hp > 0);
+      if (market) {
+        const canBuyPotion = market.researchedUpgrades.includes('healing_elixirs') && !hero.equipment.hasHealingPotion && hero.gold >= 25;
+        const canBuySpeed = market.researchedUpgrades.includes('speed_draughts') && !hero.equipment.hasSpeedPotion && hero.gold >= 60;
+        const canBuyAmulet = market.researchedUpgrades.includes('warding_amulets') && !hero.equipment.hasAmulet && hero.gold >= 100;
+
+        if (canBuyPotion || canBuySpeed || canBuyAmulet) {
+          hero.state = 'visiting_marketplace';
+          hero.targetEntityId = market.id;
+          hero.targetEntityType = 'building';
+          hero.currentThought = 'Heading to Marketplace to buy supplies';
+          return;
+        }
+      }
+
+      // 2. Blacksmith
+      const blacksmith = buildings.find(b => b.type === 'blacksmith' && !b.isConstructing && b.hp > 0);
+      if (blacksmith) {
+        const maxWepTier = blacksmith.researchedUpgrades.includes('dragonforged') ? 3 : (blacksmith.researchedUpgrades.includes('mithril_forging') ? 2 : (blacksmith.researchedUpgrades.includes('iron_weapons') ? 1 : 0));
+        const maxArmorTier = blacksmith.researchedUpgrades.includes('dragonforged') ? 3 : (blacksmith.researchedUpgrades.includes('mithril_forging') ? 2 : (blacksmith.researchedUpgrades.includes('steel_armor') ? 1 : 0));
+
+        const canUpgradeWep = hero.equipment.weaponLevel < maxWepTier && hero.gold >= (hero.equipment.weaponLevel === 0 ? 50 : (hero.equipment.weaponLevel === 1 ? 120 : 250));
+        const canUpgradeArmor = hero.equipment.armorLevel < maxArmorTier && hero.gold >= (hero.equipment.armorLevel === 0 ? 50 : (hero.equipment.armorLevel === 1 ? 120 : 250));
+
+        if (canUpgradeWep || canUpgradeArmor) {
+          hero.state = 'visiting_blacksmith';
+          hero.targetEntityId = blacksmith.id;
+          hero.targetEntityType = 'building';
+          hero.currentThought = 'Visiting Blacksmith for forged upgrades';
+          return;
+        }
+      }
+    }
+
+    // H. Purposeful Autonomous Exploration / Patrol Destination
     hero.state = 'wandering';
-    hero.stateTimer = 0;
+    hero.stateTimer = 6.0;
 
     if (hero.heroClass === 'ranger') {
       // Rangers scout towards the nearest unexplored Fog of War frontier!
@@ -339,15 +407,14 @@ export class HeroAIManager {
         hero.targetY = unexploredSpot.y;
         hero.currentThought = 'Scouting the unexplored wilderness';
       } else {
-        // Entire realm explored: roam long distances
         const angle = Math.random() * Math.PI * 2;
-        const dist = Math.random() * 180 + 100;
+        const dist = Math.random() * 160 + 80;
         hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
         hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
-        hero.currentThought = 'Patrolling the outer perimeter';
+        hero.currentThought = 'Patrolling the outer wilderness';
       }
     } else if (hero.heroClass === 'warrior' || hero.heroClass === 'dwarf') {
-      // Warriors & Dwarves patrol between peasant hamlets, cottages, towers, and palace
+      // Warriors & Dwarves patrol kingdom buildings, cottages, and gates
       const patrolCandidates = buildings.filter(b => b.hp > 0 && Math.hypot(b.x * 32 - hero.x, b.y * 32 - hero.y) < 320);
       if (patrolCandidates.length > 0 && Math.random() < 0.75) {
         const chosen = patrolCandidates[Math.floor(Math.random() * patrolCandidates.length)];
@@ -361,17 +428,15 @@ export class HeroAIManager {
         const dist = Math.random() * 100 + 40;
         hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
         hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
-        hero.currentThought = 'Standing guard over the realm';
+        hero.currentThought = 'Standing guard over the settlement';
       }
     } else if (hero.heroClass === 'rogue') {
-      // Rogues prowl around looking for lone beasts or lairs to plunder
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * 140 + 60;
       hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
       hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
       hero.currentThought = 'Prowling for gold & vulnerable prey';
     } else {
-      // Wizards & Clerics: stroll peacefully near town structures
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * 80 + 30;
       hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
@@ -518,6 +583,7 @@ export class HeroAIManager {
     const shop = buildings.find(b => b.id === hero.targetEntityId);
     if (!shop || shop.hp <= 0) {
       hero.state = 'idle';
+      hero.stateTimer = 1.0;
       return;
     }
 
@@ -540,42 +606,55 @@ export class HeroAIManager {
 
       // At shop! Perform purchase with hero's gold -> transfers to shop.goldStored
       if (shop.type === 'marketplace') {
-        if (hero.gold >= 35 && !hero.equipment.hasHealingPotion) {
-          hero.gold -= 35;
-          shop.goldStored += 35;
+        const hasPotions = shop.researchedUpgrades.includes('healing_elixirs');
+        const hasSpeed = shop.researchedUpgrades.includes('speed_draughts');
+        const hasAmulets = shop.researchedUpgrades.includes('warding_amulets');
+
+        if (hasPotions && hero.gold >= 25 && !hero.equipment.hasHealingPotion) {
+          hero.gold -= 25;
+          shop.goldStored += 25;
           hero.equipment.hasHealingPotion = true;
-          if (onFloatingText) onFloatingText('-35g Healing Elixir', hero.x, hero.y - 15, '#38bdf8');
-        } else if (hero.gold >= 30 && !hero.equipment.hasSpeedPotion) {
-          hero.gold -= 30;
-          shop.goldStored += 30;
+          audioManager.playPotionSound(hero.x, hero.y);
+          if (onFloatingText) onFloatingText('-25g Healing Potion', hero.x, hero.y - 15, '#38bdf8');
+        } else if (hasSpeed && hero.gold >= 60 && !hero.equipment.hasSpeedPotion) {
+          hero.gold -= 60;
+          shop.goldStored += 60;
           hero.equipment.hasSpeedPotion = true;
-          hero.speed += 8;
-          if (onFloatingText) onFloatingText('-30g Speed Draught', hero.x, hero.y - 15, '#fbbf24');
-        } else if (hero.gold >= 50 && !hero.equipment.hasAmulet) {
-          hero.gold -= 50;
-          shop.goldStored += 50;
+          hero.speed = Math.round(hero.speed * 1.2);
+          audioManager.playPotionSound(hero.x, hero.y);
+          if (onFloatingText) onFloatingText('-60g Speed Draught', hero.x, hero.y - 15, '#fbbf24');
+        } else if (hasAmulets && hero.gold >= 100 && !hero.equipment.hasAmulet) {
+          hero.gold -= 100;
+          shop.goldStored += 100;
           hero.equipment.hasAmulet = true;
-          hero.defense += 4;
-          if (onFloatingText) onFloatingText('-50g Warding Amulet', hero.x, hero.y - 15, '#c084fc');
+          hero.defense += 5;
+          audioManager.playCoinSound(hero.x, hero.y);
+          if (onFloatingText) onFloatingText('-100g Warding Amulet', hero.x, hero.y - 15, '#c084fc');
         }
       } else if (shop.type === 'blacksmith') {
-        // Upgrade weapon or armor
-        const nextWepTier = hero.equipment.weaponLevel + 1;
-        const wepCost = nextWepTier * 50;
-        const nextArmorTier = hero.equipment.armorLevel + 1;
-        const armorCost = nextArmorTier * 45;
+        // Upgrade weapon or armor based on researched blacksmith tier
+        const maxWepTier = shop.researchedUpgrades.includes('dragonforged') ? 3 : (shop.researchedUpgrades.includes('mithril_forging') ? 2 : (shop.researchedUpgrades.includes('iron_weapons') ? 1 : 0));
+        const maxArmorTier = shop.researchedUpgrades.includes('dragonforged') ? 3 : (shop.researchedUpgrades.includes('mithril_forging') ? 2 : (shop.researchedUpgrades.includes('steel_armor') ? 1 : 0));
 
-        if (hero.gold >= wepCost && hero.equipment.weaponLevel < 3) {
+        const nextWepTier = hero.equipment.weaponLevel + 1;
+        const wepCost = nextWepTier === 1 ? 50 : (nextWepTier === 2 ? 120 : 250);
+
+        const nextArmorTier = hero.equipment.armorLevel + 1;
+        const armorCost = nextArmorTier === 1 ? 50 : (nextArmorTier === 2 ? 120 : 250);
+
+        if (nextWepTier <= maxWepTier && hero.gold >= wepCost) {
           hero.gold -= wepCost;
           shop.goldStored += wepCost;
           hero.equipment.weaponLevel += 1;
           hero.attackPower += 5;
+          audioManager.playSwordClash(hero.x, hero.y);
           if (onFloatingText) onFloatingText(`-${wepCost}g Weapon Tier ${hero.equipment.weaponLevel}!`, hero.x, hero.y - 15, '#fbbf24');
-        } else if (hero.gold >= armorCost && hero.equipment.armorLevel < 3) {
+        } else if (nextArmorTier <= maxArmorTier && hero.gold >= armorCost) {
           hero.gold -= armorCost;
           shop.goldStored += armorCost;
           hero.equipment.armorLevel += 1;
           hero.defense += 4;
+          audioManager.playSwordClash(hero.x, hero.y);
           if (onFloatingText) onFloatingText(`-${armorCost}g Armor Tier ${hero.equipment.armorLevel}!`, hero.x, hero.y - 15, '#38bdf8');
         }
       } else if (shop.type === 'royal_inn') {
@@ -587,7 +666,7 @@ export class HeroAIManager {
       }
 
       hero.state = 'idle';
-      hero.stateTimer = 1.5;
+      hero.stateTimer = 4.0; // 4s cooldown before next shopping intent
       hero.currentThought = 'Finished shopping and gear preparation';
     }
   }
@@ -640,22 +719,44 @@ export class HeroAIManager {
 
     const dist = Math.hypot(flag.x - hero.x, flag.y - hero.y);
     if (dist > 30) {
+      // While traveling to flag, engage any monster directly blocking or attacking
+      const nearbyMonster = monsters.find(
+        m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < 130 && this.gridManager.isPixelVisible(m.x, m.y)
+      );
+      if (nearbyMonster) {
+        hero.state = 'attacking_target';
+        hero.targetEntityId = nearbyMonster.id;
+        hero.targetEntityType = 'monster';
+        hero.currentThought = `Engaging ${nearbyMonster.name}!`;
+        return;
+      }
+
       const speedMult = hero.traits.quirk === 'Gold Hungry' || hero.heroClass === 'rogue' ? 1.2 : 1.0;
       this.moveTowards(hero, flag.x, flag.y, delta, buildings, lairs, speedMult);
     } else {
       // Hero reached the flag!
       if (flag.type === 'attack') {
-        // If flag targets a monster or lair, switch to attack
-        const monster = monsters.find(m => m.id === flag.targetEntityId);
-        const lair = lairs.find(l => l.id === flag.targetEntityId);
+        const monster = monsters.find(m => m.id === flag.targetEntityId && m.hp > 0);
+        const lair = lairs.find(l => l.id === flag.targetEntityId && l.hp > 0);
         if (monster) {
           hero.state = 'attacking_target';
           hero.targetEntityId = monster.id;
           hero.targetEntityType = 'monster';
         } else if (lair) {
-          hero.state = 'attacking_target';
-          hero.targetEntityId = lair.id;
-          hero.targetEntityType = 'lair';
+          // If monsters are guarding the lair, engage monster first
+          const guardMonster = monsters.find(
+            m => m.hp > 0 && Math.hypot(m.x - flag.x, m.y - flag.y) < 180 && this.gridManager.isPixelVisible(m.x, m.y)
+          );
+          if (guardMonster) {
+            hero.state = 'attacking_target';
+            hero.targetEntityId = guardMonster.id;
+            hero.targetEntityType = 'monster';
+            hero.currentThought = `Engaging ${guardMonster.name}!`;
+          } else {
+            hero.state = 'attacking_target';
+            hero.targetEntityId = lair.id;
+            hero.targetEntityType = 'lair';
+          }
         }
       }
     }
@@ -683,18 +784,38 @@ export class HeroAIManager {
     let targetY = 0;
     let targetAlive = false;
 
+    // MONSTER THREAT OVERRIDE: If hero is targeting a building/lair and a monster is within combat range, switch to monster!
+    if (hero.targetEntityType === 'lair') {
+      const threatDist = hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' ? 200 : 160;
+      const threateningMonster = monsters.find(
+        m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < threatDist && this.gridManager.isPixelVisible(m.x, m.y)
+      );
+
+      if (threateningMonster) {
+        hero.targetEntityId = threateningMonster.id;
+        hero.targetEntityType = 'monster';
+        hero.currentThought = `Defending against ${threateningMonster.name}!`;
+      }
+    }
+
     if (hero.targetEntityType === 'monster') {
       const targetMonster = monsters.find(m => m.id === hero.targetEntityId);
-      if (targetMonster) {
+      if (targetMonster && targetMonster.hp > 0) {
         targetX = targetMonster.x;
         targetY = targetMonster.y;
         targetAlive = true;
       }
     } else if (hero.targetEntityType === 'lair') {
       const targetLair = lairs.find(l => l.id === hero.targetEntityId);
-      if (targetLair) {
-        targetX = (targetLair.x + targetLair.width / 2) * this.gridManager.tileSize;
-        targetY = (targetLair.y + targetLair.height / 2) * this.gridManager.tileSize;
+      if (targetLair && targetLair.hp > 0) {
+        // Calculate nearest point on exterior perimeter of the lair!
+        const halfW = (targetLair.width * this.gridManager.tileSize) / 2;
+        const halfH = (targetLair.height * this.gridManager.tileSize) / 2;
+        const centerLx = (targetLair.x + targetLair.width / 2) * this.gridManager.tileSize;
+        const centerLy = (targetLair.y + targetLair.height / 2) * this.gridManager.tileSize;
+
+        targetX = Math.max(centerLx - halfW, Math.min(centerLx + halfW, hero.x));
+        targetY = Math.max(centerLy - halfH, Math.min(centerLy + halfH, hero.y));
         targetAlive = true;
       }
     }
@@ -739,6 +860,7 @@ export class HeroAIManager {
               ownerHeroId: hero.id,
               damage: totalDamage
             });
+            audioManager.playArrowShoot(hero.x, hero.y);
           }
         } else if (hero.heroClass === 'wizard') {
           if (onSpawnProjectile) {
@@ -752,8 +874,9 @@ export class HeroAIManager {
               ownerHeroId: hero.id,
               damage: totalDamage
             });
+            audioManager.playSpellCast(hero.x, hero.y);
           }
-        } else if (hero.heroClass === 'cleric' && hero.targetEntityType === 'monster') {
+        } else if (hero.heroClass === 'cleric') {
           if (onSpawnProjectile) {
             onSpawnProjectile({
               type: 'holy_bolt',
@@ -765,14 +888,17 @@ export class HeroAIManager {
               ownerHeroId: hero.id,
               damage: totalDamage
             });
+            audioManager.playSpellCast(hero.x, hero.y);
           }
         } else {
           // Melee strike directly applied
+          audioManager.playSwordSwing(hero.x, hero.y);
           if (hero.targetEntityType === 'monster') {
             const m = monsters.find(mon => mon.id === hero.targetEntityId);
             if (m) {
               const actualDamage = Math.max(1, totalDamage - m.defense);
               m.hp -= actualDamage;
+              audioManager.playSwordClash(m.x, m.y);
               // Award hit combat XP
               const hitXp = Math.max(3, Math.round(actualDamage * 0.4));
               hero.xp += hitXp;
@@ -785,6 +911,7 @@ export class HeroAIManager {
             const l = lairs.find(lair => lair.id === hero.targetEntityId);
             if (l) {
               l.hp -= totalDamage;
+              audioManager.playSwordClash(targetX, targetY);
               hero.xp += Math.max(2, Math.round(totalDamage * 0.25));
               if (onFloatingText) onFloatingText(`-${totalDamage}`, targetX, targetY - 12, '#fbbf24');
             }
@@ -836,6 +963,7 @@ export class HeroAIManager {
     hero.mp = hero.maxMp;
     hero.attackPower += def.attackPerLevel;
     hero.defense += def.defensePerLevel;
+    audioManager.playVoice(`${hero.heroClass}_levelup`, hero.x, hero.y);
 
     // Upgrade Title
     if (hero.level >= 10) hero.title = `Grand Champion ${hero.name}`;

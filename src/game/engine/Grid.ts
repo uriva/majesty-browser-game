@@ -8,6 +8,7 @@ export class GridManager {
   public grid: number[][]; // 0: grass, 1: dirt_road, 2: water, 3: trees, 4: rocks
   public explored: boolean[][];
   public visible: boolean[][];
+  public roadVersion: number = 0;
 
   constructor(width: number = MAP_CONFIG.DEFAULT_WIDTH, height: number = MAP_CONFIG.DEFAULT_HEIGHT, tileSize: number = MAP_CONFIG.TILE_SIZE) {
     this.width = width;
@@ -40,11 +41,53 @@ export class GridManager {
       this.visible.push(visibleRow);
     }
 
-    // Place natural features (forest clusters, ponds, rock formations)
+    // Place natural features (forest clusters, rivers, bridges, rock formations)
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
 
-    // Forest clusters (away from center)
+    // 1. Natural Winding Rivers with Generous Stone Arch Bridges
+    // Western Countryside River
+    const bridgeY1 = Math.floor(this.height * 0.28);
+    const bridgeY2 = Math.floor(this.height * 0.72);
+    const westBridgeRows = [bridgeY1, bridgeY1 + 1, bridgeY2, bridgeY2 + 1];
+
+    for (let y = 0; y < this.height; y++) {
+      const rx = Math.floor(centerX - 16 + Math.sin(y * 0.13) * 5 + Math.cos(y * 0.05) * 3);
+      const isBridge = westBridgeRows.includes(y);
+      for (let w = 0; w < 2; w++) {
+        const tx = rx + w;
+        if (this.isValid(tx, y)) {
+          this.grid[y][tx] = isBridge ? 5 : 2; // 5: bridge, 2: water
+        }
+      }
+
+      // Pave bridge approach roads on both riverbanks
+      if (isBridge) {
+        if (this.isValid(rx - 1, y)) this.grid[y][rx - 1] = 1;
+        if (this.isValid(rx + 2, y)) this.grid[y][rx + 2] = 1;
+      }
+    }
+
+    // Eastern Mountain Brook
+    const bridgeY3 = Math.floor(this.height * 0.48);
+    const eastBridgeRows = [bridgeY3, bridgeY3 + 1];
+    for (let y = 0; y < this.height; y++) {
+      const rx = Math.floor(centerX + 19 + Math.sin(y * 0.15 + 1.2) * 4);
+      const isBridge = eastBridgeRows.includes(y);
+      for (let w = 0; w < 2; w++) {
+        const tx = rx + w;
+        if (this.isValid(tx, y)) {
+          this.grid[y][tx] = isBridge ? 5 : 2;
+        }
+      }
+
+      if (isBridge) {
+        if (this.isValid(rx - 1, y)) this.grid[y][rx - 1] = 1;
+        if (this.isValid(rx + 2, y)) this.grid[y][rx + 2] = 1;
+      }
+    }
+
+    // Forest clusters (away from center and rivers)
     const numForests = 14;
     for (let f = 0; f < numForests; f++) {
       const fx = Math.floor(Math.random() * (this.width - 12)) + 6;
@@ -58,7 +101,8 @@ export class GridManager {
           const gx = fx + dx;
           const gy = fy + dy;
           if (this.isValid(gx, gy) && Math.hypot(dx, dy) <= radius) {
-            if (Math.random() > 0.2) {
+            // Do not overwrite rivers or bridges
+            if (this.grid[gy][gx] === 0 && Math.random() > 0.2) {
               this.grid[gy][gx] = 3; // trees
             }
           }
@@ -67,11 +111,11 @@ export class GridManager {
     }
 
     // Ponds / lakes (1 or 2 small natural lakes)
-    const numPonds = 3;
+    const numPonds = 2;
     for (let p = 0; p < numPonds; p++) {
       const px = Math.floor(Math.random() * (this.width - 16)) + 8;
       const py = Math.floor(Math.random() * (this.height - 16)) + 8;
-      if (Math.hypot(px - centerX, py - centerY) < 14) continue;
+      if (Math.hypot(px - centerX, py - centerY) < 15) continue;
 
       const pRadius = 2;
       for (let dy = -pRadius; dy <= pRadius; dy++) {
@@ -79,22 +123,24 @@ export class GridManager {
           const gx = px + dx;
           const gy = py + dy;
           if (this.isValid(gx, gy) && Math.hypot(dx, dy) <= pRadius) {
-            this.grid[gy][gx] = 2; // water
+            if (this.grid[gy][gx] === 0 || this.grid[gy][gx] === 3) {
+              this.grid[gy][gx] = 2; // water
+            }
           }
         }
       }
     }
 
     // Rock formations
-    const numRocks = 8;
+    const numRocks = 7;
     for (let r = 0; r < numRocks; r++) {
       const rx = Math.floor(Math.random() * (this.width - 10)) + 5;
       const ry = Math.floor(Math.random() * (this.height - 10)) + 5;
-      if (Math.hypot(rx - centerX, ry - centerY) < 10) continue;
+      if (Math.hypot(rx - centerX, ry - centerY) < 12) continue;
 
       for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {
-          if (this.isValid(rx + dx, ry + dy)) {
+          if (this.isValid(rx + dx, ry + dy) && this.grid[ry + dy][rx + dx] === 0) {
             this.grid[ry + dy][rx + dx] = 4; // rock
           }
         }
@@ -122,6 +168,68 @@ export class GridManager {
 
     // Reveal initial town center
     this.revealArea(centerX, centerY, 12);
+    this.roadVersion = 1;
+  }
+
+  public paveRoadToBuilding(building: Building) {
+    const centerX = Math.floor(this.width / 2);
+    const centerY = Math.floor(this.height / 2);
+
+    // Entrance point (South side of the building)
+    const entranceX = Math.floor(building.x + building.width / 2);
+    const entranceY = Math.min(this.height - 2, building.y + building.height);
+
+    // Pave 1-tile entrance apron
+    for (let dx = -1; dx <= 1; dx++) {
+      const ax = entranceX + dx;
+      if (this.isValid(ax, entranceY) && (this.grid[entranceY][ax] === 0 || this.grid[entranceY][ax] === 3)) {
+        this.grid[entranceY][ax] = 1;
+      }
+    }
+
+    // Find closest existing road tile (or palace crossroads)
+    let bestRoadTile: Position | null = null;
+    let minRoadDist = Infinity;
+
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (this.grid[y][x] === 1) {
+          // Skip if inside this building's perimeter
+          if (x >= building.x && x < building.x + building.width && y >= building.y && y < building.y + building.height) continue;
+          const d = Math.hypot(x - entranceX, y - entranceY);
+          if (d < minRoadDist && d > 1) {
+            minRoadDist = d;
+            bestRoadTile = { x, y };
+          }
+        }
+      }
+    }
+
+    const targetRoad = bestRoadTile || { x: centerX, y: centerY };
+
+    // Pave road connecting entrance to target road
+    let curX = entranceX;
+    let curY = entranceY;
+
+    let steps = 0;
+    while ((curX !== targetRoad.x || curY !== targetRoad.y) && steps < 60) {
+      steps++;
+      if (this.grid[curY][curX] === 0 || this.grid[curY][curX] === 3) {
+        this.grid[curY][curX] = 1; // Pave as brick road
+      }
+
+      if (Math.abs(targetRoad.x - curX) > Math.abs(targetRoad.y - curY)) {
+        curX += targetRoad.x > curX ? 1 : -1;
+      } else {
+        curY += targetRoad.y > curY ? 1 : -1;
+      }
+
+      if (!this.isValid(curX, curY) || this.grid[curY][curX] === 2 || this.grid[curY][curX] === 4) {
+        break;
+      }
+    }
+
+    this.roadVersion++;
   }
 
   public isValid(x: number, y: number): boolean {
@@ -139,18 +247,42 @@ export class GridManager {
     py: number,
     buildings: Building[],
     lairs: MonsterLair[],
-    excludeBuildingId?: string
+    excludeBuildingId?: string,
+    unitRadius: number = 7
   ): boolean {
-    const tx = Math.floor(px / this.tileSize);
-    const ty = Math.floor(py / this.tileSize);
+    const centerTx = Math.floor(px / this.tileSize);
+    const centerTy = Math.floor(py / this.tileSize);
+    if (!this.isValid(centerTx, centerTy)) return false;
+    const centerTile = this.grid[centerTy][centerTx];
 
-    // 1. Terrain bounds & water/rock checks
-    if (!this.isValid(tx, ty)) return false;
-    const tile = this.grid[ty][tx];
-    if (tile === 2 || tile === 4) return false;
+    // 1. Terrain & Water/Rock checks
+    // If unit center is on a stone bridge (tile 5), it is safely crossing the river roadway
+    const isOnBridge = centerTile === 5;
+
+    if (!isOnBridge) {
+      if (centerTile === 2 || centerTile === 4) return false;
+
+      // Test cardinal perimeter sample points of unit body for water & rock collision
+      const r = Math.max(2, unitRadius - 1.5);
+      const samplePoints = [
+        { x: px - r, y: py },
+        { x: px + r, y: py },
+        { x: px, y: py - r },
+        { x: px, y: py + r }
+      ];
+
+      for (const pt of samplePoints) {
+        const tx = Math.floor(pt.x / this.tileSize);
+        const ty = Math.floor(pt.y / this.tileSize);
+        if (!this.isValid(tx, ty)) return false;
+        const tile = this.grid[ty][tx];
+        // If a perimeter sample is on a bridge, that point is safe
+        if (tile === 5) continue;
+        if (tile === 2 || tile === 4) return false;
+      }
+    }
 
     const ts = this.tileSize;
-    const unitRadius = 5;
 
     // 2. Check solid buildings (Marketplace & Statue are open plazas heroes can walk through)
     for (const b of buildings) {
@@ -163,10 +295,10 @@ export class GridManager {
       const bh = b.height * ts;
 
       if (
-        px + unitRadius > bx + 2 &&
-        px - unitRadius < bx + bw - 2 &&
-        py + unitRadius > by + 2 &&
-        py - unitRadius < by + bh - 2
+        px + unitRadius > bx &&
+        px - unitRadius < bx + bw &&
+        py + unitRadius > by &&
+        py - unitRadius < by + bh
       ) {
         return false;
       }
@@ -181,16 +313,80 @@ export class GridManager {
       const lh = l.height * ts;
 
       if (
-        px + unitRadius > lx + 2 &&
-        px - unitRadius < lx + lw - 2 &&
-        py + unitRadius > ly + 2 &&
-        py - unitRadius < ly + lh - 2
+        px + unitRadius > lx &&
+        px - unitRadius < lx + lw &&
+        py + unitRadius > ly &&
+        py - unitRadius < ly + lh
       ) {
         return false;
       }
     }
 
     return true;
+  }
+
+  public resolveCollision(
+    entity: { x: number; y: number },
+    buildings: Building[],
+    lairs: MonsterLair[],
+    excludeBuildingId?: string,
+    unitRadius: number = 7
+  ) {
+    const ts = this.tileSize;
+    for (const b of buildings) {
+      if (b.id === excludeBuildingId || b.hp <= 0) continue;
+      if (b.type === 'marketplace' || b.type === 'statue_king') continue;
+
+      const bx = b.x * ts;
+      const by = b.y * ts;
+      const bw = b.width * ts;
+      const bh = b.height * ts;
+
+      if (
+        entity.x + unitRadius > bx &&
+        entity.x - unitRadius < bx + bw &&
+        entity.y + unitRadius > by &&
+        entity.y - unitRadius < by + bh
+      ) {
+        // Overlapping building! Push out along shortest penetration axis
+        const leftDist = entity.x - (bx - unitRadius);
+        const rightDist = (bx + bw + unitRadius) - entity.x;
+        const topDist = entity.y - (by - unitRadius);
+        const bottomDist = (by + bh + unitRadius) - entity.y;
+
+        const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
+        if (minDist === leftDist) entity.x = bx - unitRadius - 0.5;
+        else if (minDist === rightDist) entity.x = bx + bw + unitRadius + 0.5;
+        else if (minDist === topDist) entity.y = by - unitRadius - 0.5;
+        else if (minDist === bottomDist) entity.y = by + bh + unitRadius + 0.5;
+      }
+    }
+
+    for (const l of lairs) {
+      if (l.id === excludeBuildingId || l.hp <= 0) continue;
+      const lx = l.x * ts;
+      const ly = l.y * ts;
+      const lw = l.width * ts;
+      const lh = l.height * ts;
+
+      if (
+        entity.x + unitRadius > lx &&
+        entity.x - unitRadius < lx + lw &&
+        entity.y + unitRadius > ly &&
+        entity.y - unitRadius < ly + lh
+      ) {
+        const leftDist = entity.x - (lx - unitRadius);
+        const rightDist = (lx + lw + unitRadius) - entity.x;
+        const topDist = entity.y - (ly - unitRadius);
+        const bottomDist = (ly + lh + unitRadius) - entity.y;
+
+        const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
+        if (minDist === leftDist) entity.x = lx - unitRadius - 0.5;
+        else if (minDist === rightDist) entity.x = lx + lw + unitRadius + 0.5;
+        else if (minDist === topDist) entity.y = ly - unitRadius - 0.5;
+        else if (minDist === bottomDist) entity.y = ly + lh + unitRadius + 0.5;
+      }
+    }
   }
 
   public isTileBlocked(
@@ -229,12 +425,14 @@ export class GridManager {
     endY: number,
     buildings: Building[],
     lairs: MonsterLair[],
-    excludeBuildingId?: string
+    excludeBuildingId?: string,
+    unitRadius: number = 7
   ): boolean {
     const dist = Math.hypot(endX - startX, endY - startY);
     if (dist < 4) return true;
 
-    const step = 8;
+    // High resolution sampling to prevent corner clipping
+    const step = 4;
     const steps = Math.ceil(dist / step);
     const dx = (endX - startX) / steps;
     const dy = (endY - startY) / steps;
@@ -242,7 +440,7 @@ export class GridManager {
     for (let i = 1; i < steps; i++) {
       const cx = startX + dx * i;
       const cy = startY + dy * i;
-      if (!this.isWalkablePosition(cx, cy, buildings, lairs, excludeBuildingId)) {
+      if (!this.isWalkablePosition(cx, cy, buildings, lairs, excludeBuildingId, unitRadius)) {
         return false;
       }
     }
@@ -470,23 +668,33 @@ export class GridManager {
   ): boolean {
     const distToTarget = Math.hypot(targetX - entity.x, targetY - entity.y);
 
-    if (distToTarget < 4) {
+    if (distToTarget < 6) {
       entity.path = undefined;
       entity.pathTargetKey = undefined;
       return true;
     }
 
-    // 1. Direct line of sight optimization: if path is clear, move directly without A* re-pathing jitter
-    if (this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId)) {
+    // 1. Direct line of sight optimization: if path is clear with full 7px buffer, move directly
+    if (this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId, 7)) {
       entity.path = undefined;
       entity.pathTargetKey = undefined;
 
       const moveDist = Math.min(distToTarget, entity.speed * speedMult * delta);
       const dx = targetX - entity.x;
       const dy = targetY - entity.y;
+      const vx = (dx / distToTarget) * moveDist;
+      const vy = (dy / distToTarget) * moveDist;
 
-      entity.x += (dx / distToTarget) * moveDist;
-      entity.y += (dy / distToTarget) * moveDist;
+      if (this.isWalkablePosition(entity.x + vx, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
+        entity.x += vx;
+        entity.y += vy;
+      } else if (this.isWalkablePosition(entity.x + vx, entity.y, buildings, lairs, targetBuildingId, 7)) {
+        entity.x += vx;
+      } else if (this.isWalkablePosition(entity.x, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
+        entity.y += vy;
+      }
+
+      this.resolveCollision(entity, buildings, lairs, targetBuildingId, 7);
 
       if (Math.abs(dx) > Math.abs(dy)) {
         entity.direction = dx > 0 ? 'right' : 'left';
@@ -494,7 +702,7 @@ export class GridManager {
         entity.direction = dy > 0 ? 'down' : 'up';
       }
 
-      return distToTarget <= moveDist + 4;
+      return Math.hypot(targetX - entity.x, targetY - entity.y) < 6;
     }
 
     // 2. Obstacle pathfinding: only recompute A* path if target moved significantly (> 16px) or path is empty
@@ -519,7 +727,7 @@ export class GridManager {
       const dy = wp.y - entity.y;
       const dist = Math.hypot(dx, dy);
 
-      if (dist <= moveBudget) {
+      if (dist <= Math.max(6, moveBudget)) {
         // Reached this waypoint, pop and continue to next
         entity.x = wp.x;
         entity.y = wp.y;
@@ -532,11 +740,21 @@ export class GridManager {
           entity.direction = dy > 0 ? 'down' : 'up';
         }
       } else {
-        // Move partially towards waypoint
+        // Move partially towards waypoint with corner collision safety
         const vx = (dx / dist) * moveBudget;
         const vy = (dy / dist) * moveBudget;
-        entity.x += vx;
-        entity.y += vy;
+
+        if (this.isWalkablePosition(entity.x + vx, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
+          entity.x += vx;
+          entity.y += vy;
+        } else if (this.isWalkablePosition(entity.x + vx, entity.y, buildings, lairs, targetBuildingId, 7)) {
+          entity.x += vx;
+        } else if (this.isWalkablePosition(entity.x, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
+          entity.y += vy;
+        } else {
+          // Blocked at corner, advance to next waypoint or recalculate
+          entity.path.shift();
+        }
         moveBudget = 0;
 
         if (Math.abs(dx) > Math.abs(dy)) {
@@ -547,6 +765,7 @@ export class GridManager {
       }
     }
 
+    this.resolveCollision(entity, buildings, lairs, targetBuildingId, 7);
     return Math.hypot(targetX - entity.x, targetY - entity.y) < 6;
   }
 
@@ -563,10 +782,10 @@ export class GridManager {
       return false;
     }
 
-    // Check terrain (cannot place on water or rocks)
+    // Check terrain (cannot place on water, rocks, or bridges)
     for (let y = tileY; y < tileY + height; y++) {
       for (let x = tileX; x < tileX + width; x++) {
-        if (this.grid[y][x] === 2 || this.grid[y][x] === 4) {
+        if (this.grid[y][x] === 2 || this.grid[y][x] === 4 || this.grid[y][x] === 5) {
           return false;
         }
       }

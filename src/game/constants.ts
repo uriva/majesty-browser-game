@@ -19,6 +19,7 @@ export interface BuildingDef {
   width: number;
   height: number;
   description: string;
+  constructionTime?: number;
   recruits?: HeroClass[];
   heroRecruitCost?: Record<string, number>;
   maxHeroSlots?: number;
@@ -30,6 +31,7 @@ export interface BuildingDef {
     icon: string;
     requiredHeroes?: number;
     requiredBuilding?: BuildingType;
+    researchTime?: number;
   }[];
   requiresPalaceLevel?: number;
   requiresBuilding?: BuildingType;
@@ -48,11 +50,12 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 4,
     height: 4,
     description: 'The seat of your sovereign realm. If it falls, your kingdom is lost.',
+    constructionTime: 0,
     recruits: [],
     isDefense: true,
     attackPower: 25,
     attackRange: 160,
-    attackCooldown: 1.2,
+    attackCooldown: 1.8,
     upgrades: [
       {
         id: 'palace_lvl2',
@@ -61,6 +64,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
         description: 'Increases Palace HP and unlocks Tier 2 guilds, Wizard Tower & Blacksmith. Requires: 4+ Active Heroes & Marketplace.',
         requiredHeroes: 4,
         requiredBuilding: 'marketplace',
+        researchTime: 16.0,
         icon: 'Castle'
       },
       {
@@ -70,6 +74,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
         description: 'Max palace upgrades, unlocks Dwarven Settlement, Sovereign Statue & Grand Magic. Requires: 8+ Active Heroes & Blacksmith.',
         requiredHeroes: 8,
         requiredBuilding: 'blacksmith',
+        researchTime: 24.0,
         icon: 'Crown'
       }
     ]
@@ -82,12 +87,13 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Trains stalwart warriors who brave the battlefield and protect the realm.',
+    constructionTime: 22.0,
     recruits: ['warrior'],
     heroRecruitCost: { warrior: 150 },
     maxHeroSlots: 4,
     upgrades: [
-      { id: 'iron_resolve', name: 'Iron Resolve', cost: 250, description: 'Warriors gain +20% HP and 10% more bravery.', icon: 'Shield' },
-      { id: 'shield_bash', name: 'Shield Bash Technique', cost: 400, description: 'Warriors can stun enemies for 1.5s.', icon: 'Swords' }
+      { id: 'iron_resolve', name: 'Iron Resolve', cost: 250, researchTime: 8.0, description: 'Warriors gain +20% HP and 10% more bravery.', icon: 'Shield' },
+      { id: 'shield_bash', name: 'Shield Bash Technique', cost: 400, researchTime: 12.0, description: 'Warriors can stun enemies for 1.5s.', icon: 'Swords' }
     ]
   },
   ranger_guild: {
@@ -98,12 +104,13 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Recruits keen-eyed bowmen who naturally explore the Fog of War and snipe from distance.',
+    constructionTime: 18.0,
     recruits: ['ranger'],
     heroRecruitCost: { ranger: 120 },
     maxHeroSlots: 4,
     upgrades: [
-      { id: 'eagle_eye', name: 'Eagle Eye Scouting', cost: 200, description: 'Rangers gain +30% sight radius and reveal map faster.', icon: 'Eye' },
-      { id: 'piercing_arrows', name: 'Piercing Arrows', cost: 350, description: 'Ranger attacks penetrate 30% enemy armor.', icon: 'Target' }
+      { id: 'eagle_eye', name: 'Eagle Eye Scouting', cost: 200, researchTime: 7.0, description: 'Rangers gain +30% sight radius and reveal map faster.', icon: 'Eye' },
+      { id: 'piercing_arrows', name: 'Piercing Arrows', cost: 350, researchTime: 10.0, description: 'Ranger attacks penetrate 30% enemy armor.', icon: 'Target' }
     ]
   },
   rogue_guild: {
@@ -114,12 +121,13 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Recruits cunning rogues who jump on high bounties, plunder ruins, and sneak attack.',
+    constructionTime: 16.0,
     recruits: ['rogue'],
     heroRecruitCost: { rogue: 100 },
     maxHeroSlots: 4,
     upgrades: [
-      { id: 'poison_daggers', name: 'Poison Blades', cost: 200, description: 'Rogue attacks apply damage over time.', icon: 'Skull' },
-      { id: 'bounty_greed', name: 'Bounty Rush', cost: 300, description: 'Rogues gain +30% movement speed when pursuing flags.', icon: 'Coins' }
+      { id: 'poison_daggers', name: 'Poison Blades', cost: 200, researchTime: 8.0, description: 'Rogue attacks apply damage over time.', icon: 'Skull' },
+      { id: 'bounty_greed', name: 'Bounty Rush', cost: 300, researchTime: 10.0, description: 'Rogues gain +30% movement speed when pursuing flags.', icon: 'Coins' }
     ]
   },
   wizard_tower: {
@@ -130,13 +138,14 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Recruits mystical spellcasters wielding destructive fireballs and arcana. Requires Palace Level 2.',
+    constructionTime: 30.0,
     recruits: ['wizard'],
     heroRecruitCost: { wizard: 220 },
     maxHeroSlots: 3,
     requiresPalaceLevel: 2,
     upgrades: [
-      { id: 'arcane_library', name: 'Arcane Library', cost: 350, description: 'Wizards learn Fireball spell for AOE damage.', icon: 'Flame' },
-      { id: 'teleportation', name: 'Emergency Blink', cost: 500, description: 'Wizards automatically teleport to safety when near death.', icon: 'Sparkles' }
+      { id: 'arcane_library', name: 'Arcane Library', cost: 350, researchTime: 12.0, description: 'Wizards learn Fireball spell for AOE damage.', icon: 'Flame' },
+      { id: 'teleportation', name: 'Emergency Blink', cost: 500, researchTime: 15.0, description: 'Wizards automatically teleport to safety when near death.', icon: 'Sparkles' }
     ]
   },
   cleric_temple: {
@@ -147,13 +156,14 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Trains holy Clerics who heal wounded companions and banish undead. Requires Palace Level 2.',
+    constructionTime: 26.0,
     recruits: ['cleric'],
     heroRecruitCost: { cleric: 180 },
     maxHeroSlots: 4,
     requiresPalaceLevel: 2,
     upgrades: [
-      { id: 'holy_blessing', name: 'Holy Radiance', cost: 300, description: 'Cleric healing aura is 40% stronger and hits nearby allies.', icon: 'Heart' },
-      { id: 'smite_undead', name: 'Divine Smite', cost: 400, description: 'Clerics deal double damage against skeletons, zombies & wraiths.', icon: 'Sun' }
+      { id: 'holy_blessing', name: 'Holy Radiance', cost: 300, researchTime: 10.0, description: 'Cleric healing aura is 40% stronger and hits nearby allies.', icon: 'Heart' },
+      { id: 'smite_undead', name: 'Divine Smite', cost: 400, researchTime: 12.0, description: 'Clerics deal double damage against skeletons, zombies & wraiths.', icon: 'Sun' }
     ]
   },
   dwarf_settlement: {
@@ -164,13 +174,14 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Recruits tough Dwarves with high siege damage and building repair prowess. Requires Palace Level 3 & Blacksmith.',
+    constructionTime: 28.0,
     recruits: ['dwarf'],
     heroRecruitCost: { dwarf: 200 },
     maxHeroSlots: 3,
     requiresPalaceLevel: 3,
     requiresBuilding: 'blacksmith',
     upgrades: [
-      { id: 'dwarf_stonecraft', name: 'Stonecraft Reinforcement', cost: 350, description: 'All kingdom buildings gain +25% Max HP.', icon: 'Hammer' }
+      { id: 'dwarf_stonecraft', name: 'Stonecraft Reinforcement', cost: 350, researchTime: 12.0, description: 'All kingdom buildings gain +25% Max HP.', icon: 'Hammer' }
     ]
   },
   marketplace: {
@@ -181,10 +192,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Sells healing elixirs and speed charms to heroes. A primary source of kingdom tax revenue.',
+    constructionTime: 22.0,
     upgrades: [
-      { id: 'healing_elixirs', name: 'Healing Potions Stock', cost: 150, description: 'Heroes can buy Healing Potions to survive in the wild.', icon: 'Cross' },
-      { id: 'speed_draughts', name: 'Speed Draughts Stock', cost: 250, description: 'Heroes can buy Speed Potions to rush toward objectives.', icon: 'Zap' },
-      { id: 'warding_amulets', name: 'Warding Amulets', cost: 400, description: 'Heroes can buy Magic Amulets (+10 Defense).', icon: 'ShieldAlert' }
+      { id: 'healing_elixirs', name: 'Healing Potions Stock', cost: 150, researchTime: 8.0, description: 'Heroes can buy Healing Potions (25g) to survive in the wild.', icon: 'Cross' },
+      { id: 'speed_draughts', name: 'Speed Draughts Stock', cost: 250, researchTime: 9.0, description: 'Heroes can buy Speed Potions (60g) to rush toward objectives.', icon: 'Zap' },
+      { id: 'warding_amulets', name: 'Warding Amulets', cost: 400, researchTime: 14.0, description: 'Heroes can buy Magic Amulets (+10 Defense).', icon: 'ShieldAlert' }
     ]
   },
   blacksmith: {
@@ -195,13 +207,14 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Forges upgraded weapons and armor. Heroes spend their bounty earnings here. Requires Palace Level 2 & Marketplace.',
+    constructionTime: 24.0,
     requiresPalaceLevel: 2,
     requiresBuilding: 'marketplace',
     upgrades: [
-      { id: 'iron_weapons', name: 'Iron Weapons (Tier 1)', cost: 150, description: 'Heroes can purchase Iron weapons (+5 ATK).', icon: 'Sword' },
-      { id: 'steel_armor', name: 'Steel Armor (Tier 1)', cost: 200, description: 'Heroes can purchase Steel armor (+4 DEF).', icon: 'Shield' },
-      { id: 'mithril_forging', name: 'Mithril Arms (Tier 2)', cost: 400, description: 'Unlocks Mithril tier gear (+14 ATK, +10 DEF).', icon: 'Sparkles' },
-      { id: 'dragonforged', name: 'Dragonforged Gear (Tier 3)', cost: 800, description: 'Masterwork tier (+25 ATK, +18 DEF).', icon: 'Flame' }
+      { id: 'iron_weapons', name: 'Iron Weapons (Tier 1)', cost: 150, researchTime: 8.0, description: 'Heroes can purchase Iron weapons (+5 ATK).', icon: 'Sword' },
+      { id: 'steel_armor', name: 'Steel Armor (Tier 1)', cost: 200, researchTime: 9.0, description: 'Heroes can purchase Steel armor (+4 DEF).', icon: 'Shield' },
+      { id: 'mithril_forging', name: 'Mithril Arms (Tier 2)', cost: 400, researchTime: 14.0, description: 'Unlocks Mithril tier gear (+14 ATK, +10 DEF).', icon: 'Sparkles' },
+      { id: 'dragonforged', name: 'Dragonforged Gear (Tier 3)', cost: 800, researchTime: 20.0, description: 'Masterwork tier (+25 ATK, +18 DEF).', icon: 'Flame' }
     ]
   },
   guard_tower: {
@@ -212,12 +225,13 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 2,
     height: 2,
     description: 'Automated arrow tower that attacks passing monsters and provides area vision.',
+    constructionTime: 15.0,
     isDefense: true,
     attackPower: 18,
     attackRange: 150,
-    attackCooldown: 1.0,
+    attackCooldown: 1.5,
     upgrades: [
-      { id: 'heavy_ballista', name: 'Heavy Ballista', cost: 200, description: 'Increases Tower range by 30% and damage to 30.', icon: 'Crosshair' }
+      { id: 'heavy_ballista', name: 'Heavy Ballista', cost: 200, researchTime: 8.0, description: 'Increases Tower range by 30% and damage to 30.', icon: 'Crosshair' }
     ]
   },
   royal_inn: {
@@ -228,10 +242,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 3,
     height: 3,
     description: 'Heroes rest, party, and recover health/mana. Generates continuous tavern revenue. Requires Palace Level 2 & Marketplace.',
+    constructionTime: 20.0,
     requiresPalaceLevel: 2,
     requiresBuilding: 'marketplace',
     upgrades: [
-      { id: 'fine_ales', name: 'Dwarven Stout & Spirits', cost: 180, description: 'Resting heroes recover HP 50% faster and gain temporary Morale Boost.', icon: 'Beer' }
+      { id: 'fine_ales', name: 'Dwarven Stout & Spirits', cost: 180, researchTime: 8.0, description: 'Resting heroes recover HP 50% faster and gain temporary Morale Boost.', icon: 'Beer' }
     ]
   },
   statue_king: {
@@ -242,6 +257,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     width: 2,
     height: 2,
     description: 'Inspires your subjects. Heroes within vicinity gain +15% Bravery and +10% Attack. Requires Palace Level 3.',
+    constructionTime: 25.0,
     requiresPalaceLevel: 3,
     upgrades: []
   },
@@ -252,7 +268,8 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 280,
     width: 2,
     height: 2,
-    description: 'Home of peaceful kingdom commoners. Sprouts naturally as your town thrives, paying periodic land rent to your Tax Collectors.',
+    description: 'Home for kingdom commoners. Increases peasant builder limit and generates periodic land rent.',
+    constructionTime: 16.0,
     upgrades: []
   }
 };
@@ -291,9 +308,9 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     attackPerLevel: 3.5,
     baseDefense: 6,
     defensePerLevel: 1.8,
-    speed: 55,
+    speed: 30,
     attackRange: 28,
-    attackCooldown: 1.1,
+    attackCooldown: 1.5,
     trainingTime: 5.5,
     baseBravery: 80,
     baseGreed: 50,
@@ -313,9 +330,9 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     attackPerLevel: 3.0,
     baseDefense: 3,
     defensePerLevel: 1.0,
-    speed: 70,
+    speed: 36,
     attackRange: 130,
-    attackCooldown: 1.2,
+    attackCooldown: 1.6,
     trainingTime: 5.0,
     baseBravery: 55,
     baseGreed: 60,
@@ -335,9 +352,9 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     attackPerLevel: 4.0,
     baseDefense: 2,
     defensePerLevel: 0.8,
-    speed: 75,
+    speed: 38,
     attackRange: 26,
-    attackCooldown: 0.8,
+    attackCooldown: 1.2,
     trainingTime: 4.0,
     baseBravery: 40,
     baseGreed: 95,
@@ -357,9 +374,9 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     attackPerLevel: 5.5,
     baseDefense: 1,
     defensePerLevel: 0.5,
-    speed: 48,
+    speed: 26,
     attackRange: 140,
-    attackCooldown: 1.5,
+    attackCooldown: 2.0,
     trainingTime: 7.0,
     baseBravery: 35,
     baseGreed: 45,
@@ -379,9 +396,9 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     attackPerLevel: 2.5,
     baseDefense: 5,
     defensePerLevel: 1.4,
-    speed: 52,
+    speed: 28,
     attackRange: 32,
-    attackCooldown: 1.3,
+    attackCooldown: 1.7,
     trainingTime: 6.0,
     baseBravery: 70,
     baseGreed: 30,
@@ -401,9 +418,9 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     attackPerLevel: 4.0,
     baseDefense: 9,
     defensePerLevel: 2.2,
-    speed: 42,
+    speed: 24,
     attackRange: 26,
-    attackCooldown: 1.4,
+    attackCooldown: 1.8,
     trainingTime: 6.5,
     baseBravery: 90,
     baseGreed: 70,
@@ -423,9 +440,9 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     attackPerLevel: 3.2,
     baseDefense: 2,
     defensePerLevel: 0.9,
-    speed: 80,
+    speed: 40,
     attackRange: 135,
-    attackCooldown: 0.9,
+    attackCooldown: 1.3,
     trainingTime: 5.0,
     baseBravery: 50,
     baseGreed: 65,
@@ -458,11 +475,11 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 35,
     attackPower: 6,
     defense: 0,
-    speed: 60,
+    speed: 32,
     attackRange: 20,
-    attackCooldown: 1.0,
+    attackCooldown: 1.4,
     xpReward: 20,
-    goldBountyReward: 15,
+    goldBountyReward: 0,
     color: '#78716c'
   },
   skeleton: {
@@ -470,11 +487,11 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 65,
     attackPower: 12,
     defense: 2,
-    speed: 45,
+    speed: 26,
     attackRange: 24,
-    attackCooldown: 1.2,
+    attackCooldown: 1.6,
     xpReward: 35,
-    goldBountyReward: 25,
+    goldBountyReward: 0,
     color: '#e7e5e4'
   },
   zombie: {
@@ -482,11 +499,11 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 110,
     attackPower: 15,
     defense: 3,
-    speed: 30,
+    speed: 18,
     attackRange: 22,
-    attackCooldown: 1.6,
+    attackCooldown: 2.2,
     xpReward: 45,
-    goldBountyReward: 30,
+    goldBountyReward: 0,
     color: '#4d7c0f'
   },
   goblin_spearman: {
@@ -494,11 +511,11 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 55,
     attackPower: 10,
     defense: 1,
-    speed: 62,
+    speed: 34,
     attackRange: 28,
-    attackCooldown: 0.9,
+    attackCooldown: 1.3,
     xpReward: 30,
-    goldBountyReward: 20,
+    goldBountyReward: 3,
     color: '#84cc16'
   },
   goblin_shaman: {
@@ -506,12 +523,12 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 70,
     attackPower: 18,
     defense: 1,
-    speed: 48,
+    speed: 26,
     attackRange: 110,
-    attackCooldown: 1.8,
+    attackCooldown: 2.4,
     isRanged: true,
     xpReward: 60,
-    goldBountyReward: 45,
+    goldBountyReward: 8,
     color: '#a855f7'
   },
   dire_wolf: {
@@ -519,11 +536,11 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 90,
     attackPower: 16,
     defense: 2,
-    speed: 75,
+    speed: 38,
     attackRange: 24,
-    attackCooldown: 0.9,
+    attackCooldown: 1.3,
     xpReward: 50,
-    goldBountyReward: 35,
+    goldBountyReward: 0,
     color: '#52525b'
   },
   minotaur: {
@@ -531,11 +548,11 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 320,
     attackPower: 34,
     defense: 8,
-    speed: 48,
+    speed: 28,
     attackRange: 32,
-    attackCooldown: 1.5,
+    attackCooldown: 2.0,
     xpReward: 160,
-    goldBountyReward: 120,
+    goldBountyReward: 25,
     color: '#b91c1c'
   },
   necromancer: {
@@ -543,13 +560,13 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 450,
     attackPower: 38,
     defense: 5,
-    speed: 40,
+    speed: 24,
     attackRange: 130,
-    attackCooldown: 1.4,
+    attackCooldown: 2.0,
     isRanged: true,
     isBoss: true,
     xpReward: 350,
-    goldBountyReward: 300,
+    goldBountyReward: 50,
     color: '#4c1d95'
   },
   red_dragon: {
@@ -557,13 +574,13 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     hp: 1200,
     attackPower: 55,
     defense: 15,
-    speed: 55,
+    speed: 32,
     attackRange: 120,
-    attackCooldown: 1.8,
+    attackCooldown: 2.4,
     isRanged: true,
     isBoss: true,
     xpReward: 1000,
-    goldBountyReward: 1000,
+    goldBountyReward: 100,
     color: '#dc2626'
   }
 };

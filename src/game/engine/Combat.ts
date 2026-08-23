@@ -1,4 +1,5 @@
 import { Building, FloatingText, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector } from '../types';
+import { audioManager } from './Audio';
 import { GridManager } from './Grid';
 
 export class CombatManager {
@@ -36,7 +37,15 @@ export class CombatManager {
 
         // Apply damage & effects
         this.handleProjectileImpact(p, heroes, monsters, lairs, buildings, taxCollectors, peasants, particles, floatingTexts);
-        if (onHitSound) onHitSound(p.type);
+        if (p.type === 'arrow') {
+          audioManager.playArrowHit(p.currentX, p.currentY);
+        } else if (p.type === 'dragon_breath' || p.type === 'fireball') {
+          audioManager.playDragonFire(p.currentX, p.currentY);
+        } else if (p.type === 'magic_missile' || p.type === 'holy_bolt') {
+          audioManager.playSpellCast(p.currentX, p.currentY);
+        } else if (onHitSound) {
+          onHitSound(p.type);
+        }
 
         projectiles.splice(i, 1);
       } else {
@@ -189,6 +198,7 @@ export class CombatManager {
         }
         for (const b of buildings) {
           if (b.hp <= 0) continue;
+          if (b.isConstructing && b.constructionProgress <= 0) continue;
           const bcx = (b.x + b.width / 2) * this.gridManager.tileSize;
           const bcy = (b.y + b.height / 2) * this.gridManager.tileSize;
           if (Math.hypot(bcx - p.currentX, bcy - p.currentY) <= aoeRadius + (b.width * 16)) {
@@ -226,7 +236,7 @@ export class CombatManager {
         } else {
           // Check if target is a Building (e.g. Goblin Shaman attacking a Peasant Cottage!)
           const targetBuilding = buildings.find(b => b.id === p.targetEntityId);
-          if (targetBuilding && targetBuilding.hp > 0) {
+          if (targetBuilding && targetBuilding.hp > 0 && (!targetBuilding.isConstructing || targetBuilding.constructionProgress > 0)) {
             targetBuilding.hp -= p.damage;
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
@@ -311,7 +321,7 @@ export class CombatManager {
       }
 
       if (closestMonster) {
-        b.currentAttackCooldown = b.attackCooldown || 1.2;
+        b.currentAttackCooldown = b.attackCooldown || 1.5;
         // Shoot arrow projectile from building
         projectiles.push({
           id: `b_proj_${Date.now()}_${Math.random()}`,
@@ -323,11 +333,17 @@ export class CombatManager {
           targetX: closestMonster.x,
           targetY: closestMonster.y,
           targetEntityId: closestMonster.id,
-          speed: 280,
+          speed: 220,
           damage: b.attackPower,
           isHeroProjectile: true,
           progress: 0
         });
+
+        if (b.type === 'guard_tower') {
+          audioManager.playTowerBolt(bx, by);
+        } else {
+          audioManager.playArrowShoot(bx, by);
+        }
       }
     }
   }

@@ -1,5 +1,5 @@
 import { MONSTER_DEFINITIONS } from '../constants';
-import { Building, Hero, Monster, MonsterLair, TaxCollector } from '../types';
+import { Building, Hero, Monster, MonsterLair, Peasant, TaxCollector } from '../types';
 import { GridManager } from './Grid';
 
 export class MonsterAIManager {
@@ -71,6 +71,7 @@ export class MonsterAIManager {
     buildings: Building[],
     lairs: MonsterLair[],
     taxCollectors: TaxCollector[],
+    peasants: Peasant[],
     onSpawnProjectile?: (proj: {
       type: 'arrow' | 'fireball' | 'magic_missile' | 'dragon_breath';
       startX: number;
@@ -144,33 +145,71 @@ export class MonsterAIManager {
       }
     }
 
-    // 3. TARGET SELECTION
-    let closestTarget: { x: number; y: number; id: string; type: 'hero' | 'building' | 'tax_collector' } | null = null;
+    // 3. TARGET SELECTION (Peasants repairing/working attract enemies first!)
+    let closestTarget: { x: number; y: number; id: string; type: 'hero' | 'building' | 'tax_collector' | 'peasant' } | null = null;
     let closestDist = monster.type === 'giant_rat' ? 140 : 200;
 
-    // A. Check for Tax Collectors (Goblins & Rats love gold bags!)
-    for (const tc of taxCollectors) {
-      const dist = Math.hypot(tc.x - monster.x, tc.y - monster.y);
-      if (dist < closestDist) {
+    // A. PRIORITY: Peasants actively repairing or constructing structures!
+    for (const p of peasants) {
+      if (p.hp <= 0) continue;
+      const isWorking = p.state === 'repairing_building' || p.state === 'hammering_construction' || p.state === 'walking_to_site';
+      const dist = Math.hypot(p.x - monster.x, p.y - monster.y);
+      const maxDetectDist = isWorking ? closestDist * 1.35 : closestDist * 0.85;
+      if (dist < maxDetectDist && dist < closestDist) {
         closestDist = dist;
-        closestTarget = { x: tc.x, y: tc.y, id: tc.id, type: 'tax_collector' };
+        closestTarget = { x: p.x, y: p.y, id: p.id, type: 'peasant' };
       }
     }
 
-    // B. Check for Heroes
-    for (const h of heroes) {
-      if (h.isDead) continue;
-      const dist = Math.hypot(h.x - monster.x, h.y - monster.y);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestTarget = { x: h.x, y: h.y, id: h.id, type: 'hero' };
+    // B. Check for Tax Collectors (Goblins & Rats love gold bags!)
+    if (!closestTarget) {
+      for (const tc of taxCollectors) {
+        const dist = Math.hypot(tc.x - monster.x, tc.y - monster.y);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestTarget = { x: tc.x, y: tc.y, id: tc.id, type: 'tax_collector' };
+        }
       }
     }
 
-    // C. Check for Buildings / Cottages to raid (Stop at exterior wall, do not walk inside!)
+    // C. Check for Heroes
+    if (!closestTarget) {
+      for (const h of heroes) {
+        if (h.isDead) continue;
+        const dist = Math.hypot(h.x - monster.x, h.y - monster.y);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestTarget = { x: h.x, y: h.y, id: h.id, type: 'hero' };
+        }
+      }
+    }
+
+    // D. Check for other idle peasants
+    if (!closestTarget) {
+      for (const p of peasants) {
+        if (p.hp <= 0) continue;
+        const dist = Math.hypot(p.x - monster.x, p.y - monster.y);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestTarget = { x: p.x, y: p.y, id: p.id, type: 'peasant' };
+        }
+      }
+    }
+
+    // E. Check for Buildings / Cottages to raid (Stop at exterior wall, do not walk inside!)
     if (!closestTarget) {
       for (const b of buildings) {
         if (b.hp <= 0) continue;
+        // Blueprints cannot be attacked before construction begins (first builder arrives)
+        if (b.isConstructing && b.constructionProgress <= 0) continue;
+
+        // If a peasant is currently repairing/hammering this building, target the peasant instead!
+        const repairingPeasant = peasants.find(p => p.hp > 0 && p.targetBuildingId === b.id && (p.state === 'repairing_building' || p.state === 'hammering_construction'));
+        if (repairingPeasant) {
+          closestTarget = { x: repairingPeasant.x, y: repairingPeasant.y, id: repairingPeasant.id, type: 'peasant' };
+          break;
+        }
+
         const halfW = (b.width * this.gridManager.tileSize) / 2;
         const halfH = (b.height * this.gridManager.tileSize) / 2;
         const centerBx = (b.x + b.width / 2) * this.gridManager.tileSize;
@@ -257,9 +296,15 @@ export class MonsterAIManager {
                 tc.hp -= monster.attackPower;
                 if (onFloatingText) onFloatingText(`-${monster.attackPower}`, tc.x, tc.y - 12, '#f87171');
               }
+            } else if (closestTarget.type === 'peasant') {
+              const p = peasants.find(peasant => peasant.id === closestTarget!.id);
+              if (p && p.hp > 0) {
+                p.hp -= monster.attackPower;
+                if (onFloatingText) onFloatingText(`-${monster.attackPower}`, closestTarget.x, closestTarget.y - 12, '#f87171');
+              }
             } else if (closestTarget.type === 'building') {
               const b = buildings.find(build => build.id === closestTarget!.id);
-              if (b) {
+              if (b && (!b.isConstructing || b.constructionProgress > 0)) {
                 b.hp -= monster.attackPower;
                 if (onFloatingText) onFloatingText(`-${monster.attackPower}`, closestTarget.x, closestTarget.y - 12, '#f97316');
               }
