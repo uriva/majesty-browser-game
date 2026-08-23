@@ -47,12 +47,14 @@ export class GridManager {
 
     // 1. Natural Winding Rivers with Generous Stone Arch Bridges
     // Western Countryside River
+    const westOffset = Math.floor(this.width * 0.26);
+    const eastOffset = Math.floor(this.width * 0.30);
     const bridgeY1 = Math.floor(this.height * 0.28);
     const bridgeY2 = Math.floor(this.height * 0.72);
     const westBridgeRows = [bridgeY1, bridgeY1 + 1, bridgeY2, bridgeY2 + 1];
 
     for (let y = 0; y < this.height; y++) {
-      const rx = Math.floor(centerX - 16 + Math.sin(y * 0.13) * 5 + Math.cos(y * 0.05) * 3);
+      const rx = Math.floor(centerX - westOffset + Math.sin(y * 0.13) * 5 + Math.cos(y * 0.05) * 3);
       const isBridge = westBridgeRows.includes(y);
       for (let w = 0; w < 2; w++) {
         const tx = rx + w;
@@ -72,7 +74,7 @@ export class GridManager {
     const bridgeY3 = Math.floor(this.height * 0.48);
     const eastBridgeRows = [bridgeY3, bridgeY3 + 1];
     for (let y = 0; y < this.height; y++) {
-      const rx = Math.floor(centerX + 19 + Math.sin(y * 0.15 + 1.2) * 4);
+      const rx = Math.floor(centerX + eastOffset + Math.sin(y * 0.15 + 1.2) * 4);
       const isBridge = eastBridgeRows.includes(y);
       for (let w = 0; w < 2; w++) {
         const tx = rx + w;
@@ -88,12 +90,12 @@ export class GridManager {
     }
 
     // Forest clusters (away from center and rivers)
-    const numForests = 14;
+    const numForests = Math.max(12, Math.floor((this.width * this.height) / 220));
     for (let f = 0; f < numForests; f++) {
       const fx = Math.floor(Math.random() * (this.width - 12)) + 6;
       const fy = Math.floor(Math.random() * (this.height - 12)) + 6;
       // Skip center town area
-      if (Math.hypot(fx - centerX, fy - centerY) < 12) continue;
+      if (Math.hypot(fx - centerX, fy - centerY) < 14) continue;
 
       const radius = Math.floor(Math.random() * 3) + 2;
       for (let dy = -radius; dy <= radius; dy++) {
@@ -110,12 +112,12 @@ export class GridManager {
       }
     }
 
-    // Ponds / lakes (1 or 2 small natural lakes)
-    const numPonds = 2;
+    // Ponds / lakes
+    const numPonds = Math.max(2, Math.floor((this.width * this.height) / 2000));
     for (let p = 0; p < numPonds; p++) {
       const px = Math.floor(Math.random() * (this.width - 16)) + 8;
       const py = Math.floor(Math.random() * (this.height - 16)) + 8;
-      if (Math.hypot(px - centerX, py - centerY) < 15) continue;
+      if (Math.hypot(px - centerX, py - centerY) < 18) continue;
 
       const pRadius = 2;
       for (let dy = -pRadius; dy <= pRadius; dy++) {
@@ -132,11 +134,11 @@ export class GridManager {
     }
 
     // Rock formations
-    const numRocks = 7;
+    const numRocks = Math.max(8, Math.floor((this.width * this.height) / 450));
     for (let r = 0; r < numRocks; r++) {
       const rx = Math.floor(Math.random() * (this.width - 10)) + 5;
       const ry = Math.floor(Math.random() * (this.height - 10)) + 5;
-      if (Math.hypot(rx - centerX, ry - centerY) < 12) continue;
+      if (Math.hypot(rx - centerX, ry - centerY) < 14) continue;
 
       for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {

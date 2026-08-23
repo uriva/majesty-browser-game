@@ -218,7 +218,7 @@ export class GameEngine {
     }
 
     // Seed hidden ancient treasure chests in uncharted wilderness
-    const numWildChests = 6;
+    const numWildChests = Math.max(6, Math.floor((scenario.mapWidth * scenario.mapHeight) / 800));
     for (let c = 0; c < numWildChests; c++) {
       const cx = Math.floor(Math.random() * (scenario.mapWidth - 14)) + 7;
       const cy = Math.floor(Math.random() * (scenario.mapHeight - 14)) + 7;

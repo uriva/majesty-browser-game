@@ -115,18 +115,18 @@ export class MonsterAIManager {
       }
     }
 
-    // 2. BOSS SPECIAL ABILITIES
+    // 2. BOSS & SPECIAL MONSTER ABILITIES
     if (monster.type === 'necromancer' && (!monster.specialCooldown || monster.specialCooldown <= 0)) {
-      monster.specialCooldown = 14;
+      monster.specialCooldown = 12;
       if (onSummonMinion) {
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < 3; i++) {
           const skelDef = MONSTER_DEFINITIONS['skeleton'];
           const minion: Monster = {
             id: `skel_summon_${Date.now()}_${i}`,
             name: 'Risen Skeleton',
             type: 'skeleton',
-            x: monster.x + (Math.random() * 40 - 20),
-            y: monster.y + (Math.random() * 40 - 20),
+            x: monster.x + (Math.random() * 50 - 25),
+            y: monster.y + (Math.random() * 50 - 25),
             hp: skelDef.hp,
             maxHp: skelDef.hp,
             attackPower: skelDef.attackPower,
@@ -144,23 +144,60 @@ export class MonsterAIManager {
           };
           onSummonMinion(minion);
         }
-        if (onFloatingText) onFloatingText('Arise, Minions!', monster.x, monster.y - 20, '#c084fc');
+        if (onFloatingText) onFloatingText('Rise, Legion of the Damned!', monster.x, monster.y - 20, '#c084fc');
+      }
+    } else if (monster.type === 'goblin_shaman' && (!monster.specialCooldown || monster.specialCooldown <= 0)) {
+      // Shaman Battle Cry (Haste nearby goblins)
+      monster.specialCooldown = 10;
+      let buffedCount = 0;
+      for (const other of allMonsters) {
+        if (other.hp > 0 && (other.type === 'goblin_spearman' || other.type === 'goblin_shaman')) {
+          if (Math.hypot(other.x - monster.x, other.y - monster.y) < 140) {
+            other.speed = Math.min(50, other.speed * 1.25);
+            buffedCount++;
+          }
+        }
+      }
+      if (buffedCount > 0 && onFloatingText) {
+        onFloatingText('Goblin Bloodlust!', monster.x, monster.y - 18, '#a855f7');
       }
     }
 
-    // 3. TARGET SELECTION (Peasants repairing/working attract enemies first!)
+    // 3. TARGET SELECTION
     let closestTarget: { x: number; y: number; id: string; type: 'hero' | 'building' | 'tax_collector' | 'peasant' } | null = null;
-    let closestDist = monster.type === 'giant_rat' ? 140 : 200;
+    let closestDist = monster.type === 'giant_rat' ? 160 : 240;
+
+    // Check if monster's home lair is under attack by a hero
+    const homeLair = lairs.find(l => l.id === monster.lairId);
+    if (homeLair && homeLair.hp < homeLair.maxHp) {
+      // Find hero nearest to the home lair
+      let nearestLairAttacker: Hero | null = null;
+      let minAttackerDist = 280;
+      for (const h of heroes) {
+        if (h.isDead) continue;
+        const d = Math.hypot(h.x - (homeLair.x + homeLair.width / 2) * this.gridManager.tileSize, h.y - (homeLair.y + homeLair.height / 2) * this.gridManager.tileSize);
+        if (d < minAttackerDist) {
+          minAttackerDist = d;
+          nearestLairAttacker = h;
+        }
+      }
+      if (nearestLairAttacker) {
+        closestTarget = { x: nearestLairAttacker.x, y: nearestLairAttacker.y, id: nearestLairAttacker.id, type: 'hero' };
+        closestDist = minAttackerDist;
+      }
+    }
 
     // A. PRIORITY: Peasants actively repairing or constructing structures!
-    for (const p of peasants) {
-      if (p.hp <= 0) continue;
-      const isWorking = p.state === 'repairing_building' || p.state === 'hammering_construction' || p.state === 'walking_to_site';
-      const dist = Math.hypot(p.x - monster.x, p.y - monster.y);
-      const maxDetectDist = isWorking ? closestDist * 1.35 : closestDist * 0.85;
-      if (dist < maxDetectDist && dist < closestDist) {
-        closestDist = dist;
-        closestTarget = { x: p.x, y: p.y, id: p.id, type: 'peasant' };
+    if (!closestTarget) {
+      for (const p of peasants) {
+        if (p.hp <= 0) continue;
+        const isWorking = p.state === 'repairing_building' || p.state === 'hammering_construction' || p.state === 'walking_to_site';
+        const dist = Math.hypot(p.x - monster.x, p.y - monster.y);
+        const maxDetectDist = isWorking ? closestDist * 1.35 : closestDist * 0.85;
+        if (dist < maxDetectDist && dist < closestDist) {
+          closestDist = dist;
+          closestTarget = { x: p.x, y: p.y, id: p.id, type: 'peasant' };
+        }
       }
     }
 
@@ -217,7 +254,7 @@ export class MonsterAIManager {
         const targetPos = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
         const dist = Math.hypot(targetPos.x - monster.x, targetPos.y - monster.y);
 
-        const raidRange = b.type === 'peasant_cottage' ? 140 : (b.type === 'palace' ? 100 : 120);
+        const raidRange = b.type === 'peasant_cottage' ? 180 : (b.type === 'palace' ? 140 : 150);
         if (dist < raidRange) {
           closestTarget = { x: targetPos.x, y: targetPos.y, id: b.id, type: 'building' };
           break;
@@ -277,6 +314,43 @@ export class MonsterAIManager {
                 damage: monster.attackPower,
                 isHeroProjectile: false
               });
+
+              // Dragon breath splash damage to nearby heroes and structures!
+              for (const h of heroes) {
+                if (h.isDead || h.id === closestTarget.id) continue;
+                if (Math.hypot(h.x - closestTarget.x, h.y - closestTarget.y) < 60) {
+                  const splashDmg = Math.max(1, Math.round(monster.attackPower * 0.6 - h.defense));
+                  h.hp -= splashDmg;
+                  if (onFloatingText) onFloatingText(`-${splashDmg}`, h.x, h.y - 12, '#f97316');
+                }
+              }
+            }
+          } else if (monster.type === 'minotaur') {
+            // Minotaur Cleaving Smash (hits main target and all heroes in melee arc)
+            if (closestTarget.type === 'hero') {
+              const h = heroes.find(hero => hero.id === closestTarget!.id);
+              if (h) {
+                const damage = Math.max(1, Math.round(monster.attackPower - h.defense));
+                h.hp -= damage;
+                if (onFloatingText) onFloatingText(`-${damage}`, h.x, h.y - 12, '#ef4444');
+              }
+            } else if (closestTarget.type === 'building') {
+              const b = buildings.find(build => build.id === closestTarget!.id);
+              if (b && (!b.isConstructing || b.constructionProgress > 0)) {
+                const damage = Math.max(1, Math.round(monster.attackPower * 1.25)); // High siege damage
+                b.hp -= damage;
+                if (onFloatingText) onFloatingText(`-${damage}`, closestTarget.x, closestTarget.y - 12, '#f97316');
+              }
+            }
+
+            // Minotaur Cleave Splash
+            for (const h of heroes) {
+              if (h.isDead || h.id === closestTarget.id) continue;
+              if (Math.hypot(h.x - monster.x, h.y - monster.y) < 45) {
+                const splashDmg = Math.max(1, Math.round(monster.attackPower * 0.5 - h.defense));
+                h.hp -= splashDmg;
+                if (onFloatingText) onFloatingText(`-${splashDmg}`, h.x, h.y - 12, '#ef4444');
+              }
             }
           } else {
             // Direct melee strike

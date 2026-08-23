@@ -31,15 +31,17 @@ export function runHeadlessSimulation(scenarioIndex: number = 0, targetDays: num
     ticks++;
 
     // Autonomous sovereign decisions for simulation:
+    const cx = Math.floor(scenario.mapWidth / 2);
+    const cy = Math.floor(scenario.mapHeight / 2);
     // 1. Build initial guilds if affordable
     if (ticks === 10) {
-      engine.placeBuilding('warrior_guild', 24, 30);
+      engine.placeBuilding('warrior_guild', cx - 6, cy + 5);
     }
     if (ticks === 20) {
-      engine.placeBuilding('ranger_guild', 34, 30);
+      engine.placeBuilding('ranger_guild', cx + 4, cy + 5);
     }
     if (ticks === 30) {
-      engine.placeBuilding('marketplace', 30, 36);
+      engine.placeBuilding('marketplace', cx - 1, cy + 10);
     }
 
     // 2. Recruit heroes when guilds are ready

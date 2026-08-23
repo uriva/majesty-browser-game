@@ -436,96 +436,165 @@ export class CanvasRenderer {
 
   private drawWarriorGuildSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
+    // Heavy Stone Base
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 4, py + 16, w - 8, h - 20);
+    // Buttresses
     ctx.fillStyle = '#334155';
-    ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
+    ctx.fillRect(px + 2, py + 18, 5, h - 22);
+    ctx.fillRect(px + w - 7, py + 18, 5, h - 22);
+    // Tudor timber second floor
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(px + 6, py + 8, w - 12, 10);
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(px + 6, py + 17, w - 12, 2); // Corbel beam
+    // Slate Gable Roof
     ctx.fillStyle = '#1e3a8a';
     ctx.beginPath();
-    ctx.moveTo(px + w / 2, py + 2);
-    ctx.lineTo(px + 2, py + 16);
-    ctx.lineTo(px + w - 2, py + 16);
+    ctx.moveTo(px + w / 2, py - 4);
+    ctx.lineTo(px + 2, py + 10);
+    ctx.lineTo(px + w - 2, py + 10);
     ctx.closePath();
     ctx.fill();
-    // Shield crest
-    ctx.fillStyle = '#3b82f6';
+    // Shield Crest with gold swords
+    ctx.fillStyle = '#2563eb';
     ctx.beginPath();
     ctx.arc(px + w / 2, py + 26, 8, 0, Math.PI);
-    ctx.lineTo(px + w / 2 - 8, py + 20);
-    ctx.lineTo(px + w / 2 + 8, py + 20);
+    ctx.lineTo(px + w / 2 - 8, py + 19);
+    ctx.lineTo(px + w / 2 + 8, py + 19);
     ctx.closePath();
     ctx.fill();
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(px + w / 2 - 1, py + 20, 2, 8);
   }
 
   private drawRangerGuildSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    ctx.fillStyle = '#78350f';
-    ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
+    // Forest Lodge Timber Log Base
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(px + 4, py + 14, w - 8, h - 18);
+    // Thatch / Cedar Shingle Roof
     ctx.fillStyle = '#065f46';
     ctx.beginPath();
-    ctx.moveTo(px + w / 2, py + 2);
-    ctx.lineTo(px + 2, py + 16);
-    ctx.lineTo(px + w - 2, py + 16);
+    ctx.moveTo(px + w * 0.4, py - 2);
+    ctx.lineTo(px + 2, py + 15);
+    ctx.lineTo(px + w * 0.75, py + 15);
     ctx.closePath();
     ctx.fill();
+    // Watchtower Lookout on right
+    ctx.fillStyle = '#271306';
+    ctx.fillRect(px + w - 14, py + 4, 10, h - 8);
+    ctx.fillStyle = '#15803d';
+    ctx.beginPath();
+    ctx.moveTo(px + w - 9, py - 6);
+    ctx.lineTo(px + w - 16, py + 4);
+    ctx.lineTo(px + w - 2, py + 4);
+    ctx.closePath();
+    ctx.fill();
+    // Target board with bullseye
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath();
-    ctx.arc(px + w / 2, py + 30, 7, 0, Math.PI * 2);
+    ctx.arc(px + 14, py + 30, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#ef4444';
     ctx.beginPath();
-    ctx.arc(px + w / 2, py + 30, 3, 0, Math.PI * 2);
+    ctx.arc(px + 14, py + 30, 2.5, 0, Math.PI * 2);
     ctx.fill();
   }
 
   private drawRogueGuildSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
+    // Dark Shadowy Hideout
     ctx.fillStyle = '#1e293b';
-    ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
-    ctx.fillStyle = '#3f3f46';
-    ctx.fillRect(px + 4, py + 4, w - 8, 12);
+    ctx.fillRect(px + 5, py + 14, w - 10, h - 18);
+    // Upper Story with Tudor beams
+    ctx.fillStyle = '#d4d4d8';
+    ctx.fillRect(px + 7, py + 6, w - 14, 10);
+    // Jagged Dark Slate Roof
+    ctx.fillStyle = '#27272a';
+    ctx.beginPath();
+    ctx.moveTo(px + w * 0.45, py - 6);
+    ctx.lineTo(px + 2, py + 8);
+    ctx.lineTo(px + w - 2, py + 8);
+    ctx.closePath();
+    ctx.fill();
+    // Warm Amber Hanging Lantern
     ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(px + w / 2 - 2, py + 22, 4, 14);
-    ctx.fillRect(px + w / 2 - 6, py + 26, 12, 3);
+    ctx.beginPath();
+    ctx.arc(px + w - 8, py + 18, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Loot Chest outside
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(px + 8, py + h - 10, 8, 6);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(px + 11, py + h - 9, 2, 2);
   }
 
   private drawWizardTowerSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
+    // Arcane Tower Shaft
     ctx.fillStyle = '#312e81';
-    ctx.fillRect(px + 16, py + 10, w - 32, h - 14);
-    ctx.fillStyle = '#7c3aed';
+    ctx.fillRect(px + 14, py + 10, w - 28, h - 14);
+    // Tower Balcony
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(px + 12, py + 18, w - 24, 3);
+    // Conical Violet Spire
+    ctx.fillStyle = '#6d28d9';
     ctx.beginPath();
-    ctx.moveTo(px + w / 2, py - 12);
-    ctx.lineTo(px + 10, py + 12);
-    ctx.lineTo(px + w - 10, py + 12);
+    ctx.moveTo(px + w / 2, py - 14);
+    ctx.lineTo(px + 8, py + 12);
+    ctx.lineTo(px + w - 8, py + 12);
     ctx.closePath();
     ctx.fill();
+    // Levitating Pulsing Arcane Crystal
     const glow = (Math.sin(Date.now() * 0.005) + 1) * 3;
     ctx.fillStyle = '#c084fc';
     ctx.beginPath();
-    ctx.arc(px + w / 2, py - 14, 5 + glow * 0.5, 0, Math.PI * 2);
+    ctx.arc(px + w / 2, py - 18, 5 + glow * 0.5, 0, Math.PI * 2);
     ctx.fill();
   }
 
   private drawClericTempleSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    ctx.fillStyle = '#f1f5f9';
+    // Marble Cathedral Walls
+    ctx.fillStyle = '#f8fafc';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
-    ctx.fillStyle = '#eab308';
+    // Marble Pillars
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(px + 8, py + 14, 3, h - 18);
+    ctx.fillRect(px + w - 11, py + 14, 3, h - 18);
+    // Grand Golden Dome
+    ctx.fillStyle = '#fbbf24';
     ctx.beginPath();
     ctx.arc(px + w / 2, py + 16, 20, Math.PI, 0);
     ctx.fill();
-    ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(px + w / 2 - 2, py - 8, 4, 14);
-    ctx.fillRect(px + w / 2 - 6, py - 4, 12, 4);
+    // Solar Cross atop Dome
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(px + w / 2 - 2, py - 10, 4, 16);
+    ctx.fillRect(px + w / 2 - 6, py - 6, 12, 4);
+    // Stained glass rose window
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.arc(px + w / 2, py + 26, 5, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   private drawDwarfSettlementSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    ctx.fillStyle = '#292524';
+    // Granite Mountain Fortress
+    ctx.fillStyle = '#334155';
     ctx.fillRect(px + 4, py + 10, w - 8, h - 14);
+    // Parapet Battlements
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 2, py + 6, w - 4, 6);
+    // Iron Blast Gates & Gold Crest
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(px + w / 2 - 8, py + 24, 16, h - 24);
     ctx.fillStyle = '#d97706';
-    ctx.fillRect(px + 8, py + 6, w - 16, 8);
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillRect(px + w / 2 - 8, py + 26, 16, 8);
+    ctx.fillRect(px + w / 2 - 4, py + 28, 8, 4);
+    // Heavy Ballista Bow on roof
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(px + w / 2 - 8, py + 2, 16, 3);
   }
 
   private drawMarketplaceSprite(px: number, py: number, w: number, h: number) {
@@ -553,51 +622,75 @@ export class CanvasRenderer {
     ctx.fillStyle = '#7f1d1d';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
     ctx.fillStyle = '#450a0a';
-    ctx.fillRect(px + w - 18, py - 4, 10, 20);
+    ctx.fillRect(px + w - 18, py - 6, 12, 22);
     // Animated glowing forge fire
     const fireFlicker = Math.sin(Date.now() * 0.02) * 2;
     ctx.fillStyle = '#f97316';
     ctx.fillRect(px + 14, py + 30, 16, 12);
     ctx.fillStyle = '#fde047';
     ctx.fillRect(px + 18, py + 33, 8 + fireFlicker, 6);
+    // Steel Anvil
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(px + 8, py + 28, 6, 8);
   }
 
   private drawGuardTowerSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
+    // Stone Tower Shaft
     ctx.fillStyle = '#475569';
-    ctx.fillRect(px + 8, py + 4, w - 16, h - 8);
+    ctx.fillRect(px + 6, py + 6, w - 12, h - 10);
+    // Machicolations
     ctx.fillStyle = '#64748b';
-    ctx.fillRect(px + 4, py - 2, w - 8, 8);
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(px + w / 2 - 2, py + 16, 4, 12);
+    ctx.fillRect(px + 3, py + 2, w - 6, 6);
+    // Conical Slate Roof
+    ctx.fillStyle = '#1e3a8a';
+    ctx.beginPath();
+    ctx.moveTo(px + w / 2, py - 10);
+    ctx.lineTo(px + 4, py + 3);
+    ctx.lineTo(px + w - 4, py + 3);
+    ctx.closePath();
+    ctx.fill();
+    // Royal Blue Banner
+    ctx.fillStyle = '#2563eb';
+    ctx.fillRect(px + w / 2, py - 14, 5, 4);
   }
 
   private drawInnSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    ctx.fillStyle = '#b45309';
-    ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
+    // Lower stone / upper tudor
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 6, py + 20, w - 12, h - 24);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(px + 6, py + 10, w - 12, 12);
     ctx.fillStyle = '#78350f';
     ctx.beginPath();
-    ctx.moveTo(px + w / 2, py + 2);
-    ctx.lineTo(px + 2, py + 16);
-    ctx.lineTo(px + w - 2, py + 16);
+    ctx.moveTo(px + w / 2, py - 2);
+    ctx.lineTo(px + 2, py + 12);
+    ctx.lineTo(px + w - 2, py + 12);
     ctx.closePath();
     ctx.fill();
-    // Beer sign
+    // Gilded Beer Sign
     ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(px + w / 2 - 6, py + 24, 12, 10);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(px + w / 2 - 6, py + 22, 12, 3);
+    ctx.fillRect(px + 2, py + 16, 7, 7);
   }
 
   private drawStatueSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
+    // Marble Plinth
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(px + 4, py + h - 10, w - 8, 8);
     ctx.fillStyle = '#94a3b8';
-    ctx.fillRect(px + 8, py + h - 16, w - 16, 14);
+    ctx.fillRect(px + 8, py + h - 16, w - 16, 6);
+    // Gilded Sovereign Statue with Sword
     ctx.fillStyle = '#eab308';
-    ctx.fillRect(px + w / 2 - 6, py + 10, 12, 22);
+    ctx.fillRect(px + w / 2 - 5, py + 12, 10, 18);
     ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(px + w / 2 - 7, py + 4, 14, 6);
+    ctx.beginPath();
+    ctx.arc(px + w / 2, py + 8, 5, 0, Math.PI * 2);
+    ctx.fill();
+    // Sword aloft
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(px + w / 2 + 5, py + 2, 2, 14);
   }
 
   private drawPeasantCottageSprite(px: number, py: number, w: number, h: number, id: string = '') {
