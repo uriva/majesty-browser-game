@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { GameState, NotificationItem } from '../game/types';
 import { audioManager } from '../game/engine/Audio';
+import { MusicPlayer } from './MusicPlayer';
 import { 
   Crown, 
   Coins, 
@@ -158,6 +159,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </button>
             ))}
           </div>
+
+          {/* Music Player */}
+          <MusicPlayer />
 
           {/* Sound & Notifications */}
           <button
