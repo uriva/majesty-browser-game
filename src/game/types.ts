@@ -330,7 +330,7 @@ export interface GameState {
   notifications: NotificationItem[];
   stats: GameStats;
   selectedEntity: {
-    type: 'hero' | 'building' | 'monster' | 'lair' | 'flag';
+    type: 'hero' | 'building' | 'monster' | 'lair' | 'flag' | 'tax_collector';
     id: string;
   } | null;
   camera: {

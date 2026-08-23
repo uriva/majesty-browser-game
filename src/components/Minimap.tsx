@@ -79,6 +79,16 @@ export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
       ctx.fillRect(hx - 1.5, hy - 1.5, 3, 3);
     }
 
+    // Draw Tax Collectors (Purple with Gold Center)
+    for (const tc of state.taxCollectors) {
+      const tcx = (tc.x / state.tileSize) * scaleX;
+      const tcy = (tc.y / state.tileSize) * scaleY;
+      ctx.fillStyle = '#a855f7';
+      ctx.fillRect(tcx - 2, tcy - 2, 4, 4);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(tcx - 1, tcy - 1, 2, 2);
+    }
+
     // Draw Flags
     for (const f of state.flags) {
       ctx.fillStyle = f.type === 'attack' ? '#ef4444' : (f.type === 'explore' ? '#3b82f6' : '#eab308');

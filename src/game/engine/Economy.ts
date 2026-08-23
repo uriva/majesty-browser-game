@@ -13,7 +13,7 @@ export class EconomyManager {
     delta: number,
     buildings: Building[],
     taxCollectors: TaxCollector[],
-    onDepositGold: (amount: number) => void,
+    onTaxDelivery: (amount: number) => void,
     onSpawnTaxCollector: (tc: TaxCollector) => void,
     onFloatingText?: (text: string, x: number, y: number, color: string) => void
   ) {
@@ -25,29 +25,29 @@ export class EconomyManager {
       y: (palace.y + palace.height / 2) * this.gridManager.tileSize
     };
 
-    // 1. Passive income accumulation for commercial buildings
+    // 1. Trade and commercial activity generates gold stored inside buildings (awaiting Tax Collector)
     for (const b of buildings) {
       if (b.isConstructing || b.hp <= 0) continue;
 
       if (b.type === 'marketplace') {
-        b.goldStored += 3.5 * delta;
+        b.goldStored += 5.0 * delta; // Trade activity
       } else if (b.type === 'royal_inn') {
-        b.goldStored += 2.0 * delta;
+        b.goldStored += 3.5 * delta; // Tavern patronage
       } else if (b.type === 'blacksmith') {
-        b.goldStored += 1.5 * delta;
+        b.goldStored += 3.0 * delta; // Weapon and armor forging
+      } else if (b.type.includes('guild') || b.type.includes('temple') || b.type.includes('tower')) {
+        b.goldStored += 1.0 * delta; // Guild membership dues
       }
     }
 
-    // 2. Check if a Tax Collector should be dispatched from Palace
+    // 2. Dispatch Tax Collector from Palace when buildings have uncollected taxes (> 20g)
     this.taxSpawnCooldown -= delta;
     if (this.taxSpawnCooldown <= 0 && taxCollectors.length < 2) {
-      // Find building with highest stored gold (> 25g)
       let highestBuilding: Building | null = null;
-      let maxGold = 25;
+      let maxGold = 20;
 
       for (const b of buildings) {
         if (b.type === 'palace' || b.isConstructing || b.hp <= 0) continue;
-        // Check if another tax collector is already targeting it
         const alreadyTargeted = taxCollectors.some(tc => tc.targetBuildingId === b.id);
         if (!alreadyTargeted && b.goldStored > maxGold) {
           maxGold = b.goldStored;
@@ -56,15 +56,15 @@ export class EconomyManager {
       }
 
       if (highestBuilding) {
-        this.taxSpawnCooldown = 8.0;
+        this.taxSpawnCooldown = 6.0;
         const newCollector: TaxCollector = {
           id: `tax_${Date.now()}`,
           name: 'Royal Tax Collector',
           x: palaceCenter.x,
           y: palaceCenter.y + 20,
-          hp: 80,
-          maxHp: 80,
-          speed: 45,
+          hp: 100,
+          maxHp: 100,
+          speed: 32,
           goldCarried: 0,
           targetBuildingId: highestBuilding.id,
           state: 'seeking_building',
@@ -113,7 +113,7 @@ export class EconomyManager {
         } else {
           // Safely reached palace! Deposit into Royal Treasury
           if (tc.goldCarried > 0) {
-            onDepositGold(tc.goldCarried);
+            onTaxDelivery(tc.goldCarried);
             if (onFloatingText) onFloatingText(`+${tc.goldCarried}g Treasury!`, palaceCenter.x, palaceCenter.y - 25, '#fbbf24');
           }
           // Remove collector after completing duty

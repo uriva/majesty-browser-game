@@ -13,6 +13,7 @@ import { SpellMenu } from './SpellMenu';
 import { HeroInspector } from './HeroInspector';
 import { BuildingInspector } from './BuildingInspector';
 import { MonsterInspector } from './MonsterInspector';
+import { TaxCollectorInspector } from './TaxCollectorInspector';
 import { ScenarioModal } from './ScenarioModal';
 import { Hammer, Coins, Zap, MapPin } from 'lucide-react';
 
@@ -257,6 +258,13 @@ export const GameView: React.FC = () => {
       return;
     }
 
+    // Check tax collectors
+    const clickedTaxCollector = engine.state.taxCollectors.find(tc => Math.hypot(tc.x - world.x, tc.y - world.y) < 18);
+    if (clickedTaxCollector) {
+      engine.state.selectedEntity = { type: 'tax_collector', id: clickedTaxCollector.id };
+      return;
+    }
+
     // Clicked empty ground -> clear selection
     engine.state.selectedEntity = null;
   };
@@ -320,6 +328,10 @@ export const GameView: React.FC = () => {
 
   const selectedLair = gameState?.selectedEntity?.type === 'lair'
     ? gameState.lairs.find(l => l.id === gameState.selectedEntity?.id)
+    : null;
+
+  const selectedTaxCollector = gameState?.selectedEntity?.type === 'tax_collector'
+    ? gameState.taxCollectors.find(tc => tc.id === gameState.selectedEntity?.id)
     : null;
 
   return (
@@ -482,6 +494,29 @@ export const GameView: React.FC = () => {
             }}
             onResearchUpgrade={(bId, upgId) => {
               engineRef.current?.researchUpgrade(bId, upgId);
+            }}
+          />
+        )}
+
+        {selectedTaxCollector && gameState && (
+          <TaxCollectorInspector
+            taxCollector={selectedTaxCollector}
+            buildings={gameState.buildings}
+            onClose={() => {
+              if (engineRef.current) engineRef.current.state.selectedEntity = null;
+            }}
+            onTrackTaxCollector={(tc) => {
+              if (engineRef.current) {
+                engineRef.current.state.camera.x = tc.x;
+                engineRef.current.state.camera.y = tc.y;
+              }
+            }}
+            onProtectTaxCollector={(tc) => {
+              setActiveTab('flags');
+              setActiveFlagType('defend');
+              if (engineRef.current) {
+                engineRef.current.placeFlag('defend', tc.x, tc.y, 80);
+              }
             }}
           />
         )}

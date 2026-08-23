@@ -819,30 +819,100 @@ export class CanvasRenderer {
     const { ctx } = this;
     if (!this.gridManager.isPixelVisible(tc.x, tc.y)) return;
 
+    const isSelected = state.selectedEntity?.type === 'tax_collector' && state.selectedEntity.id === tc.id;
+    const bob = Math.sin(Date.now() * 0.008) * 2;
+
+    // Selection ring
+    if (isSelected) {
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(tc.x, tc.y + 4, 14, 7, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     // Drop shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(tc.x, tc.y + 4, 7, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(tc.x, tc.y + 5, 9, 5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Body in Royal Purple / Gold
-    ctx.fillStyle = '#7e22ce';
-    ctx.fillRect(tc.x - 4, tc.y - 8, 8, 10);
-    // Head & hat
+    // Body (Royal Purple Tunic with Gold Trim)
+    ctx.fillStyle = '#6b21a8';
+    ctx.fillRect(tc.x - 6, tc.y - 12 + bob, 12, 14);
+
+    // Gold Trim / Sash
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(tc.x - 6, tc.y - 6 + bob, 12, 2.5);
+    ctx.fillRect(tc.x - 1, tc.y - 12 + bob, 2, 14);
+
+    // Head
     ctx.fillStyle = '#fed7aa';
     ctx.beginPath();
-    ctx.arc(tc.x, tc.y - 12, 4, 0, Math.PI * 2);
+    ctx.arc(tc.x, tc.y - 16 + bob, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Renaissance Feathered Beret (Purple Velvet + Gold Ribbon)
+    ctx.fillStyle = '#581c87';
+    ctx.beginPath();
+    ctx.ellipse(tc.x, tc.y - 20 + bob, 8, 4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(tc.x - 5, tc.y - 15, 10, 3);
+    ctx.fillRect(tc.x - 7, tc.y - 19 + bob, 14, 2);
 
-    // Gold sack on shoulder if carrying gold
+    // White Feather Plume
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tc.x - 3, tc.y - 20 + bob);
+    ctx.quadraticCurveTo(tc.x - 10, tc.y - 28 + bob, tc.x - 7, tc.y - 32 + bob);
+    ctx.stroke();
+
+    // Ledger Book under right arm
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(tc.x - 9, tc.y - 10 + bob, 4, 8);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(tc.x - 9, tc.y - 8 + bob, 4, 2);
+
+    // Heavy Coin Sack on Back
+    const sackSize = tc.goldCarried > 0 ? Math.min(10, 6 + (tc.goldCarried / 40) * 3) : 5;
+    ctx.fillStyle = '#b45309'; // Burlap brown
+    ctx.beginPath();
+    ctx.arc(tc.x + 7, tc.y - 8 + bob, sackSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
     if (tc.goldCarried > 0) {
-      ctx.fillStyle = '#b45309';
-      ctx.beginPath();
-      ctx.arc(tc.x + 5, tc.y - 6, 4, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('$', tc.x + 7, tc.y - 5 + bob);
     }
+
+    // Health bar if damaged
+    if (tc.hp < tc.maxHp) {
+      const hpW = 18;
+      const hpH = 3;
+      const hpPercent = Math.max(0, tc.hp / tc.maxHp);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(tc.x - hpW / 2, tc.y - 26 + bob, hpW, hpH);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(tc.x - hpW / 2, tc.y - 26 + bob, hpW * hpPercent, hpH);
+    }
+
+    // Floating Identification Badge
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(tc.x - 22, tc.y - 38 + bob, 44, 11);
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tc.x - 22, tc.y - 38 + bob, 44, 11);
+
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(tc.goldCarried > 0 ? `Tax (${tc.goldCarried}g)` : 'Taxman', tc.x, tc.y - 30 + bob);
   }
 
   private renderFlag(flag: Flag, state: GameState) {

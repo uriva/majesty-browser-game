@@ -279,12 +279,13 @@ export class GameEngine {
     // 8. Update Building Defenses (Arrow attacks)
     this.combatManager.updateBuildingDefenses(this.state.buildings, this.state.monsters, delta, this.state.projectiles);
 
-    // 9. Update Economy & Tax Collectors
+    // 9. Update Economy & Tax Collectors (Gold ONLY enters treasury via physical Tax Collector delivery!)
     this.economyManager.updateEconomy(
       delta,
       this.state.buildings,
       this.state.taxCollectors,
       (amount) => {
+        // Tax collector physically delivers taxes to Palace!
         this.state.treasuryGold += amount;
         this.state.stats.goldEarned += amount;
         audioManager.playCoinSound();
@@ -325,7 +326,15 @@ export class GameEngine {
       const lair = this.state.lairs[i];
       if (lair.hp <= 0) {
         this.state.stats.lairsDestroyed += 1;
-        this.addNotification('Lair Destroyed!', `The ${lair.name} has been razed to the ground!`, 'success');
+        const plunderGold = lair.type === 'dragon_cavern' ? 1000 : (lair.type === 'ancient_ruins' ? 450 : 250);
+        this.state.treasuryGold += plunderGold;
+        this.state.stats.goldEarned += plunderGold;
+        audioManager.playCoinSound();
+
+        const lx = (lair.x + lair.width / 2) * this.gridManager.tileSize;
+        const ly = (lair.y + lair.height / 2) * this.gridManager.tileSize;
+        this.addFloatingText(`+${plunderGold}g Plunder!`, lx, ly - 20, '#fbbf24');
+        this.addNotification('Lair Destroyed & Plundered!', `The ${lair.name} was razed! +${plunderGold}g deposited to Treasury!`, 'success');
         this.state.lairs.splice(i, 1);
       }
     }
