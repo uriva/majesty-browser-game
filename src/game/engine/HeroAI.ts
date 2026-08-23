@@ -1,4 +1,4 @@
-import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS } from '../constants';
+import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
 import { Building, Flag, Hero, Monster, MonsterLair, Treasure } from '../types';
 import { audioManager } from './Audio';
 import { GridManager } from './Grid';
@@ -76,7 +76,7 @@ export class HeroAIManager {
       if (onFloatingText) onFloatingText('+50% HP (Potion)', hero.x, hero.y - 15, '#22c55e');
     }
 
-    if (hpPercent < fleeThreshold && hero.state === 'attacking_target') {
+    if (hpPercent < fleeThreshold && hero.state !== 'fleeing' && hero.state !== 'resting_at_guild' && hero.state !== 'visiting_inn') {
       // Wizard special: emergency teleport if available
       const wizardTower = buildings.find(b => b.type === 'wizard_tower');
       const hasTeleport = wizardTower?.researchedUpgrades.includes('teleportation');
@@ -98,6 +98,23 @@ export class HeroAIManager {
       hero.targetEntityId = undefined;
       hero.currentThought = 'Tactical retreat! Low health!';
       audioManager.playVoice(`${hero.heroClass}_flee`, hero.x, hero.y);
+    }
+
+    // FEAR ON SIGHT: An overwhelming monster nearby spooks the hero into a panicked rout
+    if (hero.state !== 'fleeing' && hero.state !== 'attacking_target') {
+      const terrorRadius = 85;
+      const terror = monsters.find(
+        m => m.hp > 0 && this.isOverwhelming(hero, m, allHeroes) && Math.hypot(m.x - hero.x, m.y - hero.y) < terrorRadius
+      );
+      if (terror && Math.random() < 0.35 + (100 - hero.traits.bravery) / 250) {
+        hero.state = 'fleeing';
+        hero.stateTimer = 3.5;
+        hero.targetEntityId = undefined;
+        hero.targetFlagId = undefined;
+        hero.currentThought = `The ${terror.name} terrifies me! Run!`;
+        if (onFloatingText) onFloatingText('Terrified!', hero.x, hero.y - 15, '#f87171');
+        audioManager.playVoice(`${hero.heroClass}_flee`, hero.x, hero.y);
+      }
     }
 
     // 2. State Actions & Transitions
@@ -133,7 +150,7 @@ export class HeroAIManager {
         break;
 
       case 'wandering':
-        this.handleWandering(hero, delta, buildings, lairs, monsters, flags, treasures);
+        this.handleWandering(hero, delta, allHeroes, buildings, lairs, monsters, flags, treasures);
         break;
 
       case 'idle':
@@ -145,9 +162,35 @@ export class HeroAIManager {
     }
   }
 
+  private estimateHeroPower(hero: Hero, allies?: Hero[]): number {
+    let power = hero.level * 12 + hero.attackPower +
+      hero.equipment.weaponLevel * 8 + hero.equipment.armorLevel * 6 + hero.maxHp / 10;
+
+    // PACK HUNTING: Heroes bolder in numbers — safety in comrades
+    if (allies) {
+      const nearbyAllies = allies.filter(
+        h => h.id !== hero.id && !h.isDead && Math.hypot(h.x - hero.x, h.y - hero.y) < 160
+      ).length;
+      power *= 1 + Math.min(nearbyAllies, 4) * 0.18;
+    }
+    return power;
+  }
+
+  private estimateMonsterThreat(monster: Monster): number {
+    let threat = monster.maxHp / 12 + monster.attackPower * 1.6;
+    if (monster.isBoss) threat *= 1.6;
+    return threat;
+  }
+
+  private isOverwhelming(hero: Hero, monster: Monster, allies?: Hero[]): boolean {
+    const courageFactor = 0.55 + hero.traits.bravery / 250;
+    return this.estimateMonsterThreat(monster) > this.estimateHeroPower(hero, allies) * courageFactor;
+  }
+
   private handleWandering(
     hero: Hero,
     delta: number,
+    allHeroes: Hero[],
     buildings: Building[],
     lairs: MonsterLair[],
     monsters: Monster[],
@@ -156,9 +199,20 @@ export class HeroAIManager {
   ) {
     // 1. Self Defense: Interrupt wandering immediately if an active monster threat is near
     const searchRadius = hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' ? 220 : 160;
-    const nearbyMonster = monsters.find(
-      m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < searchRadius && this.gridManager.isPixelVisible(m.x, m.y)
-    );
+    let nearbyMonster: Monster | null = null;
+    let avoidedThreat: Monster | null = null;
+    for (const m of monsters) {
+      if (m.hp <= 0) continue;
+      const dist = Math.hypot(m.x - hero.x, m.y - hero.y);
+      if (dist < searchRadius && this.gridManager.isPixelVisible(m.x, m.y)) {
+        if (this.isOverwhelming(hero, m, allHeroes)) {
+          avoidedThreat = m; // Cowardly discretion — do not pick fights with dragons
+        } else {
+          nearbyMonster = m;
+          break;
+        }
+      }
+    }
     if (nearbyMonster) {
       hero.state = 'attacking_target';
       hero.targetEntityId = nearbyMonster.id;
@@ -167,6 +221,21 @@ export class HeroAIManager {
       hero.targetY = undefined;
       hero.currentThought = `Engaging ${nearbyMonster.name}!`;
       return;
+    }
+    if (avoidedThreat) {
+      const threatDist = Math.hypot(avoidedThreat.x - hero.x, avoidedThreat.y - hero.y);
+      const isHuntingMe = avoidedThreat.targetEntityId === hero.id;
+      hero.currentThought = `I dare not face that ${avoidedThreat.name}...`;
+      // Cowardice means RUNNING away, not standing still while it mauls us
+      if (threatDist < 110 || isHuntingMe) {
+        hero.state = 'fleeing';
+        hero.stateTimer = 3.0;
+        hero.targetX = undefined;
+        hero.targetY = undefined;
+        audioManager.playVoice(`${hero.heroClass}_flee`, hero.x, hero.y);
+        return;
+      }
+      // fall through to treasure/destination logic below
     }
 
     // 2. Interrupt if a visible treasure chest or gold bag is nearby
@@ -257,6 +326,25 @@ export class HeroAIManager {
       if (flag.type === 'attack') {
         // Greed + Bravery multiplier
         appeal = (flag.goldReward * (hero.traits.greed / 50)) - (dist * 0.4) + (hero.traits.bravery * 0.5);
+
+        // COURAGE CHECK: Weak heroes refuse suicide bounties unless the purse is truly heroic
+        let targetThreat = 0;
+        if (flag.targetEntityType === 'monster') {
+          const m = monsters.find(mon => mon.id === flag.targetEntityId);
+          if (m && m.hp > 0) targetThreat = this.estimateMonsterThreat(m);
+        } else if (flag.targetEntityType === 'lair') {
+          const l = lairs.find(la => la.id === flag.targetEntityId);
+          if (l && l.hp > 0) {
+            const def = MONSTER_DEFINITIONS[l.monsterType];
+            targetThreat = def.hp / 12 + def.attackPower * 1.6 + (def.isBoss ? 30 : 0);
+          }
+        }
+        const courageFactor = 0.55 + hero.traits.bravery / 250;
+        if (targetThreat > this.estimateHeroPower(hero, allHeroes) * courageFactor) {
+          const fearPenalty = (targetThreat - this.estimateHeroPower(hero)) * (2.2 - hero.traits.greed / 100);
+          appeal -= fearPenalty;
+          if (appeal <= 20) hero.currentThought = 'That bounty spells certain doom...';
+        }
       } else if (flag.type === 'explore') {
         // Rangers & Rogues love explore flags
         const exploreBonus = hero.heroClass === 'ranger' ? 80 : (hero.heroClass === 'rogue' ? 50 : 10);
@@ -283,15 +371,20 @@ export class HeroAIManager {
       return;
     }
 
-    // D. Look for nearby monsters (Combat Priority!)
+    // D. Look for nearby monsters (Combat Priority! — but only fights we can win)
     const searchRadius = hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' ? 240 : (hero.heroClass === 'ranger' ? 200 : 160);
     let closestMonster: Monster | null = null;
     let closestDist = searchRadius;
+    let dreadedMonster: Monster | null = null;
 
     for (const m of monsters) {
       if (m.hp <= 0) continue;
       const dist = Math.hypot(m.x - hero.x, m.y - hero.y);
       if (dist < closestDist && this.gridManager.isPixelVisible(m.x, m.y)) {
+        if (this.isOverwhelming(hero, m, allHeroes)) {
+          dreadedMonster = m;
+          continue;
+        }
         closestDist = dist;
         closestMonster = m;
       }
@@ -306,15 +399,25 @@ export class HeroAIManager {
       hero.currentThought = `Engaging ${closestMonster.name}!`;
       return;
     }
+    if (dreadedMonster && !hero.currentThought) {
+      hero.currentThought = `That ${dreadedMonster.name} is beyond my strength. I need more training...`;
+    }
 
     // E. Autonomous Enemy Lair Attack (Only if NO monsters are nearby!)
-    const isBraveAgainstLairs = hero.traits.bravery >= 55 || hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' || hero.level >= 3;
-    if (isBraveAgainstLairs) {
+    // Heroes weigh the lair's brood against their own strength; dragon caverns demand a royal bounty.
+    if (hero.level >= 2) {
       let closestLair: MonsterLair | null = null;
       let closestLairDist = searchRadius * 0.85;
 
       for (const l of lairs) {
         if (l.hp <= 0) continue;
+        const def = MONSTER_DEFINITIONS[l.monsterType];
+        if (l.type === 'dragon_cavern' || def.isBoss) continue; // Never assaulted without a bounty
+
+        const lairThreat = def.hp / 12 + def.attackPower * 1.6;
+        const courageFactor = 0.5 + hero.traits.bravery / 220;
+        if (lairThreat > this.estimateHeroPower(hero, allHeroes) * courageFactor) continue;
+
         const lcx = (l.x + l.width / 2) * this.gridManager.tileSize;
         const lcy = (l.y + l.height / 2) * this.gridManager.tileSize;
         const dist = Math.hypot(lcx - hero.x, lcy - hero.y);
@@ -748,9 +851,10 @@ export class HeroAIManager {
       }
     }
 
-    // While traveling to flag, engage any monster directly blocking or attacking
+    // While traveling to flag, engage any monster directly blocking or attacking (unless overwhelming)
     const nearbyMonster = monsters.find(
-      m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < 130 && this.gridManager.isPixelVisible(m.x, m.y)
+      m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < 130 &&
+        this.gridManager.isPixelVisible(m.x, m.y) && !this.isOverwhelming(hero, m)
     );
     if (nearbyMonster) {
       hero.state = 'attacking_target';

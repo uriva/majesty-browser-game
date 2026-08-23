@@ -272,20 +272,33 @@ export class GameEngine {
         hero.isDead = true;
         this.state.stats.heroesLost += 1;
         audioManager.playVoice(`${hero.heroClass}_death`, hero.x, hero.y);
-        this.addNotification('Hero Fallen', `${hero.title} has fallen in battle!`, 'danger', { x: hero.x, y: hero.y });
+        const classDef = HERO_CLASS_DEFINITIONS[hero.heroClass];
+        this.addNotification('Hero Fallen', `${hero.title} the Level ${hero.level} ${classDef.name} has fallen in battle (${hero.kills} kills). A grave marks their resting place.`, 'danger', { x: hero.x, y: hero.y });
 
-        // Spawn persistent hero corpse on battlefield
+        // Permanent gravestone so the kingdom remembers its fallen
         this.state.corpses.push({
-          id: `corpse_hero_${Date.now()}_${hero.id}`,
+          id: `grave_${Date.now()}_${hero.id}`,
           type: 'hero',
           subType: hero.heroClass,
-          name: hero.name,
+          name: `${hero.title}, Level ${hero.level}`,
           x: hero.x,
           y: hero.y,
           rotation: Math.random() * Math.PI * 2,
           createdAt: Date.now(),
-          lifetime: 45.0
+          lifetime: 900.0
         });
+
+        // Fallen heroes drop their purse — brave souls may recover it!
+        if (hero.gold > 0) {
+          this.state.treasures.push({
+            id: `purse_${Date.now()}_${hero.id}`,
+            x: hero.x + (Math.random() * 16 - 8),
+            y: hero.y + (Math.random() * 16 - 8),
+            goldAmount: Math.max(10, Math.round(hero.gold)),
+            type: 'gold_bag',
+            createdAt: Date.now()
+          });
+        }
 
         // Clean up hero from all guild rosters so guilds accurately free up member slots
         for (const b of this.state.buildings) {
