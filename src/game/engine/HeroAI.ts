@@ -707,13 +707,21 @@ export class HeroAIManager {
 
     const dist = Math.hypot(targetX - hero.x, targetY - hero.y);
 
-    if (dist > hero.attackRange) {
+    if (dist > hero.attackRange + 2) {
       this.moveTowards(hero, targetX, targetY, delta, buildings, lairs, 1.0, hero.targetEntityType === 'lair' ? hero.targetEntityId : undefined);
     } else {
-      // In attack range!
+      // In attack range! Stop moving and face target
+      hero.path = undefined;
+      hero.pathTargetKey = undefined;
+
+      const dx = targetX - hero.x;
+      const dy = targetY - hero.y;
+      if (Math.abs(dx) > Math.abs(dy)) hero.direction = dx > 0 ? 'right' : 'left';
+      else hero.direction = dy > 0 ? 'down' : 'up';
+
       if (hero.currentCooldown <= 0) {
         hero.currentCooldown = hero.attackCooldown;
-        hero.isAttackingAnimation = 0.25;
+        hero.isAttackingAnimation = 0.3;
 
         const isCrit = Math.random() < (hero.heroClass === 'rogue' ? 0.35 : 0.12);
         const critMult = isCrit ? 2.0 : 1.0;

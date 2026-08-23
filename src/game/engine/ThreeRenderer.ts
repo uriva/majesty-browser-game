@@ -34,6 +34,8 @@ export class ThreeRenderer {
   private corpsesMap: Map<string, THREE.Group> = new Map();
   private flagsMap: Map<string, THREE.Group> = new Map();
   private projectilesMap: Map<string, THREE.Group> = new Map();
+  private floatingTextsMap: Map<string, THREE.Sprite> = new Map();
+  private heroLabelsMap: Map<string, { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; sprite: THREE.Sprite; lastHp: number; lastLevel: number }> = new Map();
 
   // Selection & Placement Highlights
   private selectionGroup: THREE.Group;
@@ -566,6 +568,7 @@ export class ThreeRenderer {
     this.updateMonsters(state, delta);
     this.updateCorpses(state);
     this.updateProjectiles(state);
+    this.updateFloatingTexts(state);
 
     // Update Selection Visuals
     this.updateSelectionVisuals(state);
@@ -1823,7 +1826,7 @@ export class ThreeRenderer {
     return group;
   }
 
-  // --- 3D HEROES ---
+  // --- 3D HEROES & NAMEPLATES ---
   private updateHeroes(state: GameState, delta: number) {
     const activeIds = new Set<string>();
     const time = Date.now() * 0.01;
@@ -1837,6 +1840,12 @@ export class ThreeRenderer {
         heroGroup = this.create3DHeroMesh(h);
         this.scene.add(heroGroup);
         this.heroesMap.set(h.id, heroGroup);
+
+        // Add 3D Overhead Nameplate
+        this.createHeroNameplate(h, heroGroup);
+      } else {
+        // Update Nameplate on HP or Level change
+        this.updateHeroNameplate(h);
       }
 
       heroGroup.position.set(h.x, 0, h.y);
@@ -1888,8 +1897,98 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.heroesMap.delete(id);
+        this.heroLabelsMap.delete(id);
       }
     }
+  }
+
+  private createHeroNameplate(hero: Hero, heroGroup: THREE.Group) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    this.drawHeroNameCanvas(ctx, hero);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    const spriteMat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false
+    });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(13, 3.25, 1);
+    const headY = hero.heroClass === 'dwarf' ? 9.5 : 11.5;
+    sprite.position.set(0, headY, 0);
+    sprite.name = 'nameLabel';
+
+    heroGroup.add(sprite);
+
+    this.heroLabelsMap.set(hero.id, {
+      canvas,
+      texture,
+      sprite,
+      lastHp: hero.hp,
+      lastLevel: hero.level
+    });
+  }
+
+  private updateHeroNameplate(hero: Hero) {
+    const entry = this.heroLabelsMap.get(hero.id);
+    if (!entry) return;
+
+    if (Math.abs(entry.lastHp - hero.hp) > 2 || entry.lastLevel !== hero.level) {
+      entry.lastHp = hero.hp;
+      entry.lastLevel = hero.level;
+      const ctx = entry.canvas.getContext('2d');
+      if (ctx) {
+        this.drawHeroNameCanvas(ctx, hero);
+        entry.texture.needsUpdate = true;
+      }
+    }
+  }
+
+  private drawHeroNameCanvas(ctx: CanvasRenderingContext2D, hero: Hero) {
+    ctx.clearRect(0, 0, 256, 64);
+
+    const classDef = HERO_CLASS_DEFINITIONS[hero.heroClass];
+    const color = classDef.color || '#3b82f6';
+
+    // Dark rounded translucent pill banner
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+    ctx.roundRect(8, 8, 240, 48, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // Class Color Indicator Dot
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(28, 26, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Hero Name & Level Text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${hero.name} (L${hero.level})`, 44, 25);
+
+    // Mini Health Bar along bottom of nameplate
+    const hpRatio = Math.max(0, Math.min(1, hero.hp / hero.maxHp));
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(44, 38, 190, 7);
+
+    ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : (hpRatio > 0.25 ? '#eab308' : '#ef4444');
+    ctx.fillRect(44, 38, 190 * hpRatio, 7);
   }
 
   private create3DHeroMesh(h: Hero): THREE.Group {
@@ -3115,6 +3214,115 @@ export class ThreeRenderer {
     }
 
     return group;
+  }
+
+  // --- 3D FLOATING TRANSACTIONS & COINS ---
+  private updateFloatingTexts(state: GameState) {
+    const activeIds = new Set<string>();
+
+    for (const ft of state.floatingTexts) {
+      activeIds.add(ft.id);
+      let sprite = this.floatingTextsMap.get(ft.id);
+
+      if (!sprite) {
+        sprite = this.createFloatingTextSprite(ft);
+        this.scene.add(sprite);
+        this.floatingTextsMap.set(ft.id, sprite);
+      }
+
+      // Smooth floating rise in 3D world
+      const progress = 1 - Math.max(0, ft.life / Math.max(0.1, ft.maxLife));
+      sprite.position.set(ft.x, 11 + progress * 20, ft.y);
+      if (sprite.material) {
+        sprite.material.opacity = Math.max(0, Math.min(1, ft.life / ft.maxLife));
+      }
+      sprite.visible = this.gridManager.isPixelExplored(ft.x, ft.y);
+    }
+
+    for (const [id, sprite] of this.floatingTextsMap.entries()) {
+      if (!activeIds.has(id)) {
+        this.scene.remove(sprite);
+        if (sprite.material.map) sprite.material.map.dispose();
+        sprite.material.dispose();
+        this.floatingTextsMap.delete(id);
+      }
+    }
+  }
+
+  private createFloatingTextSprite(ft: FloatingText): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 80;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return new THREE.Sprite();
+
+    const isGold = ft.text.includes('g') || ft.text.includes('Tax') || ft.text.includes('Treasury') || ft.text.includes('Bounty') || ft.text.includes('Loot') || ft.text.includes('Ale');
+
+    if (isGold) {
+      // 1. Draw 3D Shaded Metallic Sovereign Gold Coin
+      const cx = 36;
+      const cy = 40;
+      const r = 24;
+
+      const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.5, '#eab308');
+      grad.addColorStop(1, '#b45309');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Outer gold rim
+      ctx.strokeStyle = '#fef08a';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r - 3, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Crown sovereign symbol
+      ctx.fillStyle = '#78350f';
+      ctx.font = 'bold 22px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('👑', cx, cy - 1);
+
+      // 2. Draw Transaction Sum with dark shadow outline
+      ctx.font = 'bold 32px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 6;
+      ctx.strokeText(ft.text, 72, cy);
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText(ft.text, 72, cy);
+    } else {
+      // Combat damage, healing, or level up banner
+      ctx.font = 'bold 30px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 6;
+      ctx.strokeText(ft.text, 128, 40);
+
+      ctx.fillStyle = ft.color || '#ffffff';
+      ctx.fillText(ft.text, 128, 40);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    const spriteMat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false
+    });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(isGold ? 16 : 13, isGold ? 5.0 : 4.0, 1);
+    return sprite;
   }
 
   // Screen to 3D World Raycasting

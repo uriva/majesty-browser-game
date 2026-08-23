@@ -468,7 +468,6 @@ export class GridManager {
     targetBuildingId?: string,
     speedMult: number = 1.0
   ): boolean {
-    const targetKey = `${Math.round(targetX)}_${Math.round(targetY)}`;
     const distToTarget = Math.hypot(targetX - entity.x, targetY - entity.y);
 
     if (distToTarget < 4) {
@@ -477,10 +476,39 @@ export class GridManager {
       return true;
     }
 
-    // Recompute path if target changed or no active path
-    if (!entity.path || entity.path.length === 0 || entity.pathTargetKey !== targetKey) {
+    // 1. Direct line of sight optimization: if path is clear, move directly without A* re-pathing jitter
+    if (this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId)) {
+      entity.path = undefined;
+      entity.pathTargetKey = undefined;
+
+      const moveDist = Math.min(distToTarget, entity.speed * speedMult * delta);
+      const dx = targetX - entity.x;
+      const dy = targetY - entity.y;
+
+      entity.x += (dx / distToTarget) * moveDist;
+      entity.y += (dy / distToTarget) * moveDist;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        entity.direction = dx > 0 ? 'right' : 'left';
+      } else {
+        entity.direction = dy > 0 ? 'down' : 'up';
+      }
+
+      return distToTarget <= moveDist + 4;
+    }
+
+    // 2. Obstacle pathfinding: only recompute A* path if target moved significantly (> 16px) or path is empty
+    let needNewPath = !entity.path || entity.path.length === 0 || !entity.pathTargetKey;
+    if (entity.pathTargetKey) {
+      const [lastTx, lastTy] = entity.pathTargetKey.split('_').map(Number);
+      if (Math.hypot(targetX - lastTx, targetY - lastTy) > 16) {
+        needNewPath = true;
+      }
+    }
+
+    if (needNewPath) {
       entity.path = this.findPath(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId);
-      entity.pathTargetKey = targetKey;
+      entity.pathTargetKey = `${Math.round(targetX)}_${Math.round(targetY)}`;
     }
 
     let moveBudget = entity.speed * speedMult * delta;

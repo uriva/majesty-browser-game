@@ -202,7 +202,10 @@ export class MonsterAIManager {
       if (dist > monster.attackRange + 4) {
         this.moveTowards(monster, closestTarget.x, closestTarget.y, delta, buildings, 1.0, closestTarget.type === 'building' ? closestTarget.id : undefined);
       } else {
-        // Face the target
+        // In attack range! Stop moving and face target
+        monster.path = undefined;
+        monster.pathTargetKey = undefined;
+
         const dx = closestTarget.x - monster.x;
         const dy = closestTarget.y - monster.y;
         if (Math.abs(dx) > Math.abs(dy)) monster.direction = dx > 0 ? 'right' : 'left';
