@@ -130,6 +130,44 @@ export class GameEngine {
     };
     this.state.buildings.push(palace);
 
+    // Spawn 3 initial Peasant Cottages around Palace outskirts generating initial kingdom taxes
+    const cottageOffsets = [
+      { dx: -7, dy: -5 },
+      { dx: 7, dy: -4 },
+      { dx: -6, dy: 6 }
+    ];
+
+    const cottageDef = BUILDING_DEFINITIONS['peasant_cottage'];
+    cottageOffsets.forEach((pos, idx) => {
+      const cx = centerX + pos.dx;
+      const cy = centerY + pos.dy;
+      if (this.gridManager.canPlaceBuilding(cx, cy, 2, 2, this.state.buildings, [])) {
+        const initCottage: Building = {
+          id: `cottage_start_${idx}`,
+          type: 'peasant_cottage',
+          name: 'Peasant Cottage',
+          x: cx,
+          y: cy,
+          width: cottageDef.width,
+          height: cottageDef.height,
+          hp: cottageDef.maxHp,
+          maxHp: cottageDef.maxHp,
+          level: 1,
+          maxLevel: 1,
+          isConstructing: false,
+          constructionProgress: 100,
+          constructionTime: 0,
+          goldStored: 12, // initial land rent awaiting collection
+          heroSlots: 0,
+          recruitedHeroIds: [],
+          researchedUpgrades: [],
+          availableUpgrades: [],
+          taxRate: 0.15
+        };
+        this.state.buildings.push(initCottage);
+      }
+    });
+
     // Spawn 2 initial Royal Peasant Builders at the Palace
     for (let p = 0; p < 2; p++) {
       const peasant: Peasant = {
@@ -846,6 +884,7 @@ export class GameEngine {
 
     this.state.treasuryGold -= cost;
     this.state.stats.goldSpent += cost;
+    building.goldStored += Math.round(cost * 0.35); // Guild receives training fees, creating taxable commerce!
 
     const classDef = HERO_CLASS_DEFINITIONS[heroClass];
     const trainingTime = classDef.trainingTime || 5.0;

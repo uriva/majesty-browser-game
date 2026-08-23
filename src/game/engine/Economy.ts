@@ -26,31 +26,31 @@ export class EconomyManager {
       y: (palace.y + palace.height) * this.gridManager.tileSize + 6
     };
 
-    // 1. Peasant cottages generate modest land rent awaiting tax collection
+    // 1. Peasant cottages generate steady land rent awaiting tax collection
     for (const b of buildings) {
       if (b.isConstructing || b.hp <= 0) continue;
       if (b.type === 'peasant_cottage') {
-        b.goldStored += 0.8 * delta; // Commoner land rent
+        b.goldStored += 1.4 * delta; // Commoner land rent (~84g/min per cottage)
       }
     }
 
-    // Dispatch Tax Collector from Palace when buildings have uncollected taxes from hero transactions (> 15g)
+    // Dispatch Tax Collector from Palace when buildings have uncollected taxes (>= 10g)
     this.taxSpawnCooldown -= delta;
-    if (this.taxSpawnCooldown <= 0 && taxCollectors.length < 2) {
+    if (this.taxSpawnCooldown <= 0 && taxCollectors.length < 3) {
       let highestBuilding: Building | null = null;
-      let maxGold = 15;
+      let maxGold = 10;
 
       for (const b of buildings) {
         if (b.type === 'palace' || b.isConstructing || b.hp <= 0) continue;
         const alreadyTargeted = taxCollectors.some(tc => tc.targetBuildingId === b.id);
-        if (!alreadyTargeted && b.goldStored > maxGold) {
+        if (!alreadyTargeted && b.goldStored >= maxGold) {
           maxGold = b.goldStored;
           highestBuilding = b;
         }
       }
 
       if (highestBuilding) {
-        this.taxSpawnCooldown = 6.0;
+        this.taxSpawnCooldown = 4.0;
         const newCollector: TaxCollector = {
           id: `tax_${Date.now()}`,
           name: 'Royal Tax Collector',
@@ -58,7 +58,7 @@ export class EconomyManager {
           y: palaceGate.y + 4,
           hp: 100,
           maxHp: 100,
-          speed: 32,
+          speed: 36,
           goldCarried: 0,
           targetBuildingId: highestBuilding.id,
           state: 'seeking_building',
