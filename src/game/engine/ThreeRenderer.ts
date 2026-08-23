@@ -1201,16 +1201,25 @@ export class ThreeRenderer {
     const h = lair.height * ts;
 
     if (lair.type === 'sewer_grate') {
-      // Detailed 3D Sewer Grate & Rat Den with Iron Bars & Toxic Slime
-      const rimGeo = new THREE.BoxGeometry(w * 0.85, 4, h * 0.85);
+      // Grounded Street-Level Sewer Manhole / Iron Drainage Grate
+      const curbGeo = new THREE.CylinderGeometry(12, 13, 0.9, 16);
       const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
-      const rim = new THREE.Mesh(rimGeo, stoneMat);
-      rim.position.y = 2;
-      rim.castShadow = true;
-      group.add(rim);
+      const curb = new THREE.Mesh(curbGeo, stoneMat);
+      curb.position.y = 0.45;
+      curb.castShadow = true;
+      curb.receiveShadow = true;
+      group.add(curb);
 
-      // Bubbling Green Slime Pool inside
-      const slimeGeo = new THREE.PlaneGeometry(w * 0.7, h * 0.7);
+      // Deep Recessed Pitch-Black Drain Pit
+      const pitGeo = new THREE.CircleGeometry(9.5, 16);
+      pitGeo.rotateX(-Math.PI / 2);
+      const darkMat = new THREE.MeshBasicMaterial({ color: 0x030712 });
+      const pit = new THREE.Mesh(pitGeo, darkMat);
+      pit.position.y = 0.5;
+      group.add(pit);
+
+      // Murky Bioluminescent Green Sewer Slime deep inside
+      const slimeGeo = new THREE.CircleGeometry(8.5, 16);
       slimeGeo.rotateX(-Math.PI / 2);
       const slimeMat = new THREE.MeshStandardMaterial({
         color: 0x10b981,
@@ -1219,26 +1228,36 @@ export class ThreeRenderer {
         roughness: 0.2
       });
       const slime = new THREE.Mesh(slimeGeo, slimeMat);
-      slime.position.y = 3;
+      slime.position.y = 0.52;
       group.add(slime);
 
-      // Heavy Iron Sewer Bars
-      const barMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.2 });
-      const numBars = 5;
-      const spacing = (w * 0.65) / numBars;
+      // Heavy Cast Iron Outer Ring
+      const rimRingGeo = new THREE.TorusGeometry(9.5, 0.55, 6, 16);
+      rimRingGeo.rotateX(Math.PI / 2);
+      const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.25 });
+      const rimRing = new THREE.Mesh(rimRingGeo, ironMat);
+      rimRing.position.y = 0.85;
+      group.add(rimRing);
 
+      // Slotted Iron Sewer Grate Bars
+      const numBars = 5;
+      const spacing = 14 / numBars;
       for (let i = 0; i <= numBars; i++) {
-        const barGeo = new THREE.BoxGeometry(1.4, 1.4, h * 0.7);
-        const bar = new THREE.Mesh(barGeo, barMat);
-        bar.position.set(-w * 0.32 + i * spacing, 4.2, 0);
+        const barGeo = new THREE.BoxGeometry(0.8, 0.6, 17);
+        const bar = new THREE.Mesh(barGeo, ironMat);
+        const barX = -7 + i * spacing;
+        // Clip length to circle radius
+        const maxLen = 2 * Math.sqrt(Math.max(1, 9.5 * 9.5 - barX * barX));
+        bar.scale.z = Math.min(1, maxLen / 17);
+        bar.position.set(barX, 0.9, 0);
         bar.castShadow = true;
         group.add(bar);
       }
 
-      // Cross bar
-      const crossBarGeo = new THREE.BoxGeometry(w * 0.7, 1.4, 1.4);
-      const crossBar = new THREE.Mesh(crossBarGeo, barMat);
-      crossBar.position.set(0, 4.5, 0);
+      // Thick Central Crossbar
+      const crossBarGeo = new THREE.BoxGeometry(18, 0.8, 0.8);
+      const crossBar = new THREE.Mesh(crossBarGeo, ironMat);
+      crossBar.position.set(0, 0.95, 0);
       group.add(crossBar);
     } else if (lair.type === 'graveyard') {
       // 3D Cursed Graveyard with Mausoleum & Headstones
@@ -1358,29 +1377,29 @@ export class ThreeRenderer {
     return group;
   }
 
-  // --- 3D TREASURES ---
+  // --- 3D TREASURES (GOLD SACKS & CHESTS) ---
   private updateTreasures(state: GameState) {
     const activeIds = new Set<string>();
+    const time = Date.now() * 0.004;
 
     for (const t of state.treasures) {
       activeIds.add(t.id);
       let mesh = this.treasuresMap.get(t.id);
 
       if (!mesh) {
-        mesh = new THREE.Group();
-        const chestGeo = new THREE.BoxGeometry(8, 6, 6);
-        const chestMat = new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.5, roughness: 0.3 });
-        const cMesh = new THREE.Mesh(chestGeo, chestMat);
-        cMesh.position.y = 3;
-        cMesh.castShadow = true;
-        mesh.add(cMesh);
-
+        mesh = this.create3DTreasureMesh(t);
         this.scene.add(mesh);
         this.treasuresMap.set(t.id, mesh);
       }
 
       mesh.position.set(t.x, 0, t.y);
       mesh.visible = this.gridManager.isPixelExplored(t.x, t.y);
+
+      // Gentle golden shimmer bob
+      const shine = mesh.getObjectByName('treasureGlow');
+      if (shine) {
+        shine.rotation.z = time * 0.8;
+      }
     }
 
     for (const [id, mesh] of this.treasuresMap.entries()) {
@@ -1389,6 +1408,118 @@ export class ThreeRenderer {
         this.treasuresMap.delete(id);
       }
     }
+  }
+
+  private create3DTreasureMesh(t: Treasure): THREE.Group {
+    const group = new THREE.Group();
+
+    if (t.type === 'chest') {
+      // Ironwood & Brass Treasure Chest
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.85 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.9, roughness: 0.15 });
+
+      const chestBaseGeo = new THREE.BoxGeometry(3.6, 1.8, 2.6);
+      const chestBase = new THREE.Mesh(chestBaseGeo, woodMat);
+      chestBase.position.y = 0.9;
+      chestBase.castShadow = true;
+      group.add(chestBase);
+
+      // Vaulted Domed Lid
+      const lidGeo = new THREE.CylinderGeometry(1.3, 1.3, 3.6, 12, 1, false, 0, Math.PI);
+      lidGeo.rotateZ(Math.PI / 2);
+      const lid = new THREE.Mesh(lidGeo, woodMat);
+      lid.position.set(0, 1.8, 0);
+      lid.castShadow = true;
+      group.add(lid);
+
+      // Brass Corner Straps & Lock
+      const lockGeo = new THREE.BoxGeometry(0.6, 0.8, 0.2);
+      const lock = new THREE.Mesh(lockGeo, goldMat);
+      lock.position.set(0, 1.2, 1.35);
+      group.add(lock);
+
+      // Spilling Gold Coins inside
+      const coinGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.1, 8);
+      for (let i = 0; i < 4; i++) {
+        const coin = new THREE.Mesh(coinGeo, goldMat);
+        coin.position.set((Math.random() - 0.5) * 1.8, 0.1, 1.4 + Math.random() * 0.8);
+        coin.rotation.x = (Math.random() - 0.5) * 0.4;
+        group.add(coin);
+      }
+    } else {
+      // Realistic Bulging Burlap/Leather Gold Sack with Gold Coins
+      const sackMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.9 });
+      const ropeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
+      const goldCoinMat = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        metalness: 0.95,
+        roughness: 0.1,
+        emissive: 0xd97706,
+        emissiveIntensity: 0.3
+      });
+
+      // Puffy Round Sack Body with flat bottom
+      const bodyGeo = new THREE.SphereGeometry(1.8, 10, 8);
+      const body = new THREE.Mesh(bodyGeo, sackMat);
+      body.scale.set(1.2, 0.9, 1.2);
+      body.position.y = 1.3;
+      body.castShadow = true;
+      group.add(body);
+
+      // Tied Golden Rope Neck Cord
+      const cordGeo = new THREE.TorusGeometry(0.7, 0.14, 6, 12);
+      cordGeo.rotateX(Math.PI / 2);
+      const cord = new THREE.Mesh(cordGeo, ropeMat);
+      cord.position.y = 2.4;
+      group.add(cord);
+
+      // Gathered Pleated Top Opening
+      const ruffleGeo = new THREE.ConeGeometry(1.1, 0.9, 8);
+      ruffleGeo.rotateX(Math.PI);
+      const ruffle = new THREE.Mesh(ruffleGeo, sackMat);
+      ruffle.position.y = 2.8;
+      group.add(ruffle);
+
+      // Spilling Metallic Gold Coins around the bag
+      const coinGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.1, 8);
+      const coinOffsets = [
+        [1.6, 0.08, 0.6, 0.2],
+        [-1.5, 0.08, 0.8, -0.3],
+        [0.8, 0.08, 1.6, 0.15],
+        [-0.7, 0.08, 1.5, -0.2],
+        [1.2, 0.16, 1.2, 0.4]
+      ];
+
+      coinOffsets.forEach(([cx, cy, cz, rotZ]) => {
+        const coin = new THREE.Mesh(coinGeo, goldCoinMat);
+        coin.position.set(cx, cy, cz);
+        coin.rotation.z = rotZ;
+        coin.castShadow = true;
+        group.add(coin);
+      });
+
+      // Golden Crown Emblem on front of pouch
+      const emblemGeo = new THREE.BoxGeometry(0.7, 0.5, 0.15);
+      const emblem = new THREE.Mesh(emblemGeo, goldCoinMat);
+      emblem.position.set(0, 1.3, 1.85);
+      group.add(emblem);
+    }
+
+    // Soft Golden Loot Aura Ring on ground
+    const glowGeo = new THREE.RingGeometry(2.4, 3.2, 16);
+    glowGeo.rotateX(-Math.PI / 2);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0.3,
+      side: THREE.DoubleSide
+    });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    glow.position.y = 0.05;
+    glow.name = 'treasureGlow';
+    group.add(glow);
+
+    return group;
   }
 
   // --- 3D FLAGS ---

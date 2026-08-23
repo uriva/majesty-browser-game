@@ -27,9 +27,9 @@ export class MonsterAIManager {
         lair.spawnTimer = lair.spawnInterval;
 
         const def = MONSTER_DEFINITIONS[lair.monsterType];
-        // Spawn with radial dispersion around lair
+        // Spawn with radial dispersion around the perimeter of the lair (outside the structure)
         const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * 24 + 18;
+        const radius = Math.random() * 14 + (lair.type === 'sewer_grate' ? 20 : 26);
         const spawnX = (lair.x + lair.width / 2) * this.gridManager.tileSize + Math.cos(angle) * radius;
         const spawnY = (lair.y + lair.height / 2) * this.gridManager.tileSize + Math.sin(angle) * radius;
 
@@ -280,20 +280,21 @@ export class MonsterAIManager {
 
         // Radius based on monster type (rats stay close to sewers, wolves/goblins roam further)
         let maxRadius = 90;
-        if (monster.type === 'giant_rat') maxRadius = 75;
-        else if (monster.type === 'dire_wolf') maxRadius = 160;
-        else if (monster.type === 'goblin_spearman' || monster.type === 'goblin_shaman') maxRadius = 140;
-        else if (monster.type === 'skeleton' || monster.type === 'zombie') maxRadius = 110;
+        let minRadius = 22;
+        if (monster.type === 'giant_rat') { maxRadius = 75; minRadius = 22; }
+        else if (monster.type === 'dire_wolf') { maxRadius = 160; minRadius = 28; }
+        else if (monster.type === 'goblin_spearman' || monster.type === 'goblin_shaman') { maxRadius = 140; minRadius = 26; }
+        else if (monster.type === 'skeleton' || monster.type === 'zombie') { maxRadius = 110; minRadius = 24; }
 
-        // Pick a clear walkable destination within lair territory
+        // Pick a clear walkable destination outside lair bounds
         let foundSpot = false;
         for (let attempt = 0; attempt < 10; attempt++) {
           const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * maxRadius + 15;
+          const dist = Math.random() * (maxRadius - minRadius) + minRadius;
           const candidateX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, originX + Math.cos(angle) * dist));
           const candidateY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, originY + Math.sin(angle) * dist));
 
-          if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs, monster.lairId)) {
+          if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs)) {
             monster.targetX = candidateX;
             monster.targetY = candidateY;
             foundSpot = true;
@@ -302,8 +303,10 @@ export class MonsterAIManager {
         }
 
         if (!foundSpot) {
-          monster.targetX = originX + (Math.random() * 40 - 20);
-          monster.targetY = originY + (Math.random() * 40 - 20);
+          const fallbackAngle = Math.random() * Math.PI * 2;
+          const fallbackDist = monster.type === 'giant_rat' ? 26 : 34;
+          monster.targetX = originX + Math.cos(fallbackAngle) * fallbackDist;
+          monster.targetY = originY + Math.sin(fallbackAngle) * fallbackDist;
         }
       }
 
