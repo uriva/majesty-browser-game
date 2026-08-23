@@ -140,6 +140,8 @@ export interface Monster {
   targetX?: number;
   targetY?: number;
   wanderTimer?: number;
+  targetHoldTimer?: number;
+  isEngaged?: boolean;
   path?: Position[];
   pathTargetKey?: string;
 }

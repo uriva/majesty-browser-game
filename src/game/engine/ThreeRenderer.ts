@@ -113,10 +113,12 @@ export class ThreeRenderer {
     this.riverTexture = this.createWaterFlowTexture();
     this.waterfallTexture = this.createWaterfallTexture();
 
-    // Unified Ground Road Decal Canvas (4096x4096 high-res texture)
+    // Unified Ground Road Decal Canvas (high-res texture, sized to map)
+    const worldMax = Math.max(gridManager.width, gridManager.height) * gridManager.tileSize;
+    const rcSize = worldMax > 4200 ? 8192 : 4096;
     this.roadCanvas = document.createElement('canvas');
-    this.roadCanvas.width = 4096;
-    this.roadCanvas.height = 4096;
+    this.roadCanvas.width = rcSize;
+    this.roadCanvas.height = rcSize;
     this.roadCtx = this.roadCanvas.getContext('2d')!;
     this.roadTexture = new THREE.CanvasTexture(this.roadCanvas);
     this.roadTexture.anisotropy = 16;
@@ -445,42 +447,42 @@ export class ThreeRenderer {
 
   private createCobblePatternCanvas(): HTMLCanvasElement {
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
+    canvas.width = 512;
+    canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
     // Rich dark charcoal & slate mortar base
     ctx.fillStyle = '#1c1917';
-    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillRect(0, 0, 512, 512);
 
     // Fine gravel & sand grit in the mortar recesses
-    for (let i = 0; i < 300; i++) {
-      const gx = (i * 47) % 256;
-      const gy = (i * 83) % 256;
+    for (let i = 0; i < 1200; i++) {
+      const gx = (i * 47) % 512;
+      const gy = (i * 83) % 512;
       ctx.fillStyle = (i % 2 === 0) ? '#292524' : '#0c0a09';
       ctx.fillRect(gx, gy, 1.5, 1.5);
     }
 
     // High-definition medieval dressed stone paver bricks
-    // Across a 41.6px road on the 4096 canvas, stoneW = 14px / stoneH = 8px provides ~3-4 distinct stones across the path
-    const stoneH = 8;
-    const baseStoneW = 14;
+    // Across a 41.6px road on the 4096 canvas, stoneW = 7.5px / stoneH = 4.5px provides ~5-6 distinct stones across the path
+    const stoneH = 4.5;
+    const baseStoneW = 7.5;
 
-    for (let y = 0; y < 256; y += stoneH) {
+    for (let y = 0; y < 512; y += stoneH) {
       const row = Math.floor(y / stoneH);
       const rowOffset = (row % 2) * (baseStoneW / 2);
 
       let x = -baseStoneW;
-      while (x < 256 + baseStoneW) {
+      while (x < 512 + baseStoneW) {
         // Vary stone widths slightly for organic hand-laid masonry
         const hash = Math.abs(Math.floor(x * 7.31 + y * 13.67));
-        const widthVariation = (hash % 3 === 0) ? 2 : (hash % 3 === 1 ? -2 : 0);
+        const widthVariation = (hash % 3 === 0) ? 1.4 : (hash % 3 === 1 ? -1.4 : 0);
         const curW = baseStoneW + widthVariation;
 
-        const sx = x + rowOffset + 0.8;
-        const sy = y + 0.8;
-        const sw = curW - 1.6;
-        const sh = stoneH - 1.6;
+        const sx = x + rowOffset + 0.6;
+        const sy = y + 0.5;
+        const sw = curW - 1.2;
+        const sh = stoneH - 1.0;
 
         // Rich, realistic weathered medieval stone palette
         const stonePalette = [
@@ -499,24 +501,24 @@ export class ThreeRenderer {
 
         ctx.fillStyle = baseColor;
         ctx.beginPath();
-        ctx.roundRect(sx, sy, sw, sh, 1.2);
+        ctx.roundRect(sx, sy, sw, sh, 1.0);
         ctx.fill();
 
-        // 3D Top and Left chisel highlight bevel (1px crisp edge)
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-        ctx.fillRect(sx, sy, sw, 1);
-        ctx.fillRect(sx, sy, 1, sh);
+        // 3D Top and Left chisel highlight bevel (sub-pixel crisp edge)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.fillRect(sx, sy, sw, 0.8);
+        ctx.fillRect(sx, sy, 0.8, sh);
 
-        // 3D Bottom and Right chisel drop shadow (1px crisp edge)
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(sx, sy + sh - 1, sw, 1);
-        ctx.fillRect(sx + sw - 1, sy, 1, sh);
+        // 3D Bottom and Right chisel drop shadow (sub-pixel crisp edge)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillRect(sx, sy + sh - 0.8, sw, 0.8);
+        ctx.fillRect(sx + sw - 0.8, sy, 0.8, sh);
 
         // Stone surface clefts & grain micro-texture (realistic stone detail closeup)
-        const grainCount = Math.floor(sw / 3);
+        const grainCount = Math.floor(sw / 4);
         for (let g = 0; g < grainCount; g++) {
-          const gx = sx + 2 + ((hash + g * 5) % Math.max(1, Math.floor(sw - 4)));
-          const gy = sy + 2 + ((hash * 3 + g * 7) % Math.max(1, Math.floor(sh - 4)));
+          const gx = sx + 1.5 + ((hash + g * 5) % Math.max(1, Math.floor(sw - 3)));
+          const gy = sy + 1.5 + ((hash * 3 + g * 7) % Math.max(1, Math.floor(sh - 3)));
           ctx.fillStyle = (g % 2 === 0) ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.22)';
           ctx.fillRect(gx, gy, 1, 1);
         }
@@ -1834,7 +1836,7 @@ export class ThreeRenderer {
 
     const canvas = this.roadCanvas;
     const ctx = this.roadCtx;
-    const canvasSize = 4096;
+    const canvasSize = canvas.width;
 
     ctx.clearRect(0, 0, canvasSize, canvasSize);
 
@@ -3200,6 +3202,59 @@ export class ThreeRenderer {
     }
   }
 
+  private createGableRoof(width: number, depth: number, height: number, mat: THREE.Material, ridgeAlongX = false): THREE.Group {
+    const group = new THREE.Group();
+    const ov = Math.max(1.2, Math.min(width, depth) * 0.09);
+    const w2 = width / 2 + ov;
+    const d2 = depth / 2 + ov;
+    const h = height;
+
+    // Prism vertices: rectangular eave ring + raised ridge running along Z
+    const A = [-w2, 0, -d2], B = [w2, 0, -d2], C = [w2, 0, d2], D = [-w2, 0, d2];
+    const R1 = [0, h, -d2], R2 = [0, h, d2];
+
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const pushTri = (
+      p1: number[], p2: number[], p3: number[],
+      u1: number[], u2: number[], u3: number[]
+    ) => {
+      pos.push(...p1, ...p2, ...p3);
+      uv.push(...u1, ...u2, ...u3);
+    };
+
+    // Right slope (faces +X)
+    pushTri(B, R1, R2, [0, 0], [1, 0], [1, 1]);
+    pushTri(B, R2, C, [0, 0], [1, 1], [0, 1]);
+    // Left slope (faces -X)
+    pushTri(D, R2, R1, [0, 1], [1, 1], [1, 0]);
+    pushTri(D, R1, A, [0, 1], [1, 0], [0, 0]);
+    // Front gable end (faces -Z)
+    pushTri(A, R1, B, [0, 0], [0.5, 1], [1, 0]);
+    // Back gable end (faces +Z)
+    pushTri(D, C, R2, [0, 0], [1, 0], [0.5, 1]);
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.computeVertexNormals();
+
+    const roofMesh = new THREE.Mesh(geo, mat);
+    roofMesh.castShadow = true;
+    group.add(roofMesh);
+
+    // Ridge cap beam along the peak
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.3, d2 * 2 * 0.98), mat);
+    ridge.position.y = h - 0.1;
+    ridge.castShadow = true;
+    group.add(ridge);
+
+    if (ridgeAlongX) {
+      group.rotation.y = Math.PI / 2;
+    }
+    return group;
+  }
+
   private create3DBuilding(b: Building): THREE.Group {
     const group = new THREE.Group();
     const ts = this.gridManager.tileSize;
@@ -3502,7 +3557,6 @@ export class ThreeRenderer {
         const wingH = level === 3 ? 20 : 16;
         const wingD = 24;
         const wingGeo = new THREE.BoxGeometry(wingW, wingH, wingD);
-        const wingRoofGeo = new THREE.ConeGeometry(13, 10, 4);
 
         // East Annex Wing
         const eastWing = new THREE.Mesh(wingGeo, tudorMat);
@@ -3510,9 +3564,8 @@ export class ThreeRenderer {
         eastWing.castShadow = true;
         group.add(eastWing);
 
-        const eastRoof = new THREE.Mesh(wingRoofGeo, roofSlateMat);
-        eastRoof.position.set(wallHalfW - 4, wingH + 5, 0);
-        eastRoof.rotation.y = Math.PI / 4;
+        const eastRoof = this.createGableRoof(wingW + 4, wingD + 3, 10, roofSlateMat);
+        eastRoof.position.set(wallHalfW - 4, wingH + 1.25, 0);
         group.add(eastRoof);
 
         // West Annex Wing
@@ -3521,9 +3574,8 @@ export class ThreeRenderer {
         westWing.castShadow = true;
         group.add(westWing);
 
-        const westRoof = new THREE.Mesh(wingRoofGeo, roofSlateMat);
-        westRoof.position.set(-wallHalfW + 4, wingH + 5, 0);
-        westRoof.rotation.y = Math.PI / 4;
+        const westRoof = this.createGableRoof(wingW + 4, wingD + 3, 10, roofSlateMat);
+        westRoof.position.set(-wallHalfW + 4, wingH + 1.25, 0);
         group.add(westRoof);
       }
 
@@ -3531,7 +3583,6 @@ export class ThreeRenderer {
       if (level === 3) {
         // 3 Outer Barbican Midpoint Turrets
         const barbicanGeo = new THREE.BoxGeometry(10, 32, 10);
-        const barbRoofGeo = new THREE.ConeGeometry(7, 10, 4);
 
         const midpoints = [
           [0, -wallHalfH - 2],
@@ -3545,9 +3596,8 @@ export class ThreeRenderer {
           barb.castShadow = true;
           group.add(barb);
 
-          const bRoof = new THREE.Mesh(barbRoofGeo, roofSlateMat);
-          bRoof.position.set(mx, 36, mz);
-          bRoof.rotation.y = Math.PI / 4;
+          const bRoof = this.createGableRoof(13, 13, 9, roofSlateMat);
+          bRoof.position.set(mx, 32.5, mz);
           group.add(bRoof);
         });
 
@@ -3595,13 +3645,10 @@ export class ThreeRenderer {
         group.add(balustrade);
       }
 
-      // Grand Keep Roof
+      // Grand Keep Roof (Gabled with ridge & eaves)
       const keepRoofH = level === 1 ? 18 : (level === 2 ? 26 : 30);
-      const keepRoofGeo = new THREE.ConeGeometry(keepW * 0.85, keepRoofH, 4);
-      const keepRoof = new THREE.Mesh(keepRoofGeo, roofSlateMat);
-      keepRoof.position.y = keepH + keepRoofH / 2 + 1.25;
-      keepRoof.rotation.y = Math.PI / 4;
-      keepRoof.castShadow = true;
+      const keepRoof = this.createGableRoof(keepW * 1.12, keepW * 1.12, keepRoofH, roofSlateMat);
+      keepRoof.position.y = keepH + 1.25;
       group.add(keepRoof);
 
       // Sovereign Golden Crown Spire & Arcane Sovereign Beacon (Level 2 & 3)
@@ -3717,11 +3764,8 @@ export class ThreeRenderer {
       keepUpper.castShadow = true;
       group.add(keepUpper);
 
-      const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(keepW * 0.72, 17, 4), roofMat);
-      keepRoof.position.set(keepX, 34.5, keepZ);
-      keepRoof.rotation.y = Math.PI / 4;
-      keepRoof.scale.set(1.1, 1.0, (keepD / keepW) * 1.8);
-      keepRoof.castShadow = true;
+      const keepRoof = this.createGableRoof(keepW * 1.22, keepD * 1.18, 17, roofMat);
+      keepRoof.position.set(keepX, 26 + 1.25, keepZ);
       group.add(keepRoof);
 
       // Great Hall Chimney with Smoke
@@ -3769,11 +3813,8 @@ export class ThreeRenderer {
       barHall.castShadow = true;
       group.add(barHall);
 
-      const barRoof = new THREE.Mesh(new THREE.ConeGeometry(barW * 0.65, 12, 4), roofMat);
-      barRoof.position.set(barX, 17, barZ);
-      barRoof.rotation.y = Math.PI / 4;
-      barRoof.scale.set(1.15, 1.0, (barD / barW) * 1.9);
-      barRoof.castShadow = true;
+      const barRoof = this.createGableRoof(barW * 1.2, barD * 1.18, 12, roofMat);
+      barRoof.position.set(barX, 11 + 1.25, barZ);
       group.add(barRoof);
 
       // Dormer on Barracks Roof
@@ -3869,11 +3910,8 @@ export class ThreeRenderer {
       lodgeUpper.position.set(lodgeX, 14, lodgeZ);
       group.add(lodgeUpper);
 
-      const lodgeRoof = new THREE.Mesh(new THREE.ConeGeometry(lodgeW * 0.65, 13, 4), thatchMat);
-      lodgeRoof.position.set(lodgeX, 23.5, lodgeZ);
-      lodgeRoof.rotation.y = Math.PI / 4;
-      lodgeRoof.scale.set(1.2, 1.0, (lodgeD / lodgeW) * 2.0);
-      lodgeRoof.castShadow = true;
+      const lodgeRoof = this.createGableRoof(lodgeW * 1.2, lodgeD * 1.18, 13, thatchMat);
+      lodgeRoof.position.set(lodgeX, 17 + 1.25, lodgeZ);
       group.add(lodgeRoof);
 
       // Carved Elk Antler Crest over Door
@@ -3906,10 +3944,9 @@ export class ThreeRenderer {
       platRail.position.set(towerX, 28, towerZ);
       group.add(platRail);
 
-      // Lookout Canopy Roof
-      const lookRoof = new THREE.Mesh(new THREE.ConeGeometry(9.5, 8, 4), tentMat);
+      // Lookout Canopy Roof (octagonal pavilion cap)
+      const lookRoof = new THREE.Mesh(new THREE.ConeGeometry(9.5, 8, 8), tentMat);
       lookRoof.position.set(towerX, 35, towerZ);
-      lookRoof.rotation.y = Math.PI / 4;
       group.add(lookRoof);
 
       // 3. WING C: Covered Fletching & Bowyer Lean-To Shed (South-East)
@@ -3972,11 +4009,8 @@ export class ThreeRenderer {
       floor3.castShadow = true;
       group.add(floor3);
 
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(tenW * 0.80, 18, 4), slateMat);
-      roof.position.set(tenX - 2, 37, tenZ + 2);
-      roof.rotation.y = Math.PI / 4 + 0.12;
-      roof.scale.set(1.1, 1.0, (tenD / tenW) * 1.7);
-      roof.castShadow = true;
+      const roof = this.createGableRoof(tenW * 1.3, tenD * 1.22, 18, slateMat);
+      roof.position.set(tenX - 2, 28 + 1.25, tenZ + 2);
       group.add(roof);
 
       // 2. WING B: Slender Crooked Stone Lookout Tower (North-East Corner)
@@ -3987,9 +4021,9 @@ export class ThreeRenderer {
       tower.castShadow = true;
       group.add(tower);
 
-      const twrRoof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.20, 16, 4), slateMat);
-      twrRoof.position.set(twrX, 46, twrZ);
-      twrRoof.rotation.y = Math.PI / 4 - 0.15;
+      const twrRoof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.21, 16, 8), slateMat);
+      twrRoof.position.set(twrX, 38 + 8, twrZ);
+      twrRoof.rotation.y = -0.15;
       group.add(twrRoof);
 
       // 3. WING C: Smuggler Cellar Vault Annex (Front/South-East)
@@ -4098,9 +4132,8 @@ export class ThreeRenderer {
         bTower.castShadow = true;
         group.add(bTower);
 
-        const bSpire = new THREE.Mesh(new THREE.ConeGeometry(twrW * 0.72, 16, 4), roofSlateMat);
-        bSpire.position.set(tx, 48, h * 0.22);
-        bSpire.rotation.y = Math.PI / 4;
+        const bSpire = new THREE.Mesh(new THREE.ConeGeometry(twrW * 0.78, 16, 8), roofSlateMat);
+        bSpire.position.set(tx, 40 + 8, h * 0.22);
         bSpire.castShadow = true;
         group.add(bSpire);
 
@@ -4170,10 +4203,8 @@ export class ThreeRenderer {
       ghUpper.castShadow = true;
       group.add(ghUpper);
 
-      const ghRoof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.45, 15, 4), slateRoofMat);
-      ghRoof.position.set(0, 30.5, -h * 0.22);
-      ghRoof.rotation.y = Math.PI / 4;
-      ghRoof.castShadow = true;
+      const ghRoof = this.createGableRoof(w * 0.84, h * 0.44, 15, slateRoofMat, true);
+      ghRoof.position.set(0, 24 + 1.25, -h * 0.22);
       group.add(ghRoof);
 
       // Hanging Gilded Scales of Commerce Sign
@@ -4245,11 +4276,8 @@ export class ThreeRenderer {
       workshop.castShadow = true;
       group.add(workshop);
 
-      const shopRoof = new THREE.Mesh(new THREE.ConeGeometry(shopW * 0.65, 14, 4), slateRoofMat);
-      shopRoof.position.set(shopX, 21.5, shopZ);
-      shopRoof.rotation.y = Math.PI / 4;
-      shopRoof.scale.set(1.15, 1.0, (shopD / shopW) * 1.8);
-      shopRoof.castShadow = true;
+      const shopRoof = this.createGableRoof(shopW * 1.2, shopD * 1.16, 14, slateRoofMat);
+      shopRoof.position.set(shopX, 15 + 1.25, shopZ);
       group.add(shopRoof);
 
       // 2. WING B: Massive Twin Industrial Brick Chimney Stack (North-East Wing)
@@ -4396,11 +4424,8 @@ export class ThreeRenderer {
       upperFloor.castShadow = true;
       group.add(upperFloor);
 
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(innW * 0.65, 15, 4), roofMat);
-      roof.position.set(innX, 29.5, innZ);
-      roof.rotation.y = Math.PI / 4;
-      roof.scale.set(1.15, 1.0, (innD / innW) * 1.8);
-      roof.castShadow = true;
+      const roof = this.createGableRoof(innW * 1.18, innD * 1.18, 15, roofMat);
+      roof.position.set(innX, 23 + 1.25, innZ);
       group.add(roof);
 
       // Fireplace Chimney with Smoke
@@ -4420,10 +4445,8 @@ export class ThreeRenderer {
       brewhouse.castShadow = true;
       group.add(brewhouse);
 
-      const brewRoof = new THREE.Mesh(new THREE.ConeGeometry(brewW * 0.65, 10, 4), roofMat);
-      brewRoof.position.set(brewX, 13.5, brewZ);
-      brewRoof.rotation.y = Math.PI / 4;
-      brewRoof.scale.set(1.1, 1.0, (brewD / brewW) * 1.8);
+      const brewRoof = this.createGableRoof(brewW * 1.16, brewD * 1.14, 10, roofMat);
+      brewRoof.position.set(brewX, 9 + 1.25, brewZ);
       group.add(brewRoof);
 
       // Copper Brew Kettle Vent Pipe
@@ -4505,11 +4528,8 @@ export class ThreeRenderer {
         group.add(winLoft);
 
         // Steep Pitched Thatched Roof
-        const roof = new THREE.Mesh(new THREE.ConeGeometry(loftW * 0.72, 10.5, 4), thatchMat);
-        roof.position.set(houseX, 19.5, houseZ);
-        roof.rotation.y = Math.PI / 4;
-        roof.scale.set(1.0, 1.0, loftD / loftW);
-        roof.castShadow = true;
+        const roof = this.createGableRoof(loftW * 1.18, loftD * 1.12, 10.5, thatchMat);
+        roof.position.set(houseX, 15.5 + 1.25, houseZ);
         group.add(roof);
 
         // Side Lean-To Woodshed (Attached to right side)
@@ -4558,11 +4578,8 @@ export class ThreeRenderer {
         group.add(mainHall);
 
         // Main Wing Thatch Roof
-        const mainRoof = new THREE.Mesh(new THREE.ConeGeometry(mainW * 0.62, 8.5, 4), thatchMat);
-        mainRoof.position.set(mainX, 11.5, mainZ);
-        mainRoof.rotation.y = Math.PI / 4;
-        mainRoof.scale.set(1.25, 1.0, (mainD / mainW) * 2.2);
-        mainRoof.castShadow = true;
+        const mainRoof = this.createGableRoof(mainW * 1.24, mainD * 1.3, 8.5, thatchMat, true);
+        mainRoof.position.set(mainX, 8 + 1.25, mainZ);
         group.add(mainRoof);
 
         // Front Cross Wing (North-South forward projection, forming the 'L')
@@ -4577,11 +4594,8 @@ export class ThreeRenderer {
         group.add(crossWing);
 
         // Cross Wing Thatch Roof
-        const crossRoof = new THREE.Mesh(new THREE.ConeGeometry(crossW * 0.72, 7.5, 4), thatchMat);
-        crossRoof.position.set(crossX, 10.5, crossZ);
-        crossRoof.rotation.y = Math.PI / 4;
-        crossRoof.scale.set(1.0, 1.0, crossD / crossW);
-        crossRoof.castShadow = true;
+        const crossRoof = this.createGableRoof(crossW * 1.16, crossD * 1.14, 7.5, thatchMat);
+        crossRoof.position.set(crossX, 7.5 + 1.25, crossZ);
         group.add(crossRoof);
 
         // Front Window on Cross Wing
@@ -4629,12 +4643,9 @@ export class ThreeRenderer {
         base2.castShadow = true;
         group.add(base2);
 
-        // Steep Thatched Gable Roof
-        const roof2 = new THREE.Mesh(new THREE.ConeGeometry(house2W * 0.60, 9.0, 4), thatchMat);
-        roof2.position.set(house2X, 12.0, house2Z);
-        roof2.rotation.y = Math.PI / 4;
-        roof2.scale.set(1.28, 1.0, (house2D / house2W) * 2.1);
-        roof2.castShadow = true;
+        // Steep Thatched Gable Roof (long-axis ridge)
+        const roof2 = this.createGableRoof(house2W * 1.22, house2D * 1.3, 9, thatchMat, true);
+        roof2.position.set(house2X, 8 + 1.25, house2Z);
         group.add(roof2);
 
         // Dormer Window protruding from front roof slope
@@ -4642,9 +4653,8 @@ export class ThreeRenderer {
         dormer.position.set(house2X - 2.5, 10.5, house2Z + house2D / 2 + 0.4);
         group.add(dormer);
 
-        const dormerRoof = new THREE.Mesh(new THREE.ConeGeometry(2.6, 2.8, 4), thatchMat);
-        dormerRoof.position.set(house2X - 2.5, 12.6, house2Z + house2D / 2 + 0.4);
-        dormerRoof.rotation.y = Math.PI / 4;
+        const dormerRoof = this.createGableRoof(3.8, 3.4, 2.6, thatchMat, true);
+        dormerRoof.position.set(house2X - 2.5, 12.1, house2Z + house2D / 2 + 0.4);
         group.add(dormerRoof);
 
         const winDormer = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 0.2), glassMat);
@@ -4705,11 +4715,10 @@ export class ThreeRenderer {
       parapet.castShadow = true;
       group.add(parapet);
 
-      // 4. Steep Conical Spire Roof
-      const roofGeo = new THREE.ConeGeometry(w * 0.40, 16, 4);
+      // 4. Steep Octagonal Spire Roof
+      const roofGeo = new THREE.ConeGeometry(w * 0.42, 16, 8);
       const roof = new THREE.Mesh(roofGeo, roofMat);
       roof.position.y = 53.5;
-      roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
 
@@ -4930,13 +4939,10 @@ export class ThreeRenderer {
       crypt.castShadow = true;
       group.add(crypt);
 
-      // Crypt Roof
-      const cRoofGeo = new THREE.ConeGeometry(13, 8, 4);
+      // Crypt Roof (Gabled)
       const cRoofMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 });
-      const cRoof = new THREE.Mesh(cRoofGeo, cRoofMat);
-      cRoof.position.set(0, 18, -6);
-      cRoof.rotation.y = Math.PI / 4;
-      cRoof.castShadow = true;
+      const cRoof = this.createGableRoof(19, 23, 8, cRoofMat);
+      cRoof.position.set(0, 14, -6);
       group.add(cRoof);
 
       // Tilted Headstones

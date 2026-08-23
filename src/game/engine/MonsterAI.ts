@@ -163,9 +163,49 @@ export class MonsterAIManager {
       }
     }
 
-    // 3. TARGET SELECTION
-    let closestTarget: { x: number; y: number; id: string; type: 'hero' | 'building' | 'tax_collector' | 'peasant' } | null = null;
+    // 3. TARGET SELECTION — WITH COMMITMENT (monsters lock onto prey instead of flip-flopping)
+    type MonsterTarget = { x: number; y: number; id: string; type: 'hero' | 'building' | 'tax_collector' | 'peasant' };
+    let closestTarget: MonsterTarget | null = null;
     let closestDist = monster.type === 'giant_rat' ? 160 : 240;
+
+    if (monster.targetHoldTimer === undefined) monster.targetHoldTimer = 0;
+    if (monster.isEngaged === undefined) monster.isEngaged = false;
+    monster.targetHoldTimer -= delta;
+
+    // STICKY TARGET: Keep chasing the current victim while it stays alive & within the leash radius.
+    // Only re-scan when the hold timer expires (~2s), the prey dies, or it escapes the leash.
+    let stickyTarget: MonsterTarget | null = null;
+    if (monster.targetEntityId && monster.targetEntityType && monster.targetHoldTimer > 0) {
+      const leash = closestDist * 1.5;
+      const t = monster.targetEntityType;
+      if (t === 'hero') {
+        const h = heroes.find(x => x.id === monster.targetEntityId);
+        if (h && !h.isDead && Math.hypot(h.x - monster.x, h.y - monster.y) < leash) {
+          stickyTarget = { x: h.x, y: h.y, id: h.id, type: 'hero' };
+        }
+      } else if (t === 'peasant') {
+        const p = peasants.find(x => x.id === monster.targetEntityId);
+        if (p && p.hp > 0 && Math.hypot(p.x - monster.x, p.y - monster.y) < leash) {
+          stickyTarget = { x: p.x, y: p.y, id: p.id, type: 'peasant' };
+        }
+      } else if (t === 'tax_collector') {
+        const tc = taxCollectors.find(x => x.id === monster.targetEntityId);
+        if (tc && tc.hp > 0 && Math.hypot(tc.x - monster.x, tc.y - monster.y) < leash) {
+          stickyTarget = { x: tc.x, y: tc.y, id: tc.id, type: 'tax_collector' };
+        }
+      } else if (t === 'building') {
+        const b = buildings.find(x => x.id === monster.targetEntityId);
+        if (b && b.hp > 0 && (!b.isConstructing || b.constructionProgress > 0)) {
+          const tp = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
+          if (Math.hypot(tp.x - monster.x, tp.y - monster.y) < leash * 1.2) {
+            stickyTarget = { x: tp.x, y: tp.y, id: b.id, type: 'building' };
+          }
+        }
+      }
+    }
+
+    if (!stickyTarget) {
+      monster.isEngaged = false;
 
     // Check if monster's home lair is under attack by a hero
     const homeLair = lairs.find(l => l.id === monster.lairId);
@@ -261,6 +301,17 @@ export class MonsterAIManager {
         }
       }
     }
+    } else {
+      closestTarget = stickyTarget;
+    }
+
+    if (closestTarget) {
+      // Fresh acquisition → arm the commitment window
+      if (monster.targetEntityId !== closestTarget.id) {
+        monster.targetHoldTimer = 2.0;
+        monster.isEngaged = false;
+      }
+    }
 
     // 4. COMBAT EXECUTION
     if (closestTarget) {
@@ -272,7 +323,14 @@ export class MonsterAIManager {
 
       const dist = Math.hypot(closestTarget.x - monster.x, closestTarget.y - monster.y);
 
-      if (dist > monster.attackRange + 4) {
+      // ATTACK HYSTERESIS: engage inside attackRange+4, but only re-chase beyond attackRange+16.
+      // Prevents start/stop stutter when crowd separation nudges the monster across the boundary.
+      const engageRange = monster.attackRange + 4;
+      const disengageRange = monster.attackRange + 16;
+      if (dist <= engageRange) monster.isEngaged = true;
+      else if (dist > disengageRange) monster.isEngaged = false;
+
+      if (!monster.isEngaged) {
         this.moveTowards(monster, closestTarget.x, closestTarget.y, delta, buildings, 1.0, closestTarget.type === 'building' ? closestTarget.id : undefined);
       } else {
         // In attack range! Stop moving and face target
