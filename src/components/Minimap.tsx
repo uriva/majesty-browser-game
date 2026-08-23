@@ -20,20 +20,20 @@ export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const canvasW = canvas.width;
+    const canvasH = canvas.height;
 
     // Background (unexplored)
     ctx.fillStyle = '#090d16';
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, canvasW, canvasH);
 
-    const scaleX = w / state.mapWidth;
-    const scaleY = h / state.mapHeight;
+    const scaleX = canvasW / state.mapWidth;
+    const scaleY = canvasH / state.mapHeight;
 
     // Draw explored terrain
     for (let y = 0; y < state.mapHeight; y++) {
       for (let x = 0; x < state.mapWidth; x++) {
-        if (state.exploredMap[y] && state.exploredMap[y][x]) {
+        if (state.exploredMap[y]?.[x]) {
           const tile = state.grid[y][x];
           if (tile === 1) ctx.fillStyle = '#78716c'; // road
           else if (tile === 2) ctx.fillStyle = '#0284c7'; // water
@@ -48,76 +48,98 @@ export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
     // Draw Buildings
     for (const b of state.buildings) {
       if (b.hp <= 0) continue;
-      ctx.fillStyle = b.type === 'palace' ? '#fbbf24' : '#38bdf8';
-      ctx.fillRect(b.x * scaleX, b.y * scaleY, b.width * scaleX, b.height * scaleY);
+      ctx.fillStyle = b.type === 'palace' ? '#fbbf24' : (b.type === 'peasant_cottage' ? '#fde047' : '#38bdf8');
+      ctx.fillRect(b.x * scaleX, b.y * scaleY, Math.max(2, b.width * scaleX), Math.max(2, b.height * scaleY));
     }
 
     // Draw Lairs
     for (const l of state.lairs) {
       if (state.exploredMap[Math.floor(l.y)]?.[Math.floor(l.x)]) {
         ctx.fillStyle = '#dc2626';
-        ctx.fillRect(l.x * scaleX, l.y * scaleY, l.width * scaleX, l.height * scaleY);
+        ctx.fillRect(l.x * scaleX, l.y * scaleY, Math.max(2, l.width * scaleX), Math.max(2, l.height * scaleY));
       }
-    }
-
-    // Draw Monsters
-    for (const m of state.monsters) {
-      if (state.fogOfWar[Math.floor(m.y / state.tileSize)]?.[Math.floor(m.x / state.tileSize)]) {
-        ctx.fillStyle = m.isBoss ? '#f43f5e' : '#ef4444';
-        const mx = (m.x / state.tileSize) * scaleX;
-        const my = (m.y / state.tileSize) * scaleY;
-        ctx.fillRect(mx - 1.5, my - 1.5, 3, 3);
-      }
-    }
-
-    // Draw Heroes
-    for (const h of state.heroes) {
-      if (h.isDead) continue;
-      ctx.fillStyle = '#4ade80';
-      const hx = (h.x / state.tileSize) * scaleX;
-      const hy = (h.y / state.tileSize) * scaleY;
-      ctx.fillRect(hx - 1.5, hy - 1.5, 3, 3);
-    }
-
-    // Draw Tax Collectors (Purple with Gold Center)
-    for (const tc of state.taxCollectors) {
-      const tcx = (tc.x / state.tileSize) * scaleX;
-      const tcy = (tc.y / state.tileSize) * scaleY;
-      ctx.fillStyle = '#a855f7';
-      ctx.fillRect(tcx - 2, tcy - 2, 4, 4);
-      ctx.fillStyle = '#fbbf24';
-      ctx.fillRect(tcx - 1, tcy - 1, 2, 2);
     }
 
     // Draw Treasures
     for (const t of state.treasures) {
-      if (state.exploredMap[Math.floor(t.y / state.tileSize)]?.[Math.floor(t.x / state.tileSize)]) {
+      const tx = Math.floor(t.x / state.tileSize);
+      const ty = Math.floor(t.y / state.tileSize);
+      if (state.exploredMap[ty]?.[tx]) {
         ctx.fillStyle = '#fbbf24';
-        const tx = (t.x / state.tileSize) * scaleX;
-        const ty = (t.y / state.tileSize) * scaleY;
-        ctx.fillRect(tx - 1, ty - 1, 2, 2);
+        ctx.fillRect(tx * scaleX, ty * scaleY, 2, 2);
       }
+    }
+
+    // Draw Monsters (only if in visible range)
+    for (const m of state.monsters) {
+      const mx = Math.floor(m.x / state.tileSize);
+      const my = Math.floor(m.y / state.tileSize);
+      if (state.fogOfWar[my]?.[mx]) {
+        ctx.fillStyle = m.isBoss ? '#f43f5e' : '#ef4444';
+        ctx.fillRect(mx * scaleX - 1, my * scaleY - 1, 3, 3);
+      }
+    }
+
+    // Draw Heroes
+    for (const hero of state.heroes) {
+      if (hero.isDead) continue;
+      const hx = (hero.x / mapWidthPx) * canvasW;
+      const hy = (hero.y / mapHeightPx) * canvasH;
+      ctx.fillStyle = '#4ade80';
+      ctx.fillRect(hx - 1.5, hy - 1.5, 3, 3);
+    }
+
+    // Draw Tax Collectors (Amethyst Purple)
+    for (const tc of state.taxCollectors) {
+      const tcx = (tc.x / mapWidthPx) * canvasW;
+      const tcy = (tc.y / mapHeightPx) * canvasH;
+      ctx.fillStyle = '#c084fc';
+      ctx.fillRect(tcx - 1.5, tcy - 1.5, 3, 3);
+    }
+
+    // Draw Peasants (Amber)
+    for (const p of state.peasants) {
+      const px = (p.x / mapWidthPx) * canvasW;
+      const py = (p.y / mapHeightPx) * canvasH;
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(px - 1, py - 1, 2, 2);
     }
 
     // Draw Flags
     for (const f of state.flags) {
+      const fx = (f.x / mapWidthPx) * canvasW;
+      const fy = (f.y / mapHeightPx) * canvasH;
       ctx.fillStyle = f.type === 'attack' ? '#ef4444' : (f.type === 'explore' ? '#3b82f6' : '#eab308');
-      const fx = (f.x / state.tileSize) * scaleX;
-      const fy = (f.y / state.tileSize) * scaleY;
       ctx.beginPath();
-      ctx.arc(fx, fy, 3.5, 0, Math.PI * 2);
+      ctx.arc(fx, fy, 3, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Camera view rectangle
-    const viewW = (window.innerWidth / state.camera.zoom / mapWidthPx) * w;
-    const viewH = (window.innerHeight / state.camera.zoom / mapHeightPx) * h;
-    const camX = ((state.camera.x - window.innerWidth / (2 * state.camera.zoom)) / mapWidthPx) * w;
-    const camY = ((state.camera.y - window.innerHeight / (2 * state.camera.zoom)) / mapHeightPx) * h;
+    // Camera Viewport Box (Scaled correctly to actual visible 3D world frustum)
+    const visibleWorldSize = 420 / state.camera.zoom;
+    const viewW = (visibleWorldSize / mapWidthPx) * canvasW;
+    const viewH = (visibleWorldSize * 0.75 / mapHeightPx) * canvasH;
+    const camCenterX = (state.camera.x / mapWidthPx) * canvasW;
+    const camCenterY = (state.camera.y / mapHeightPx) * canvasH;
 
-    ctx.strokeStyle = '#f8fafc';
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(camX, camY, viewW, viewH);
+    ctx.strokeRect(camCenterX - viewW / 2, camCenterY - viewH / 2, viewW, viewH);
+
+    // Subtle corner tick marks on viewport box
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    const halfW = viewW / 2;
+    const halfH = viewH / 2;
+    const left = camCenterX - halfW;
+    const right = camCenterX + halfW;
+    const top = camCenterY - halfH;
+    const bottom = camCenterY + halfH;
+
+    ctx.strokeRect(left, top, 3, 3);
+    ctx.strokeRect(right - 3, top, 3, 3);
+    ctx.strokeRect(left, bottom - 3, 3, 3);
+    ctx.strokeRect(right - 3, bottom - 3, 3, 3);
   }, [state, mapWidthPx, mapHeightPx]);
 
   const handleMinimapClick = (e: React.MouseEvent<HTMLCanvasElement>) => {

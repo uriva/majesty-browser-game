@@ -698,7 +698,15 @@ export class HeroAIManager {
     const dy = targetY - hero.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist < 4) return;
+    if (dist < 4) {
+      hero.targetX = undefined;
+      hero.targetY = undefined;
+      if (hero.state === 'wandering') {
+        hero.state = 'idle';
+        hero.stateTimer = Math.random() * 2 + 1;
+      }
+      return;
+    }
 
     const moveDist = hero.speed * speedMultiplier * delta;
     const vx = (dx / dist) * moveDist;

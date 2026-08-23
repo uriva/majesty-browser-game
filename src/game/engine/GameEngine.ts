@@ -627,17 +627,26 @@ export class GameEngine {
 
     this.cottageSproutTimer -= delta;
     if (this.cottageSproutTimer <= 0) {
-      this.cottageSproutTimer = Math.random() * 15 + 20;
+      this.cottageSproutTimer = Math.random() * 20 + 25; // Sprout comfortably every 25-45s
 
-      // Try finding a suitable open grassy spot near town
       const centerX = Math.floor(palace.x + palace.width / 2);
       const centerY = Math.floor(palace.y + palace.height / 2);
 
-      for (let attempt = 0; attempt < 12; attempt++) {
+      // Try finding a spacious, open grassy spot with plenty of room around it
+      for (let attempt = 0; attempt < 25; attempt++) {
         const angle = Math.random() * Math.PI * 2;
-        const dist = Math.floor(Math.random() * 12) + 7;
+        const dist = Math.floor(Math.random() * 14) + 9; // 9 to 23 tiles from palace
         const tx = Math.floor(centerX + Math.cos(angle) * dist);
         const ty = Math.floor(centerY + Math.sin(angle) * dist);
+
+        // Ensure minimum 5 tiles distance from ANY other building/cottage so they don't cluster!
+        const tooCloseToOtherBuilding = this.state.buildings.some(b => {
+          const bx = b.x + b.width / 2;
+          const by = b.y + b.height / 2;
+          return Math.hypot(bx - (tx + 1), by - (ty + 1)) < 5.5;
+        });
+
+        if (tooCloseToOtherBuilding) continue;
 
         if (this.gridManager.canPlaceBuilding(tx, ty, 2, 2, this.state.buildings, this.state.lairs)) {
           const cottageDef = BUILDING_DEFINITIONS['peasant_cottage'];
@@ -655,7 +664,7 @@ export class GameEngine {
             maxLevel: 1,
             isConstructing: true,
             constructionProgress: 0,
-            constructionTime: 4.0,
+            constructionTime: 6.0,
             goldStored: 0,
             heroSlots: 0,
             recruitedHeroIds: [],
@@ -665,7 +674,7 @@ export class GameEngine {
           };
 
           this.state.buildings.push(newCottage);
-          this.addNotification('New Settlement', 'Commoners have built a new thatched cottage in the realm!', 'info');
+          this.addNotification('New Hamlet Sprouting', 'Commoners are building a new thatched cottage in the outskirts!', 'info');
           break;
         }
       }

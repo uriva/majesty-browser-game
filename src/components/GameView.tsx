@@ -296,9 +296,11 @@ export const GameView: React.FC = () => {
   // Zoom with wheel
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!threeRendererRef.current) return;
+    if (!threeRendererRef.current || !engineRef.current) return;
     const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
-    threeRendererRef.current.cameraDistance = Math.max(120, Math.min(850, threeRendererRef.current.cameraDistance * zoomFactor));
+    const newDist = Math.max(120, Math.min(850, threeRendererRef.current.cameraDistance * zoomFactor));
+    threeRendererRef.current.cameraDistance = newDist;
+    engineRef.current.state.camera.zoom = 380 / newDist;
   };
 
   // Switch Camera Presets

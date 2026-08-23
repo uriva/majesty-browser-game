@@ -279,7 +279,8 @@ export class ThreeRenderer {
     const sinYaw = Math.sin(this.cameraYaw);
     const cosYaw = Math.cos(this.cameraYaw);
 
-    const dist = this.cameraDistance / state.camera.zoom;
+    const dist = this.cameraDistance;
+    state.camera.zoom = 380 / dist;
 
     const camX = this.cameraTarget.x + dist * cosPitch * sinYaw;
     const camY = this.cameraTarget.y + dist * sinPitch;
@@ -719,6 +720,97 @@ export class ThreeRenderer {
       const crown = new THREE.Mesh(crownGeo, crownMat);
       crown.position.y = 59;
       group.add(crown);
+    } else if (b.type === 'warrior_guild') {
+      // Fortified Stone Bastion with Pitched Blue Gable Roof & Training Dummy
+      const hallBaseGeo = new THREE.BoxGeometry(w * 0.85, 18, h * 0.75);
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+      const hall = new THREE.Mesh(hallBaseGeo, stoneMat);
+      hall.position.y = 9;
+      hall.castShadow = true;
+      group.add(hall);
+
+      // Pitched Blue Slate Roof
+      const roofGeo = new THREE.ConeGeometry(w * 0.5, 16, 4);
+      const blueRoofMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
+      const roof = new THREE.Mesh(roofGeo, blueRoofMat);
+      roof.position.y = 25;
+      roof.rotation.y = Math.PI / 4;
+      roof.castShadow = true;
+      group.add(roof);
+
+      // Shield & Crossed Swords Plaque above door
+      const shieldPlaqueGeo = new THREE.BoxGeometry(6, 8, 1);
+      const shieldMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.5 });
+      const shieldPlaque = new THREE.Mesh(shieldPlaqueGeo, shieldMat);
+      shieldPlaque.position.set(0, 16, h * 0.38);
+      group.add(shieldPlaque);
+
+      // Wooden Training Dummy outside in yard
+      const dummyPoleGeo = new THREE.CylinderGeometry(1, 1, 12, 6);
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+      const dummy = new THREE.Mesh(dummyPoleGeo, woodMat);
+      dummy.position.set(w * 0.35, 6, h * 0.25);
+      dummy.castShadow = true;
+      group.add(dummy);
+
+      const dummyTargetGeo = new THREE.SphereGeometry(3, 8, 8);
+      const strawMat = new THREE.MeshStandardMaterial({ color: 0xca8a04 });
+      const dummyTarget = new THREE.Mesh(dummyTargetGeo, strawMat);
+      dummyTarget.position.set(w * 0.35, 12, h * 0.25);
+      group.add(dummyTarget);
+    } else if (b.type === 'ranger_guild') {
+      // Rustic Log Cabin with Archery Targets outside
+      const logBaseGeo = new THREE.BoxGeometry(w * 0.85, 16, h * 0.75);
+      const logMat = new THREE.MeshStandardMaterial({ color: 0x542608, roughness: 0.9 });
+      const cabin = new THREE.Mesh(logBaseGeo, logMat);
+      cabin.position.y = 8;
+      cabin.castShadow = true;
+      group.add(cabin);
+
+      const roofGeo = new THREE.ConeGeometry(w * 0.48, 15, 4);
+      const greenRoofMat = new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.7 });
+      const roof = new THREE.Mesh(roofGeo, greenRoofMat);
+      roof.position.y = 23.5;
+      roof.rotation.y = Math.PI / 4;
+      roof.castShadow = true;
+      group.add(roof);
+
+      // 2 Archery Target Hay Bales outside
+      const targetGeo = new THREE.CylinderGeometry(4, 4, 3, 12);
+      targetGeo.rotateX(Math.PI / 2);
+      const targetMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.8 });
+      const t1 = new THREE.Mesh(targetGeo, targetMat);
+      t1.position.set(w * 0.3, 4, h * 0.35);
+      t1.castShadow = true;
+      group.add(t1);
+
+      const t2 = new THREE.Mesh(targetGeo, targetMat);
+      t2.position.set(-w * 0.3, 4, h * 0.35);
+      t2.castShadow = true;
+      group.add(t2);
+    } else if (b.type === 'rogue_guild') {
+      // Dark Shadowy Hideout with Lantern
+      const baseGeo = new THREE.BoxGeometry(w * 0.8, 14, h * 0.75);
+      const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+      const hideout = new THREE.Mesh(baseGeo, darkMat);
+      hideout.position.y = 7;
+      hideout.castShadow = true;
+      group.add(hideout);
+
+      const roofGeo = new THREE.ConeGeometry(w * 0.44, 12, 4);
+      const slateMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.7 });
+      const roof = new THREE.Mesh(roofGeo, slateMat);
+      roof.position.y = 19;
+      roof.rotation.y = Math.PI / 4;
+      roof.castShadow = true;
+      group.add(roof);
+
+      // Hanging Iron Lantern with warm glow
+      const lanternGeo = new THREE.BoxGeometry(2, 3, 2);
+      const lanternMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.8 });
+      const lantern = new THREE.Mesh(lanternGeo, lanternMat);
+      lantern.position.set(w * 0.35, 10, h * 0.38);
+      group.add(lantern);
     } else if (b.type === 'wizard_tower') {
       // Spiraling Arcane Tower with Balconies
       const cylinderGeo = new THREE.CylinderGeometry(w * 0.28, w * 0.36, 46, 12);
@@ -836,40 +928,59 @@ export class ThreeRenderer {
       roof.castShadow = true;
       group.add(roof);
     } else if (b.type === 'peasant_cottage') {
-      // Thatched Cottage
-      const cottageBaseGeo = new THREE.BoxGeometry(w * 0.75, 10, h * 0.75);
-      const cottageBaseMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
+      // Small Thatched Peasant Cottage (Distinct from Guilds)
+      const cottageBaseGeo = new THREE.BoxGeometry(w * 0.7, 9, h * 0.7);
+      const cottageBaseMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.9 }); // Whitewashed timber
       const cottageBase = new THREE.Mesh(cottageBaseGeo, cottageBaseMat);
-      cottageBase.position.y = 5;
+      cottageBase.position.y = 4.5;
       cottageBase.castShadow = true;
       group.add(cottageBase);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.45, 11, 4);
-      const roofMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.8 });
+      // Organic Low-Sloped Straw Thatched Roof
+      const thatchGeo = new THREE.CylinderGeometry(w * 0.1, w * 0.45, 8, 4);
+      const thatchMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.95 });
+      const thatch = new THREE.Mesh(thatchGeo, thatchMat);
+      thatch.position.y = 13;
+      thatch.rotation.y = Math.PI / 4;
+      thatch.castShadow = true;
+      group.add(thatch);
+
+      // Small Stone Chimney with Smoke
+      const chimneyGeo = new THREE.BoxGeometry(3, 8, 3);
+      const chimneyMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
+      const chimney = new THREE.Mesh(chimneyGeo, chimneyMat);
+      chimney.position.set(w * 0.2, 13, -h * 0.2);
+      group.add(chimney);
+
+      // Small wooden door
+      const doorGeo = new THREE.BoxGeometry(3.5, 6, 0.5);
+      const doorMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+      const door = new THREE.Mesh(doorGeo, doorMat);
+      door.position.set(0, 3, h * 0.35);
+      group.add(door);
+    } else if (b.type === 'guard_tower') {
+      // Tall Stone Watchtower
+      const towerGeo = new THREE.BoxGeometry(w * 0.55, 36, h * 0.55);
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
+      const tower = new THREE.Mesh(towerGeo, stoneMat);
+      tower.position.y = 18;
+      tower.castShadow = true;
+      group.add(tower);
+
+      const roofGeo = new THREE.ConeGeometry(w * 0.38, 12, 4);
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
       const roof = new THREE.Mesh(roofGeo, roofMat);
-      roof.position.y = 15.5;
+      roof.position.y = 42;
       roof.rotation.y = Math.PI / 4;
-      roof.castShadow = true;
       group.add(roof);
     } else {
-      // Standard Guilds
-      const baseGeo = new THREE.BoxGeometry(w * 0.8, 16, h * 0.8);
+      // Default structure
+      const baseGeo = new THREE.BoxGeometry(w * 0.75, 14, h * 0.75);
       const baseMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
       const base = new THREE.Mesh(baseGeo, baseMat);
-      base.position.y = 8;
+      base.position.y = 7;
       base.castShadow = true;
       group.add(base);
-
-      const roofGeo = new THREE.ConeGeometry(w * 0.45, 14, 4);
-      const roofMat = new THREE.MeshStandardMaterial({
-        color: b.type.includes('ranger') ? 0x065f46 : (b.type.includes('warrior') ? 0x1e3a8a : 0xb45309),
-        roughness: 0.7
-      });
-      const roof = new THREE.Mesh(roofGeo, roofMat);
-      roof.position.y = 23;
-      roof.rotation.y = Math.PI / 4;
-      roof.castShadow = true;
-      group.add(roof);
     }
 
     return group;
@@ -1153,7 +1264,7 @@ export class ThreeRenderer {
       else if (h.direction === 'up') heroGroup.rotation.y = Math.PI;
       else heroGroup.rotation.y = 0;
 
-      const isMoving = h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure';
+      const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 6;
       const legStride = isMoving ? Math.sin(time * 1.4) * 0.45 : 0;
 
       const leftLeg = heroGroup.getObjectByName('leftLeg');
@@ -1283,6 +1394,14 @@ export class ThreeRenderer {
         const flap = Math.sin(time * 0.8) * 0.5;
         if (wingL) wingL.rotation.z = flap;
         if (wingR) wingR.rotation.z = -flap;
+      } else if (m.type === 'giant_rat') {
+        const tail = mGroup.getObjectByName('ratTail');
+        if (tail) tail.rotation.y = Math.sin(time * 3) * 0.45;
+        const paw1 = mGroup.getObjectByName('paw1');
+        const paw2 = mGroup.getObjectByName('paw2');
+        const stride = Math.sin(time * 3) * 0.5;
+        if (paw1) paw1.rotation.x = stride;
+        if (paw2) paw2.rotation.x = -stride;
       }
     }
 
@@ -1321,13 +1440,49 @@ export class ThreeRenderer {
       wingR.name = 'wingR';
       group.add(wingR);
     } else if (m.type === 'giant_rat') {
-      const ratGeo = new THREE.SphereGeometry(5, 8, 8);
-      const ratMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.9 });
-      const rat = new THREE.Mesh(ratGeo, ratMat);
-      rat.position.y = 4;
-      rat.scale.set(1.5, 0.8, 1);
-      rat.castShadow = true;
-      group.add(rat);
+      // Detailed 3D Giant Sewer Rat Monster
+      const bodyGeo = new THREE.SphereGeometry(4.5, 10, 8);
+      const ratMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.9 });
+      const body = new THREE.Mesh(bodyGeo, ratMat);
+      body.position.y = 3.5;
+      body.scale.set(1.4, 0.85, 1);
+      body.castShadow = true;
+      group.add(body);
+
+      // Pointed Rodent Head & Snout
+      const headGeo = new THREE.ConeGeometry(2.5, 6, 8);
+      headGeo.rotateX(-Math.PI / 2);
+      const head = new THREE.Mesh(headGeo, ratMat);
+      head.position.set(0, 3.5, 4.5);
+      head.castShadow = true;
+      group.add(head);
+
+      // Pink Ears
+      const earGeo = new THREE.SphereGeometry(1.2, 6, 6);
+      const pinkMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e });
+      const earL = new THREE.Mesh(earGeo, pinkMat); earL.position.set(-2, 5.5, 3); group.add(earL);
+      const earR = new THREE.Mesh(earGeo, pinkMat); earR.position.set(2, 5.5, 3); group.add(earR);
+
+      // Glowing Sinister Red Eyes
+      const eyeGeo = new THREE.SphereGeometry(0.6, 6, 6);
+      const redEyeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 1.2 });
+      const eyeL = new THREE.Mesh(eyeGeo, redEyeMat); eyeL.position.set(-1.2, 4.2, 5.2); group.add(eyeL);
+      const eyeR = new THREE.Mesh(eyeGeo, redEyeMat); eyeR.position.set(1.2, 4.2, 5.2); group.add(eyeR);
+
+      // Sinuous Whipping Pink Tail
+      const tailGeo = new THREE.CylinderGeometry(0.6, 0.2, 14, 6);
+      tailGeo.rotateX(Math.PI / 2);
+      const tail = new THREE.Mesh(tailGeo, pinkMat);
+      tail.position.set(0, 3.5, -9);
+      tail.name = 'ratTail';
+      group.add(tail);
+
+      // 4 Paws
+      const pawGeo = new THREE.BoxGeometry(1.4, 2.5, 1.8);
+      const p1 = new THREE.Mesh(pawGeo, pinkMat); p1.position.set(-2.6, 1.2, 2.5); p1.name = 'paw1'; group.add(p1);
+      const p2 = new THREE.Mesh(pawGeo, pinkMat); p2.position.set(2.6, 1.2, 2.5); p2.name = 'paw2'; group.add(p2);
+      const p3 = new THREE.Mesh(pawGeo, pinkMat); p3.position.set(-2.6, 1.2, -2.5); group.add(p3);
+      const p4 = new THREE.Mesh(pawGeo, pinkMat); p4.position.set(2.6, 1.2, -2.5); group.add(p4);
     } else {
       const bodyGeo = new THREE.BoxGeometry(6, 9, 4);
       const bodyMat = new THREE.MeshStandardMaterial({ color: colorNum, roughness: 0.8 });
