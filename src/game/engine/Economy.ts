@@ -25,6 +25,14 @@ export class EconomyManager {
       y: (palace.y + palace.height / 2) * this.gridManager.tileSize
     };
 
+    // 1. Peasant cottages generate modest land rent awaiting tax collection
+    for (const b of buildings) {
+      if (b.isConstructing || b.hp <= 0) continue;
+      if (b.type === 'peasant_cottage') {
+        b.goldStored += 0.8 * delta; // Commoner land rent
+      }
+    }
+
     // Dispatch Tax Collector from Palace when buildings have uncollected taxes from hero transactions (> 15g)
     this.taxSpawnCooldown -= delta;
     if (this.taxSpawnCooldown <= 0 && taxCollectors.length < 2) {

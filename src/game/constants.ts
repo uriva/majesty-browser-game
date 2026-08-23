@@ -224,6 +224,16 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     description: 'Inspires your subjects. Heroes within vicinity gain +15% Bravery and +10% Attack. Requires Palace Level 3.',
     requiresPalaceLevel: 3,
     upgrades: []
+  },
+  peasant_cottage: {
+    type: 'peasant_cottage',
+    name: 'Peasant Cottage',
+    cost: 0,
+    maxHp: 280,
+    width: 2,
+    height: 2,
+    description: 'Home of peaceful kingdom commoners. Sprouts naturally as your town thrives, paying periodic land rent to your Tax Collectors.',
+    upgrades: []
   }
 };
 

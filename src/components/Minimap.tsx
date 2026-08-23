@@ -89,6 +89,16 @@ export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
       ctx.fillRect(tcx - 1, tcy - 1, 2, 2);
     }
 
+    // Draw Treasures
+    for (const t of state.treasures) {
+      if (state.exploredMap[Math.floor(t.y / state.tileSize)]?.[Math.floor(t.x / state.tileSize)]) {
+        ctx.fillStyle = '#fbbf24';
+        const tx = (t.x / state.tileSize) * scaleX;
+        const ty = (t.y / state.tileSize) * scaleY;
+        ctx.fillRect(tx - 1, ty - 1, 2, 2);
+      }
+    }
+
     // Draw Flags
     for (const f of state.flags) {
       ctx.fillStyle = f.type === 'attack' ? '#ef4444' : (f.type === 'explore' ? '#3b82f6' : '#eab308');

@@ -23,7 +23,8 @@ export type BuildingType =
   | 'blacksmith'
   | 'guard_tower'
   | 'royal_inn'
-  | 'statue_king';
+  | 'statue_king'
+  | 'peasant_cottage';
 
 export type LairType = 
   | 'sewer_grate'
@@ -40,6 +41,7 @@ export type HeroState =
   | 'wandering'
   | 'pursuing_flag'
   | 'attacking_target'
+  | 'collecting_treasure'
   | 'fleeing'
   | 'visiting_marketplace'
   | 'visiting_blacksmith'
@@ -209,6 +211,16 @@ export interface TaxCollector {
   direction: 'left' | 'right' | 'up' | 'down';
 }
 
+export interface Treasure {
+  id: string;
+  x: number;
+  y: number;
+  goldAmount: number;
+  type: 'chest' | 'gold_bag' | 'ancient_relic';
+  item?: string;
+  createdAt: number;
+}
+
 export interface Projectile {
   id: string;
   type: 'arrow' | 'fireball' | 'magic_missile' | 'holy_bolt' | 'lightning_arc' | 'dragon_breath';
@@ -323,6 +335,7 @@ export interface GameState {
   lairs: MonsterLair[];
   flags: Flag[];
   taxCollectors: TaxCollector[];
+  treasures: Treasure[];
   projectiles: Projectile[];
   particles: Particle[];
   floatingTexts: FloatingText[];

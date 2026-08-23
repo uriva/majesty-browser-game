@@ -1,5 +1,5 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
-import { Building, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Projectile, TaxCollector } from '../types';
+import { Building, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 
 export class CanvasRenderer {
@@ -19,7 +19,7 @@ export class CanvasRenderer {
     const height = canvas.height;
 
     // Clear background
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, width, height);
 
     ctx.save();
@@ -39,53 +39,60 @@ export class CanvasRenderer {
       this.renderLair(lair, state);
     }
 
-    // 4. Render Buildings
+    // 4. Render Buildings (including Peasant Cottages)
     for (const building of state.buildings) {
       this.renderBuilding(building, state);
     }
 
-    // 5. Render Flags
+    // 5. Render Treasures & Chests
+    for (const treasure of state.treasures) {
+      this.renderTreasure(treasure, state);
+    }
+
+    // 6. Render Flags
     for (const flag of state.flags) {
       this.renderFlag(flag, state);
     }
 
-    // 6. Render Tax Collectors
+    // 7. Render Tax Collectors
     for (const tc of state.taxCollectors) {
       this.renderTaxCollector(tc, state);
     }
 
-    // 7. Render Monsters
-    for (const monster of state.monsters) {
+    // 8. Render Monsters (Sorted by Y for depth layering)
+    const sortedMonsters = [...state.monsters].sort((a, b) => a.y - b.y);
+    for (const monster of sortedMonsters) {
       this.renderMonster(monster, state);
     }
 
-    // 8. Render Heroes
-    for (const hero of state.heroes) {
+    // 9. Render Heroes (Sorted by Y for depth layering)
+    const sortedHeroes = [...state.heroes].sort((a, b) => a.y - b.y);
+    for (const hero of sortedHeroes) {
       this.renderHero(hero, state);
     }
 
-    // 9. Render Projectiles
+    // 10. Render Projectiles
     for (const proj of state.projectiles) {
       this.renderProjectile(proj);
     }
 
-    // 10. Render Particles
+    // 11. Render Particles
     for (const p of state.particles) {
       this.renderParticle(p);
     }
 
-    // 11. Render Fog of War Overlay
+    // 12. Render Fog of War Overlay
     this.renderFogOfWar(state);
 
-    // 12. Render Day/Night Atmosphere Lighting
+    // 13. Render Day/Night Atmosphere Lighting
     this.renderDayNightLighting(state);
 
-    // 13. Render Active Placement Preview (Ghost building / flag)
+    // 14. Render Active Placement Preview (Ghost building / flag)
     if (state.activePlacement && mousePos) {
       this.renderPlacementPreview(state, mousePos);
     }
 
-    // 14. Render Floating Combat Text (rendered in world coordinates)
+    // 15. Render Floating Combat Text (rendered in world coordinates)
     for (const ft of state.floatingTexts) {
       this.renderFloatingText(ft);
     }
@@ -99,7 +106,6 @@ export class CanvasRenderer {
 
     for (let y = 0; y < this.gridManager.height; y++) {
       for (let x = 0; x < this.gridManager.width; x++) {
-        // Optimization: skip rendering tiles completely shrouded in unrevealed Fog
         if (!this.gridManager.explored[y][x]) continue;
 
         const tileType = this.gridManager.grid[y][x];
@@ -107,13 +113,12 @@ export class CanvasRenderer {
         const py = y * ts;
 
         if (tileType === 0) {
-          // Grass with subtle grid pattern
+          // Lush grass with subtle checker texture
           const isAlt = (x + y) % 2 === 0;
           ctx.fillStyle = isAlt ? '#2d6a4f' : '#285e46';
           ctx.fillRect(px, py, ts, ts);
 
-          // Subtle grass blades
-          if ((x * 7 + y * 13) % 5 === 0) {
+          if ((x * 7 + y * 13) % 4 === 0) {
             ctx.fillStyle = '#40916c';
             ctx.fillRect(px + 4, py + 6, 2, 4);
             ctx.fillRect(px + 18, py + 14, 2, 4);
@@ -124,12 +129,11 @@ export class CanvasRenderer {
           ctx.fillRect(px, py, ts, ts);
           ctx.fillStyle = '#57534e';
           ctx.fillRect(px + 2, py + 2, ts - 4, ts - 4);
-          // Cobble stones
           ctx.fillStyle = '#a8a29e';
           ctx.fillRect(px + 4, py + 4, 8, 8);
           ctx.fillRect(px + 16, py + 16, 8, 8);
         } else if (tileType === 2) {
-          // Water
+          // Shimmering Water
           const time = Date.now() * 0.002;
           const wave = Math.sin(time + x + y) * 10;
           ctx.fillStyle = '#0284c7';
@@ -152,6 +156,7 @@ export class CanvasRenderer {
   private renderGroundDecorations(state: GameState) {
     const { ctx } = this;
     const ts = this.gridManager.tileSize;
+    const time = Date.now() * 0.002;
 
     for (let y = 0; y < this.gridManager.height; y++) {
       for (let x = 0; x < this.gridManager.width; x++) {
@@ -162,8 +167,9 @@ export class CanvasRenderer {
         const py = y * ts;
 
         if (tileType === 3) {
-          // Pine tree
-          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          // Pine tree with wind sway
+          const sway = Math.sin(time + x * 0.5 + y * 0.5) * 2;
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
           ctx.beginPath();
           ctx.ellipse(px + 16, py + 26, 12, 5, 0, 0, Math.PI * 2);
           ctx.fill();
@@ -175,38 +181,38 @@ export class CanvasRenderer {
           // Canopy
           ctx.fillStyle = '#064e3b';
           ctx.beginPath();
-          ctx.moveTo(px + 16, py - 4);
-          ctx.lineTo(px + 4, py + 20);
-          ctx.lineTo(px + 28, py + 20);
+          ctx.moveTo(px + 16 + sway, py - 6);
+          ctx.lineTo(px + 3, py + 20);
+          ctx.lineTo(px + 29, py + 20);
           ctx.closePath();
           ctx.fill();
 
           ctx.fillStyle = '#047857';
           ctx.beginPath();
-          ctx.moveTo(px + 16, py - 2);
-          ctx.lineTo(px + 8, py + 14);
-          ctx.lineTo(px + 24, py + 14);
+          ctx.moveTo(px + 16 + sway * 0.7, py - 3);
+          ctx.lineTo(px + 7, py + 13);
+          ctx.lineTo(px + 25, py + 13);
           ctx.closePath();
           ctx.fill();
         } else if (tileType === 4) {
-          // Rock formation
-          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          // Mountain Crag
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
           ctx.beginPath();
           ctx.ellipse(px + 16, py + 24, 13, 6, 0, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.fillStyle = '#334155';
           ctx.beginPath();
-          ctx.moveTo(px + 6, py + 24);
-          ctx.lineTo(px + 16, py + 4);
-          ctx.lineTo(px + 26, py + 24);
+          ctx.moveTo(px + 4, py + 24);
+          ctx.lineTo(px + 16, py + 2);
+          ctx.lineTo(px + 28, py + 24);
           ctx.closePath();
           ctx.fill();
 
           ctx.fillStyle = '#64748b';
           ctx.beginPath();
-          ctx.moveTo(px + 16, py + 4);
-          ctx.lineTo(px + 26, py + 24);
+          ctx.moveTo(px + 16, py + 2);
+          ctx.lineTo(px + 28, py + 24);
           ctx.lineTo(px + 16, py + 24);
           ctx.closePath();
           ctx.fill();
@@ -223,12 +229,10 @@ export class CanvasRenderer {
     const w = b.width * ts;
     const h = b.height * ts;
 
-    // Check if explored
     if (!this.gridManager.explored[Math.floor(b.y)][Math.floor(b.x)]) return;
 
     const isSelected = state.selectedEntity?.type === 'building' && state.selectedEntity.id === b.id;
 
-    // Selection circle
     if (isSelected) {
       ctx.strokeStyle = '#fbbf24';
       ctx.lineWidth = 3;
@@ -240,7 +244,7 @@ export class CanvasRenderer {
     ctx.fillRect(px + 6, py + 6, w, h);
 
     if (b.isConstructing) {
-      // Scaffolding rendering
+      // Scaffolding
       ctx.fillStyle = '#78350f';
       ctx.fillRect(px, py, w, h);
       ctx.strokeStyle = '#d97706';
@@ -254,7 +258,6 @@ export class CanvasRenderer {
       return;
     }
 
-    // Architectural styling based on building type
     switch (b.type) {
       case 'palace':
         this.drawPalaceSprite(px, py, w, h, b.level);
@@ -292,6 +295,9 @@ export class CanvasRenderer {
       case 'statue_king':
         this.drawStatueSprite(px, py, w, h);
         break;
+      case 'peasant_cottage':
+        this.drawPeasantCottageSprite(px, py, w, h);
+        break;
       default:
         ctx.fillStyle = '#475569';
         ctx.fillRect(px, py, w, h);
@@ -325,7 +331,6 @@ export class CanvasRenderer {
       ctx.lineWidth = 1;
       ctx.strokeRect(px, barY, barW, barH);
 
-      // Queue badge if multiple
       if (b.trainingQueue.length > 1) {
         ctx.fillStyle = '#0284c7';
         ctx.beginPath();
@@ -338,22 +343,21 @@ export class CanvasRenderer {
       }
     }
 
-    // Gold ready indicator (for marketplace/blacksmith/inn with > 30g)
-    if (b.goldStored >= 30) {
+    // Gold ready indicator (for marketplace/blacksmith/inn with > 20g)
+    if (b.goldStored >= 20) {
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
-      ctx.arc(px + w - 10, py + 10, 7, 0, Math.PI * 2);
+      ctx.arc(px + w - 8, py + 8, 7, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#78350f';
       ctx.font = 'bold 9px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('$', px + w - 10, py + 13);
+      ctx.fillText('$', px + w - 8, py + 11);
     }
   }
 
   private drawPalaceSprite(px: number, py: number, w: number, h: number, level: number) {
     const { ctx } = this;
-    // Palace stone walls
     ctx.fillStyle = '#475569';
     ctx.fillRect(px + 8, py + 16, w - 16, h - 20);
     // Battlements
@@ -362,19 +366,19 @@ export class CanvasRenderer {
       ctx.fillRect(i, py + 10, 10, 8);
     }
     // Main Roof
-    ctx.fillStyle = '#991b1b'; // Crimson royal roof
+    ctx.fillStyle = '#991b1b';
     ctx.beginPath();
-    ctx.moveTo(px + w / 2, py - 6);
-    ctx.lineTo(px + 12, py + 16);
-    ctx.lineTo(px + w - 12, py + 16);
+    ctx.moveTo(px + w / 2, py - 8);
+    ctx.lineTo(px + 10, py + 16);
+    ctx.lineTo(px + w - 10, py + 16);
     ctx.closePath();
     ctx.fill();
 
     // Spire & Crown
     ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(px + w / 2 - 2, py - 16, 4, 12);
+    ctx.fillRect(px + w / 2 - 2, py - 18, 4, 12);
     ctx.beginPath();
-    ctx.arc(px + w / 2, py - 18, 5, 0, Math.PI * 2);
+    ctx.arc(px + w / 2, py - 20, 5, 0, Math.PI * 2);
     ctx.fill();
 
     // Golden Royal Door
@@ -396,7 +400,6 @@ export class CanvasRenderer {
     const { ctx } = this;
     ctx.fillStyle = '#334155';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
-    // Blue roof
     ctx.fillStyle = '#1e3a8a';
     ctx.beginPath();
     ctx.moveTo(px + w / 2, py + 2);
@@ -404,7 +407,7 @@ export class CanvasRenderer {
     ctx.lineTo(px + w - 2, py + 16);
     ctx.closePath();
     ctx.fill();
-    // Shield insignia
+    // Shield crest
     ctx.fillStyle = '#3b82f6';
     ctx.beginPath();
     ctx.arc(px + w / 2, py + 26, 8, 0, Math.PI);
@@ -416,10 +419,8 @@ export class CanvasRenderer {
 
   private drawRangerGuildSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // Timber lodge
     ctx.fillStyle = '#78350f';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
-    // Green moss roof
     ctx.fillStyle = '#065f46';
     ctx.beginPath();
     ctx.moveTo(px + w / 2, py + 2);
@@ -427,7 +428,6 @@ export class CanvasRenderer {
     ctx.lineTo(px + w - 2, py + 16);
     ctx.closePath();
     ctx.fill();
-    // Target board
     ctx.fillStyle = '#f8fafc';
     ctx.beginPath();
     ctx.arc(px + w / 2, py + 30, 7, 0, Math.PI * 2);
@@ -440,12 +440,10 @@ export class CanvasRenderer {
 
   private drawRogueGuildSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // Dark shadowy facade
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
     ctx.fillStyle = '#3f3f46';
     ctx.fillRect(px + 4, py + 4, w - 8, 12);
-    // Dagger icon
     ctx.fillStyle = '#f59e0b';
     ctx.fillRect(px + w / 2 - 2, py + 22, 4, 14);
     ctx.fillRect(px + w / 2 - 6, py + 26, 12, 3);
@@ -453,10 +451,8 @@ export class CanvasRenderer {
 
   private drawWizardTowerSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // Tall cylinder
     ctx.fillStyle = '#312e81';
     ctx.fillRect(px + 16, py + 10, w - 32, h - 14);
-    // Purple cone roof
     ctx.fillStyle = '#7c3aed';
     ctx.beginPath();
     ctx.moveTo(px + w / 2, py - 12);
@@ -464,7 +460,6 @@ export class CanvasRenderer {
     ctx.lineTo(px + w - 10, py + 12);
     ctx.closePath();
     ctx.fill();
-    // Glowing crystal on top
     const glow = (Math.sin(Date.now() * 0.005) + 1) * 3;
     ctx.fillStyle = '#c084fc';
     ctx.beginPath();
@@ -474,15 +469,12 @@ export class CanvasRenderer {
 
   private drawClericTempleSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // White marble walls
     ctx.fillStyle = '#f1f5f9';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
-    // Gold dome
     ctx.fillStyle = '#eab308';
     ctx.beginPath();
     ctx.arc(px + w / 2, py + 16, 20, Math.PI, 0);
     ctx.fill();
-    // Sun cross
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(px + w / 2 - 2, py - 8, 4, 14);
     ctx.fillRect(px + w / 2 - 6, py - 4, 12, 4);
@@ -490,29 +482,24 @@ export class CanvasRenderer {
 
   private drawDwarfSettlementSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // Heavy fortified stone
     ctx.fillStyle = '#292524';
     ctx.fillRect(px + 4, py + 10, w - 8, h - 14);
     ctx.fillStyle = '#d97706';
     ctx.fillRect(px + 8, py + 6, w - 16, 8);
-    // Anvil emblem
     ctx.fillStyle = '#94a3b8';
     ctx.fillRect(px + w / 2 - 8, py + 26, 16, 8);
   }
 
   private drawMarketplaceSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // Canopy stalls with red/white stripes
     const numStripes = 6;
     const stripeW = w / numStripes;
     for (let i = 0; i < numStripes; i++) {
       ctx.fillStyle = i % 2 === 0 ? '#ef4444' : '#f8fafc';
       ctx.fillRect(px + i * stripeW, py + 4, stripeW, 18);
     }
-    // Wooden counter & barrels
     ctx.fillStyle = '#92400e';
     ctx.fillRect(px + 6, py + 22, w - 12, h - 26);
-    // Potion flasks
     ctx.fillStyle = '#38bdf8';
     ctx.beginPath();
     ctx.arc(px + 18, py + 34, 4, 0, Math.PI * 2);
@@ -525,27 +512,24 @@ export class CanvasRenderer {
 
   private drawBlacksmithSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // Brick forge
     ctx.fillStyle = '#7f1d1d';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
-    // Chimney with smoke
     ctx.fillStyle = '#450a0a';
     ctx.fillRect(px + w - 18, py - 4, 10, 20);
-    // Glowing forge fire
+    // Animated glowing forge fire
+    const fireFlicker = Math.sin(Date.now() * 0.02) * 2;
     ctx.fillStyle = '#f97316';
     ctx.fillRect(px + 14, py + 30, 16, 12);
     ctx.fillStyle = '#fde047';
-    ctx.fillRect(px + 18, py + 33, 8, 6);
+    ctx.fillRect(px + 18, py + 33, 8 + fireFlicker, 6);
   }
 
   private drawGuardTowerSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
     ctx.fillStyle = '#475569';
     ctx.fillRect(px + 8, py + 4, w - 16, h - 8);
-    // Parapet
     ctx.fillStyle = '#64748b';
     ctx.fillRect(px + 4, py - 2, w - 8, 8);
-    // Arrow slit
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(px + w / 2 - 2, py + 16, 4, 12);
   }
@@ -554,7 +538,6 @@ export class CanvasRenderer {
     const { ctx } = this;
     ctx.fillStyle = '#b45309';
     ctx.fillRect(px + 6, py + 14, w - 12, h - 18);
-    // Dark brown roof
     ctx.fillStyle = '#78350f';
     ctx.beginPath();
     ctx.moveTo(px + w / 2, py + 2);
@@ -562,7 +545,7 @@ export class CanvasRenderer {
     ctx.lineTo(px + w - 2, py + 16);
     ctx.closePath();
     ctx.fill();
-    // Beer mug sign
+    // Beer sign
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(px + w / 2 - 6, py + 24, 12, 10);
     ctx.fillStyle = '#ffffff';
@@ -571,15 +554,47 @@ export class CanvasRenderer {
 
   private drawStatueSprite(px: number, py: number, w: number, h: number) {
     const { ctx } = this;
-    // Marble pedestal
     ctx.fillStyle = '#94a3b8';
     ctx.fillRect(px + 8, py + h - 16, w - 16, 14);
-    // Golden sovereign statue
     ctx.fillStyle = '#eab308';
     ctx.fillRect(px + w / 2 - 6, py + 10, 12, 22);
-    // Crown
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(px + w / 2 - 7, py + 4, 14, 6);
+  }
+
+  private drawPeasantCottageSprite(px: number, py: number, w: number, h: number) {
+    const { ctx } = this;
+    // Fieldstone base walls
+    ctx.fillStyle = '#64748b';
+    ctx.fillRect(px + 4, py + 12, w - 8, h - 16);
+
+    // Golden straw thatched roof
+    ctx.fillStyle = '#ca8a04';
+    ctx.beginPath();
+    ctx.moveTo(px + w / 2, py + 2);
+    ctx.lineTo(px + 1, py + 15);
+    ctx.lineTo(px + w - 1, py + 15);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#eab308';
+    ctx.fillRect(px + 3, py + 13, w - 6, 2.5);
+
+    // Chimney with animated smoke
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(px + w - 10, py + 2, 5, 8);
+
+    const smokeY = (Date.now() * 0.015) % 15;
+    ctx.fillStyle = 'rgba(203, 213, 225, 0.4)';
+    ctx.beginPath();
+    ctx.arc(px + w - 8, py - 2 - smokeY, 3 + smokeY * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wooden door & warm window
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(px + 8, py + h - 14, 8, 10);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(px + w - 16, py + 18, 6, 6);
   }
 
   private renderLair(lair: MonsterLair, state: GameState) {
@@ -590,7 +605,6 @@ export class CanvasRenderer {
     const w = lair.width * ts;
     const h = lair.height * ts;
 
-    // Only render if explored
     if (!this.gridManager.explored[Math.floor(lair.y)][Math.floor(lair.x)]) return;
 
     const isSelected = state.selectedEntity?.type === 'lair' && state.selectedEntity.id === lair.id;
@@ -608,7 +622,7 @@ export class CanvasRenderer {
       case 'sewer_grate':
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(px + 4, py + 4, w - 8, h - 8);
-        ctx.fillStyle = '#10b981'; // Green slime
+        ctx.fillStyle = '#10b981';
         ctx.fillRect(px + 8, py + 8, w - 16, h - 16);
         ctx.strokeStyle = '#475569';
         ctx.lineWidth = 2;
@@ -617,18 +631,16 @@ export class CanvasRenderer {
       case 'graveyard':
         ctx.fillStyle = '#292524';
         ctx.fillRect(px + 4, py + 6, w - 8, h - 10);
-        // Tombstones
         ctx.fillStyle = '#78716c';
         ctx.fillRect(px + 8, py + 10, 8, 12);
         ctx.fillRect(px + 24, py + 12, 8, 14);
         break;
       case 'goblin_hut':
-        // Mud hut
         ctx.fillStyle = '#713f12';
         ctx.beginPath();
         ctx.arc(px + w / 2, py + h / 2 + 4, 16, Math.PI, 0);
         ctx.fill();
-        ctx.fillStyle = '#ca8a04'; // Straw thatch
+        ctx.fillStyle = '#ca8a04';
         ctx.fillRect(px + 10, py + 8, w - 20, 6);
         break;
       case 'wolf_den':
@@ -646,7 +658,6 @@ export class CanvasRenderer {
       case 'dragon_cavern':
         ctx.fillStyle = '#450a0a';
         ctx.fillRect(px + 4, py + 4, w - 8, h - 8);
-        // Lava veins
         ctx.fillStyle = '#ea580c';
         ctx.fillRect(px + 10, py + 14, w - 20, 8);
         ctx.fillStyle = '#facc15';
@@ -664,13 +675,59 @@ export class CanvasRenderer {
     ctx.fillRect(px, py - 8, barW * hpPercent, barH);
   }
 
+  private renderTreasure(t: Treasure, state: GameState) {
+    const { ctx } = this;
+    if (!this.gridManager.isPixelVisible(t.x, t.y)) return;
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(t.x, t.y + 4, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const gleam = (Math.sin(Date.now() * 0.006 + t.x) + 1) * 0.5;
+
+    if (t.type === 'chest') {
+      // Detailed Wooden & Gold Bound Chest
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(t.x - 7, t.y - 7, 14, 11);
+      // Brass Bands
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(t.x - 7, t.y - 7, 3, 11);
+      ctx.fillRect(t.x + 4, t.y - 7, 3, 11);
+      // Keyhole / Lock
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(t.x - 1.5, t.y - 3, 3, 4);
+
+      // Gold Sparkle Gleam
+      if (gleam > 0.6) {
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(t.x + 4, t.y - 7, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // Bulging Gold Sack with red string tie
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y - 4, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ef4444'; // Red string tie
+      ctx.fillRect(t.x - 4, t.y - 9, 8, 2);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 7px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('$', t.x, t.y - 2);
+    }
+  }
+
+  // --- RICH ANIMATED HERO RENDERING ---
   private renderHero(hero: Hero, state: GameState) {
     if (hero.isDead) return;
     const { ctx } = this;
     const x = hero.x;
     const y = hero.y;
 
-    // Check if visible
     if (!this.gridManager.isPixelVisible(x, y)) return;
 
     const isSelected = state.selectedEntity?.type === 'hero' && state.selectedEntity.id === hero.id;
@@ -680,7 +737,7 @@ export class CanvasRenderer {
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(x, y + 4, 12, 6, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y + 4, 13, 7, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -690,69 +747,188 @@ export class CanvasRenderer {
     ctx.ellipse(x, y + 5, 8, 4, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const classDef = HERO_CLASS_DEFINITIONS[hero.heroClass];
-
-    // Character body
+    const isMoving = hero.state === 'wandering' || hero.state === 'pursuing_flag' || hero.state === 'fleeing' || hero.state === 'collecting_treasure';
+    const walkPhase = isMoving ? Date.now() * 0.012 : 0;
+    const legStride = isMoving ? Math.sin(walkPhase) * 4 : 0;
+    const bodyBob = isMoving ? Math.abs(Math.sin(walkPhase)) * 1.5 : 0;
     const isAttacking = hero.isAttackingAnimation > 0;
-    const bob = Math.sin(Date.now() * 0.01) * (hero.state === 'wandering' || hero.state === 'pursuing_flag' ? 2 : 0);
+    const dir = hero.direction;
 
-    ctx.fillStyle = classDef.color;
-    ctx.fillRect(x - 5, y - 10 + bob, 10, 12);
+    // 1. LEGS (Walking animation)
+    ctx.fillStyle = '#1e293b'; // Dark pants
+    ctx.fillRect(x - 4 + legStride, y - 4 - bodyBob, 3, 7);
+    ctx.fillRect(x + 1 - legStride, y - 4 - bodyBob, 3, 7);
 
-    // Head
-    ctx.fillStyle = '#fed7aa'; // Skin tone
-    ctx.beginPath();
-    ctx.arc(x, y - 14 + bob, 4.5, 0, Math.PI * 2);
-    ctx.fill();
+    // Boots
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(x - 5 + legStride, y + 1 - bodyBob, 4, 3);
+    ctx.fillRect(x + 1 - legStride, y + 1 - bodyBob, 4, 3);
 
-    // Helmet / Hair
-    if (hero.heroClass === 'warrior' || hero.heroClass === 'dwarf') {
-      ctx.fillStyle = '#94a3b8'; // Iron helm
-      ctx.fillRect(x - 5, y - 18 + bob, 10, 5);
+    // 2. CAPE / BACK CLOAK (billows in wind)
+    const capeWiggle = Math.sin(Date.now() * 0.008 + x) * 2;
+    if (hero.heroClass === 'warrior') {
+      ctx.fillStyle = '#1d4ed8'; // Royal Blue Cape
+      ctx.fillRect(x - 5, y - 11 - bodyBob, 10, 10);
+    } else if (hero.heroClass === 'ranger') {
+      ctx.fillStyle = '#047857'; // Forest Green Cloak
+      ctx.fillRect(x - 5, y - 11 - bodyBob, 10, 10);
     } else if (hero.heroClass === 'wizard') {
-      ctx.fillStyle = '#6d28d9'; // Wizard hat
-      ctx.beginPath();
-      ctx.moveTo(x, y - 24 + bob);
-      ctx.lineTo(x - 6, y - 16 + bob);
-      ctx.lineTo(x + 6, y - 16 + bob);
-      ctx.closePath();
-      ctx.fill();
-    } else if (hero.heroClass === 'ranger' || hero.heroClass === 'elf') {
-      ctx.fillStyle = '#047857'; // Green hood
-      ctx.beginPath();
-      ctx.arc(x, y - 15 + bob, 5.5, Math.PI, 0);
-      ctx.fill();
+      ctx.fillStyle = '#581c87'; // Purple Archmage Robe
+      ctx.fillRect(x - 6, y - 12 - bodyBob, 12, 12);
     }
 
-    // Weapon / Attack animation
-    if (isAttacking) {
-      ctx.strokeStyle = '#f8fafc';
-      ctx.lineWidth = 2;
-      const attackDir = hero.direction === 'right' ? 1 : -1;
+    // 3. TORSO / ARMOR
+    const classDef = HERO_CLASS_DEFINITIONS[hero.heroClass];
+    ctx.fillStyle = classDef.color;
+    ctx.fillRect(x - 5, y - 11 - bodyBob, 10, 9);
+
+    // Chest Plate highlight
+    if (hero.heroClass === 'warrior' || hero.heroClass === 'dwarf') {
+      ctx.fillStyle = '#cbd5e1'; // Steel Plate
+      ctx.fillRect(x - 4, y - 10 - bodyBob, 8, 7);
+      ctx.fillStyle = '#fbbf24'; // Gold lion crest
+      ctx.fillRect(x - 1, y - 8 - bodyBob, 2, 3);
+    }
+
+    // 4. HEAD & HAIR / HELMET
+    ctx.fillStyle = '#fed7aa'; // Skin tone
+    ctx.beginPath();
+    ctx.arc(x, y - 15 - bodyBob, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Helmets / Hats
+    if (hero.heroClass === 'warrior' || hero.heroClass === 'dwarf') {
+      // Iron Visor & Plume
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(x - 5, y - 19 - bodyBob, 10, 5);
+      ctx.fillStyle = '#ef4444'; // Red Crest Plume
+      ctx.fillRect(x - 1, y - 22 - bodyBob, 2, 4);
+    } else if (hero.heroClass === 'wizard') {
+      // Pointed Wizard Hat
+      ctx.fillStyle = '#6d28d9';
       ctx.beginPath();
-      ctx.moveTo(x, y - 6 + bob);
-      ctx.lineTo(x + attackDir * 14, y - 10 + bob);
+      ctx.moveTo(x, y - 25 - bodyBob);
+      ctx.lineTo(x - 6, y - 17 - bodyBob);
+      ctx.lineTo(x + 6, y - 17 - bodyBob);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x - 3, y - 18 - bodyBob, 6, 1.5);
+    } else if (hero.heroClass === 'ranger') {
+      // Green Hood
+      ctx.fillStyle = '#065f46';
+      ctx.beginPath();
+      ctx.arc(x, y - 16 - bodyBob, 5.5, Math.PI, 0);
+      ctx.fill();
+    } else if (hero.heroClass === 'cleric') {
+      // Golden Circlet / Mitre
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x - 5, y - 18 - bodyBob, 10, 2);
+    }
+
+    // 5. WEAPONS & ATTACK ANIMATIONS
+    const attackDir = dir === 'left' ? -1 : 1;
+    const attackSwing = isAttacking ? Math.sin(hero.isAttackingAnimation * 15) * 8 : 0;
+
+    if (hero.heroClass === 'warrior') {
+      // Steel Kite Shield (Left Arm)
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(x - 7 * attackDir, y - 9 - bodyBob, 4, 8);
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - 7 * attackDir, y - 9 - bodyBob, 4, 8);
+
+      // Gleaming Sword (Right Arm)
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x + 4 * attackDir, y - 8 - bodyBob);
+      ctx.lineTo(x + (12 + attackSwing) * attackDir, y - (14 + attackSwing) - bodyBob);
+      ctx.stroke();
+
+      // Sword slash trail on attack
+      if (isAttacking) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + 8 * attackDir, y - 10 - bodyBob, 14, -Math.PI / 3, Math.PI / 3);
+        ctx.stroke();
+      }
+    } else if (hero.heroClass === 'ranger' || hero.heroClass === 'elf') {
+      // Recurve Bow & Arrow
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x + 6 * attackDir, y - 8 - bodyBob, 8, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+    } else if (hero.heroClass === 'wizard') {
+      // Arcane Staff with glowing orb
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 5 * attackDir, y - bodyBob);
+      ctx.lineTo(x + 5 * attackDir, y - 20 - bodyBob);
+      ctx.stroke();
+
+      // Glowing Arcane Orb
+      const magicGlow = (Math.sin(Date.now() * 0.01) + 1) * 2;
+      ctx.fillStyle = '#c084fc';
+      ctx.beginPath();
+      ctx.arc(x + 5 * attackDir, y - 22 - bodyBob, 3 + magicGlow * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (hero.heroClass === 'cleric') {
+      // Holy Sun Mace
+      ctx.strokeStyle = '#ca8a04';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 5 * attackDir, y - bodyBob);
+      ctx.lineTo(x + 6 * attackDir, y - 16 - bodyBob);
+      ctx.stroke();
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(x + 6 * attackDir, y - 18 - bodyBob, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (hero.heroClass === 'rogue') {
+      // Dual Daggers
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + 4 * attackDir, y - 6 - bodyBob);
+      ctx.lineTo(x + 9 * attackDir, y - 10 - bodyBob);
+      ctx.moveTo(x - 4 * attackDir, y - 6 - bodyBob);
+      ctx.lineTo(x - 9 * attackDir, y - 10 - bodyBob);
+      ctx.stroke();
+    } else if (hero.heroClass === 'dwarf') {
+      // Heavy Warhammer & Braided Beard
+      ctx.fillStyle = '#d97706'; // Red braided beard
+      ctx.fillRect(x - 3, y - 12 - bodyBob, 6, 6);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + 4 * attackDir, y - bodyBob);
+      ctx.lineTo(x + 8 * attackDir, y - 14 - bodyBob);
       ctx.stroke();
     }
 
-    // HP Bar
+    // 6. HEALTH BAR
     const hpW = 20;
     const hpH = 3;
     const hpPercent = Math.max(0, hero.hp / hero.maxHp);
     ctx.fillStyle = '#0f172a';
-    ctx.fillRect(x - hpW / 2, y - 22 + bob, hpW, hpH);
+    ctx.fillRect(x - hpW / 2, y - 24 - bodyBob, hpW, hpH);
     ctx.fillStyle = hpPercent > 0.5 ? '#22c55e' : (hpPercent > 0.25 ? '#eab308' : '#ef4444');
-    ctx.fillRect(x - hpW / 2, y - 22 + bob, hpW * hpPercent, hpH);
+    ctx.fillRect(x - hpW / 2, y - 24 - bodyBob, hpW * hpPercent, hpH);
 
-    // Level Badge above head
+    // 7. LEVEL BADGE
     ctx.fillStyle = '#1e293b';
-    ctx.fillRect(x - 5, y - 29 + bob, 10, 8);
+    ctx.fillRect(x - 5, y - 31 - bodyBob, 10, 8);
     ctx.fillStyle = '#fbbf24';
     ctx.font = 'bold 7px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`${hero.level}`, x, y - 23 + bob);
+    ctx.fillText(`${hero.level}`, x, y - 25 - bodyBob);
   }
 
+  // --- RICH ANIMATED MONSTER RENDERING ---
   private renderMonster(monster: Monster, state: GameState) {
     if (monster.hp <= 0) return;
     const { ctx } = this;
@@ -766,39 +942,172 @@ export class CanvasRenderer {
       ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(x, y + 4, 12, 6, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y + 4, monster.isBoss ? 20 : 13, monster.isBoss ? 10 : 7, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
+
+    const walkPhase = Date.now() * 0.01;
+    const walkBob = Math.sin(walkPhase) * 2;
+    const legStride = Math.sin(walkPhase) * 4;
 
     // Drop shadow
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath();
-    ctx.ellipse(x, y + 4, monster.isBoss ? 16 : 8, monster.isBoss ? 8 : 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + 4, monster.isBoss ? 18 : 8, monster.isBoss ? 9 : 4, 0, 0, Math.PI * 2);
     ctx.fill();
 
     const def = MONSTER_DEFINITIONS[monster.type];
-    ctx.fillStyle = def.color;
 
     if (monster.type === 'giant_rat') {
+      // 4-legged scurrying rat with tail
+      ctx.fillStyle = '#78716c';
       ctx.beginPath();
-      ctx.ellipse(x, y - 2, 7, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y - 3 + walkBob, 8, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Paws
+      ctx.fillStyle = '#57534e';
+      ctx.fillRect(x - 6 + legStride, y + 1, 3, 3);
+      ctx.fillRect(x + 3 - legStride, y + 1, 3, 3);
+      // Whipping Tail
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x - 7, y - 3 + walkBob);
+      ctx.quadraticCurveTo(x - 14, y - 8 + walkBob, x - 18, y - 4 + walkBob);
+      ctx.stroke();
+    } else if (monster.type === 'skeleton') {
+      // Bone warrior
+      ctx.fillStyle = '#e2e8f0'; // Ribs and skull
+      ctx.beginPath();
+      ctx.arc(x, y - 14 + walkBob, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // Glowing eye sockets
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(x - 2, y - 15 + walkBob, 1.5, 1.5);
+      ctx.fillRect(x + 1, y - 15 + walkBob, 1.5, 1.5);
+      // Ribcage & spine
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(x - 4, y - 10 + walkBob, 8, 7);
+      // Bone Legs
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(x - 3 + legStride, y - 3 + walkBob, 2, 6);
+      ctx.fillRect(x + 1 - legStride, y - 3 + walkBob, 2, 6);
+      // Rusty sword
+      ctx.strokeStyle = '#78716c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 4, y - 8 + walkBob);
+      ctx.lineTo(x + 11, y - 13 + walkBob);
+      ctx.stroke();
+    } else if (monster.type === 'zombie') {
+      // Rotting zombie with dragging gait
+      ctx.fillStyle = '#4d7c0f'; // Putrid green
+      ctx.fillRect(x - 5, y - 10 + walkBob, 10, 10);
+      ctx.beginPath();
+      ctx.arc(x, y - 14 + walkBob, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Outstretched rotting claw arms
+      ctx.fillStyle = '#3f6212';
+      ctx.fillRect(x - 8, y - 8 + walkBob, 16, 3);
+    } else if (monster.type === 'goblin_spearman') {
+      // Green goblin with tribal spear
+      ctx.fillStyle = '#84cc16';
+      ctx.beginPath();
+      ctx.arc(x, y - 13 + walkBob, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#713f12'; // Leather loincloth
+      ctx.fillRect(x - 4, y - 9 + walkBob, 8, 7);
+      // Spear
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 3, y - 3 + walkBob);
+      ctx.lineTo(x + 12, y - 18 + walkBob);
+      ctx.stroke();
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.moveTo(x + 12, y - 18 + walkBob);
+      ctx.lineTo(x + 15, y - 22 + walkBob);
+      ctx.lineTo(x + 10, y - 20 + walkBob);
+      ctx.closePath();
+      ctx.fill();
+    } else if (monster.type === 'dire_wolf') {
+      // Running Wolf
+      ctx.fillStyle = '#52525b';
+      ctx.beginPath();
+      ctx.ellipse(x, y - 6 + walkBob, 12, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x + 10, y - 9 + walkBob, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3f3f46';
+      ctx.fillRect(x - 8 + legStride, y - 1, 3, 5);
+      ctx.fillRect(x + 6 - legStride, y - 1, 3, 5);
+    } else if (monster.type === 'minotaur') {
+      // Giant Horned Minotaur
+      ctx.fillStyle = '#991b1b';
+      ctx.fillRect(x - 8, y - 18 + walkBob, 16, 16);
+      ctx.beginPath();
+      ctx.arc(x, y - 22 + walkBob, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // Curved Bull Horns
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - 6, y - 24 + walkBob);
+      ctx.quadraticCurveTo(x - 14, y - 30 + walkBob, x - 12, y - 34 + walkBob);
+      ctx.moveTo(x + 6, y - 24 + walkBob);
+      ctx.quadraticCurveTo(x + 14, y - 30 + walkBob, x + 12, y - 34 + walkBob);
+      ctx.stroke();
+      // Giant Battleaxe
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + 8, y - 8 + walkBob);
+      ctx.lineTo(x + 16, y - 26 + walkBob);
+      ctx.stroke();
+    } else if (monster.type === 'necromancer') {
+      // Floating Dark Necromancer
+      const floatY = Math.sin(Date.now() * 0.005) * 4;
+      ctx.fillStyle = '#3b0764';
+      ctx.fillRect(x - 7, y - 16 - floatY, 14, 16);
+      ctx.fillStyle = '#581c87';
+      ctx.beginPath();
+      ctx.arc(x, y - 19 - floatY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      // Orbiting glowing green skull
+      const orbX = x + Math.cos(Date.now() * 0.008) * 12;
+      const orbY = y - 14 - floatY + Math.sin(Date.now() * 0.008) * 6;
+      ctx.fillStyle = '#4ade80';
+      ctx.beginPath();
+      ctx.arc(orbX, orbY, 3, 0, Math.PI * 2);
       ctx.fill();
     } else if (monster.type === 'red_dragon') {
-      // Big Boss Dragon
-      ctx.fillStyle = '#991b1b';
+      // Red Dragon Fryre with Animated Flapping Wings
+      const wingFlap = Math.sin(Date.now() * 0.006) * 12;
+      ctx.fillStyle = '#7f1d1d';
       // Wings
       ctx.beginPath();
-      ctx.moveTo(x - 24, y - 28);
+      ctx.moveTo(x - 30, y - 24 + wingFlap);
       ctx.lineTo(x, y - 10);
-      ctx.lineTo(x + 24, y - 28);
+      ctx.lineTo(x + 30, y - 24 + wingFlap);
+      ctx.lineTo(x + 16, y - 2);
+      ctx.lineTo(x - 16, y - 2);
+      ctx.closePath();
       ctx.fill();
-      // Body
+      // Body & Head
       ctx.fillStyle = '#dc2626';
       ctx.beginPath();
-      ctx.arc(x, y - 12, 14, 0, Math.PI * 2);
+      ctx.ellipse(x, y - 10, 16, 12, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x + 12, y - 18, 8, 0, Math.PI * 2);
+      ctx.fill();
+      // Glowing Fire Maw
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x + 16, y - 16, 4, 3);
     } else {
-      // Standard bipedal monster
+      ctx.fillStyle = def.color;
       ctx.fillRect(x - 4, y - 8, 8, 10);
       ctx.beginPath();
       ctx.arc(x, y - 12, 4, 0, Math.PI * 2);
@@ -810,9 +1119,9 @@ export class CanvasRenderer {
     const hpH = monster.isBoss ? 5 : 3;
     const hpPercent = Math.max(0, monster.hp / monster.maxHp);
     ctx.fillStyle = '#0f172a';
-    ctx.fillRect(x - hpW / 2, y - (monster.isBoss ? 32 : 18), hpW, hpH);
+    ctx.fillRect(x - hpW / 2, y - (monster.isBoss ? 34 : 20), hpW, hpH);
     ctx.fillStyle = '#ef4444';
-    ctx.fillRect(x - hpW / 2, y - (monster.isBoss ? 32 : 18), hpW * hpPercent, hpH);
+    ctx.fillRect(x - hpW / 2, y - (monster.isBoss ? 34 : 20), hpW * hpPercent, hpH);
   }
 
   private renderTaxCollector(tc: TaxCollector, state: GameState) {
@@ -822,7 +1131,6 @@ export class CanvasRenderer {
     const isSelected = state.selectedEntity?.type === 'tax_collector' && state.selectedEntity.id === tc.id;
     const bob = Math.sin(Date.now() * 0.008) * 2;
 
-    // Selection ring
     if (isSelected) {
       ctx.strokeStyle = '#c084fc';
       ctx.lineWidth = 2;
@@ -831,7 +1139,6 @@ export class CanvasRenderer {
       ctx.stroke();
     }
 
-    // Drop shadow
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
     ctx.ellipse(tc.x, tc.y + 5, 9, 5, 0, 0, Math.PI * 2);
@@ -840,25 +1147,18 @@ export class CanvasRenderer {
     // Body (Royal Purple Tunic with Gold Trim)
     ctx.fillStyle = '#6b21a8';
     ctx.fillRect(tc.x - 6, tc.y - 12 + bob, 12, 14);
-
-    // Gold Trim / Sash
     ctx.fillStyle = '#fbbf24';
     ctx.fillRect(tc.x - 6, tc.y - 6 + bob, 12, 2.5);
-    ctx.fillRect(tc.x - 1, tc.y - 12 + bob, 2, 14);
 
-    // Head
+    // Head & Feathered Cap
     ctx.fillStyle = '#fed7aa';
     ctx.beginPath();
     ctx.arc(tc.x, tc.y - 16 + bob, 5, 0, Math.PI * 2);
     ctx.fill();
-
-    // Renaissance Feathered Beret (Purple Velvet + Gold Ribbon)
     ctx.fillStyle = '#581c87';
     ctx.beginPath();
     ctx.ellipse(tc.x, tc.y - 20 + bob, 8, 4, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(tc.x - 7, tc.y - 19 + bob, 14, 2);
 
     // White Feather Plume
     ctx.strokeStyle = '#f8fafc';
@@ -868,15 +1168,13 @@ export class CanvasRenderer {
     ctx.quadraticCurveTo(tc.x - 10, tc.y - 28 + bob, tc.x - 7, tc.y - 32 + bob);
     ctx.stroke();
 
-    // Ledger Book under right arm
+    // Ledger Book
     ctx.fillStyle = '#78350f';
     ctx.fillRect(tc.x - 9, tc.y - 10 + bob, 4, 8);
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(tc.x - 9, tc.y - 8 + bob, 4, 2);
 
-    // Heavy Coin Sack on Back
+    // Heavy Burlap Coin Sack on Back
     const sackSize = tc.goldCarried > 0 ? Math.min(10, 6 + (tc.goldCarried / 40) * 3) : 5;
-    ctx.fillStyle = '#b45309'; // Burlap brown
+    ctx.fillStyle = '#b45309';
     ctx.beginPath();
     ctx.arc(tc.x + 7, tc.y - 8 + bob, sackSize, 0, Math.PI * 2);
     ctx.fill();
@@ -908,7 +1206,6 @@ export class CanvasRenderer {
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 1;
     ctx.strokeRect(tc.x - 22, tc.y - 38 + bob, 44, 11);
-
     ctx.fillStyle = '#fbbf24';
     ctx.font = 'bold 8px sans-serif';
     ctx.textAlign = 'center';
@@ -920,7 +1217,6 @@ export class CanvasRenderer {
     const x = flag.x;
     const y = flag.y;
 
-    // Flag Pole
     ctx.strokeStyle = '#d4d4d8';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -928,7 +1224,6 @@ export class CanvasRenderer {
     ctx.lineTo(x, y - 26);
     ctx.stroke();
 
-    // Banner color
     ctx.fillStyle = flag.type === 'attack' ? '#dc2626' : (flag.type === 'explore' ? '#2563eb' : '#eab308');
     ctx.beginPath();
     ctx.moveTo(x, y - 26);
@@ -937,7 +1232,6 @@ export class CanvasRenderer {
     ctx.closePath();
     ctx.fill();
 
-    // Bounty Gold badge
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(x - 14, y - 36, 28, 11);
     ctx.strokeStyle = '#fbbf24';
@@ -1020,11 +1314,9 @@ export class CanvasRenderer {
         const py = y * ts;
 
         if (!this.gridManager.explored[y][x]) {
-          // Unexplored: Complete black
           ctx.fillStyle = '#090d16';
           ctx.fillRect(px, py, ts, ts);
         } else if (!this.gridManager.visible[y][x]) {
-          // Explored but currently in shadow: 45% dark tint
           ctx.fillStyle = 'rgba(9, 13, 22, 0.45)';
           ctx.fillRect(px, py, ts, ts);
         }

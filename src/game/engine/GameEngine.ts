@@ -16,6 +16,7 @@ export class GameEngine {
   public economyManager: EconomyManager;
   public combatManager: CombatManager;
   public flagManager: FlagManager;
+  private cottageSproutTimer: number = 18.0;
 
   private onStateChangeCallback?: (state: GameState) => void;
 
@@ -62,6 +63,7 @@ export class GameEngine {
       lairs: [],
       flags: [],
       taxCollectors: [],
+      treasures: [],
       projectiles: [],
       particles: [],
       floatingTexts: [],
@@ -148,6 +150,23 @@ export class GameEngine {
       this.state.lairs.push(lair);
     }
 
+    // Seed hidden ancient treasure chests in uncharted wilderness
+    const numWildChests = 6;
+    for (let c = 0; c < numWildChests; c++) {
+      const cx = Math.floor(Math.random() * (scenario.mapWidth - 14)) + 7;
+      const cy = Math.floor(Math.random() * (scenario.mapHeight - 14)) + 7;
+      if (Math.hypot(cx - centerX, cy - centerY) < 14) continue;
+
+      this.state.treasures.push({
+        id: `treasure_wild_${c}`,
+        x: (cx + 0.5) * MAP_CONFIG.TILE_SIZE,
+        y: (cy + 0.5) * MAP_CONFIG.TILE_SIZE,
+        goldAmount: Math.floor(Math.random() * 60) + 40,
+        type: 'chest',
+        createdAt: Date.now()
+      });
+    }
+
     this.addNotification('The Realm Awaits', `Your reign begins, Sovereign! Build guilds and establish trade to protect the realm.`, 'quest');
   }
 
@@ -166,8 +185,9 @@ export class GameEngine {
     // 3. Recalculate Fog of War / Line of Sight
     this.recalculateVisibility();
 
-    // 4. Update Buildings & Construction
+    // 4. Update Buildings & Construction & Peasant Cottage Sprouting
     this.updateBuildings(delta);
+    this.updateCottageSprouting(delta);
 
     // 5. Update Monster Lairs
     for (const lair of this.state.lairs) {
@@ -195,6 +215,7 @@ export class GameEngine {
         this.state.lairs,
         this.state.buildings,
         this.state.flags,
+        this.state.treasures,
         () => audioManager.playLevelUp(),
         (proj) => {
           this.state.projectiles.push({
@@ -208,7 +229,11 @@ export class GameEngine {
             progress: 0
           });
         },
-        (text, x, y, color) => this.addFloatingText(text, x, y, color)
+        (text, x, y, color) => this.addFloatingText(text, x, y, color),
+        (treasure, h) => {
+          audioManager.playCoinSound();
+          this.addNotification('Treasure Looted', `${h.name} discovered a ${treasure.type === 'chest' ? 'Treasure Chest' : 'Gold Sack'} (+${treasure.goldAmount}g)!`, 'success');
+        }
       );
     }
 
@@ -248,6 +273,19 @@ export class GameEngine {
           // Monster slain by defenses
           this.state.treasuryGold += monster.goldBountyReward;
           this.addFloatingText(`+${monster.goldBountyReward}g Bounty`, monster.x, monster.y - 10, '#fbbf24');
+        }
+
+        // Chance to drop a treasure coin bag / chest on the ground!
+        const dropChance = monster.isBoss ? 1.0 : 0.35;
+        if (Math.random() < dropChance) {
+          this.state.treasures.push({
+            id: `loot_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+            x: monster.x,
+            y: monster.y,
+            goldAmount: monster.isBoss ? 180 : Math.floor(Math.random() * 25) + 15,
+            type: monster.isBoss ? 'chest' : 'gold_bag',
+            createdAt: Date.now()
+          });
         }
 
         this.state.monsters.splice(i, 1);
@@ -428,6 +466,63 @@ export class GameEngine {
         if (currentRecruit.progress >= 100) {
           b.trainingQueue.shift();
           this.spawnTrainedHero(b, currentRecruit.heroClass);
+        }
+      }
+    }
+  }
+
+  private updateCottageSprouting(delta: number) {
+    const palace = this.state.buildings.find(b => b.type === 'palace' && b.hp > 0);
+    if (!palace) return;
+
+    const palaceLevel = palace.level || 1;
+    const maxCottages = palaceLevel === 1 ? 4 : (palaceLevel === 2 ? 8 : 14);
+    const currentCottages = this.state.buildings.filter(b => b.type === 'peasant_cottage').length;
+
+    if (currentCottages >= maxCottages) return;
+
+    this.cottageSproutTimer -= delta;
+    if (this.cottageSproutTimer <= 0) {
+      this.cottageSproutTimer = Math.random() * 15 + 20;
+
+      // Try finding a suitable open grassy spot near town
+      const centerX = Math.floor(palace.x + palace.width / 2);
+      const centerY = Math.floor(palace.y + palace.height / 2);
+
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.floor(Math.random() * 12) + 7;
+        const tx = Math.floor(centerX + Math.cos(angle) * dist);
+        const ty = Math.floor(centerY + Math.sin(angle) * dist);
+
+        if (this.gridManager.canPlaceBuilding(tx, ty, 2, 2, this.state.buildings, this.state.lairs)) {
+          const cottageDef = BUILDING_DEFINITIONS['peasant_cottage'];
+          const newCottage: Building = {
+            id: `cottage_${Date.now()}_${attempt}`,
+            type: 'peasant_cottage',
+            name: cottageDef.name,
+            x: tx,
+            y: ty,
+            width: cottageDef.width,
+            height: cottageDef.height,
+            hp: cottageDef.maxHp,
+            maxHp: cottageDef.maxHp,
+            level: 1,
+            maxLevel: 1,
+            isConstructing: true,
+            constructionProgress: 0,
+            constructionTime: 4.0,
+            goldStored: 0,
+            heroSlots: 0,
+            recruitedHeroIds: [],
+            researchedUpgrades: [],
+            availableUpgrades: [],
+            taxRate: 0.15
+          };
+
+          this.state.buildings.push(newCottage);
+          this.addNotification('New Settlement', 'Commoners have built a new thatched cottage in the realm!', 'info');
+          break;
         }
       }
     }

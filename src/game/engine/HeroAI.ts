@@ -1,5 +1,5 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS } from '../constants';
-import { Building, Flag, Hero, Monster, MonsterLair } from '../types';
+import { Building, Flag, Hero, Monster, MonsterLair, Treasure } from '../types';
 import { GridManager } from './Grid';
 
 export class HeroAIManager {
@@ -17,6 +17,7 @@ export class HeroAIManager {
     lairs: MonsterLair[],
     buildings: Building[],
     flags: Flag[],
+    treasures: Treasure[],
     onHeroLevelUp?: (hero: Hero) => void,
     onSpawnProjectile?: (proj: {
       type: 'arrow' | 'fireball' | 'magic_missile' | 'holy_bolt';
@@ -28,7 +29,8 @@ export class HeroAIManager {
       ownerHeroId?: string;
       damage: number;
     }) => void,
-    onFloatingText?: (text: string, x: number, y: number, color: string) => void
+    onFloatingText?: (text: string, x: number, y: number, color: string) => void,
+    onCollectTreasure?: (treasure: Treasure, hero: Hero) => void
   ) {
     if (hero.isDead) return;
 
@@ -116,6 +118,10 @@ export class HeroAIManager {
         this.handleClericHealing(hero, delta, allHeroes, onFloatingText);
         break;
 
+      case 'collecting_treasure':
+        this.handleCollectingTreasure(hero, delta, treasures, onFloatingText, onCollectTreasure);
+        break;
+
       case 'attacking_target':
         this.handleAttacking(hero, delta, monsters, lairs, onSpawnProjectile, onFloatingText);
         break;
@@ -127,7 +133,7 @@ export class HeroAIManager {
       case 'wandering':
       case 'idle':
       default:
-        this.decideNextGoal(hero, delta, allHeroes, monsters, lairs, buildings, flags);
+        this.decideNextGoal(hero, delta, allHeroes, monsters, lairs, buildings, flags, treasures);
         break;
     }
   }
@@ -139,7 +145,8 @@ export class HeroAIManager {
     monsters: Monster[],
     lairs: MonsterLair[],
     buildings: Building[],
-    flags: Flag[]
+    flags: Flag[],
+    treasures: Treasure[]
   ) {
     // A. Cleric behavior: Heal critical allies nearby
     if (hero.heroClass === 'cleric' && hero.mp >= 25) {
@@ -155,7 +162,29 @@ export class HeroAIManager {
       }
     }
 
-    // B. Check if hero wants to shop or upgrade gear with their earned bounty gold
+    // B. Check for visible Treasures & Chests (Rogues & Rangers are especially keen!)
+    const treasureDetectRadius = hero.heroClass === 'rogue' ? 240 : (hero.heroClass === 'ranger' ? 200 : 130);
+    let nearestTreasure: Treasure | null = null;
+    let nearestTreasureDist = treasureDetectRadius;
+
+    for (const t of treasures) {
+      const dist = Math.hypot(t.x - hero.x, t.y - hero.y);
+      if (dist < nearestTreasureDist && this.gridManager.isPixelVisible(t.x, t.y)) {
+        nearestTreasureDist = dist;
+        nearestTreasure = t;
+      }
+    }
+
+    if (nearestTreasure) {
+      hero.state = 'collecting_treasure';
+      hero.targetEntityId = nearestTreasure.id;
+      hero.targetX = nearestTreasure.x;
+      hero.targetY = nearestTreasure.y;
+      hero.currentThought = `Spotted a ${nearestTreasure.type === 'chest' ? 'Treasure Chest' : 'Gold Sack'}!`;
+      return;
+    }
+
+    // C. Check if hero wants to shop or upgrade gear with their earned bounty gold
     if (hero.gold >= 30) {
       // 1. Visit Marketplace for healing potions or travel rations
       if (!hero.equipment.hasHealingPotion || (!hero.equipment.hasSpeedPotion && hero.gold >= 60)) {
@@ -299,6 +328,45 @@ export class HeroAIManager {
     // Move toward target position
     if (hero.targetX !== undefined && hero.targetY !== undefined) {
       this.moveTowards(hero, hero.targetX, hero.targetY, delta);
+    }
+  }
+
+  private handleCollectingTreasure(
+    hero: Hero,
+    delta: number,
+    treasures: Treasure[],
+    onFloatingText?: (text: string, x: number, y: number, color: string) => void,
+    onCollectTreasure?: (treasure: Treasure, hero: Hero) => void
+  ) {
+    const treasureIndex = treasures.findIndex(t => t.id === hero.targetEntityId);
+    if (treasureIndex === -1) {
+      hero.state = 'idle';
+      hero.targetEntityId = undefined;
+      return;
+    }
+
+    const treasure = treasures[treasureIndex];
+    const dist = Math.hypot(treasure.x - hero.x, treasure.y - hero.y);
+
+    if (dist > 18) {
+      this.moveTowards(hero, treasure.x, treasure.y, delta, 1.15);
+    } else {
+      // Pick up treasure!
+      hero.gold += treasure.goldAmount;
+      hero.xp += 25;
+
+      if (onFloatingText) {
+        onFloatingText(`+${treasure.goldAmount}g Loot!`, hero.x, hero.y - 18, '#fbbf24');
+      }
+
+      if (onCollectTreasure) {
+        onCollectTreasure(treasure, hero);
+      }
+
+      treasures.splice(treasureIndex, 1);
+      hero.state = 'idle';
+      hero.stateTimer = 1.0;
+      hero.currentThought = `Looted ${treasure.goldAmount} gold!`;
     }
   }
 
