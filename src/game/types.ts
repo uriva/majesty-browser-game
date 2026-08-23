@@ -228,6 +228,18 @@ export interface Peasant {
   direction: 'left' | 'right' | 'up' | 'down';
 }
 
+export interface Corpse {
+  id: string;
+  type: 'hero' | 'monster' | 'peasant' | 'tax_collector';
+  subType: string;
+  name: string;
+  x: number;
+  y: number;
+  rotation: number;
+  createdAt: number;
+  lifetime: number; // in seconds (e.g. 35s)
+}
+
 export interface Treasure {
   id: string;
   x: number;
@@ -354,6 +366,7 @@ export interface GameState {
   taxCollectors: TaxCollector[];
   peasants: Peasant[];
   treasures: Treasure[];
+  corpses: Corpse[];
   projectiles: Projectile[];
   particles: Particle[];
   floatingTexts: FloatingText[];

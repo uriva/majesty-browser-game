@@ -1,5 +1,5 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, MAP_CONFIG, SOVEREIGN_SPELLS } from '../constants';
-import { Building, BuildingType, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, NotificationItem, Peasant, Projectile, Scenario, SovereignSpell, Treasure } from '../types';
+import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, NotificationItem, Peasant, Projectile, Scenario, SovereignSpell, Treasure } from '../types';
 import { audioManager } from './Audio';
 import { CombatManager } from './Combat';
 import { EconomyManager } from './Economy';
@@ -65,6 +65,7 @@ export class GameEngine {
       taxCollectors: [],
       peasants: [],
       treasures: [],
+      corpses: [],
       projectiles: [],
       particles: [],
       floatingTexts: [],
@@ -222,6 +223,20 @@ export class GameEngine {
         hero.isDead = true;
         this.state.stats.heroesLost += 1;
         this.addNotification('Hero Fallen', `${hero.title} has fallen in battle!`, 'danger', { x: hero.x, y: hero.y });
+
+        // Spawn persistent hero corpse on battlefield
+        this.state.corpses.push({
+          id: `corpse_hero_${Date.now()}_${hero.id}`,
+          type: 'hero',
+          subType: hero.heroClass,
+          name: hero.name,
+          x: hero.x,
+          y: hero.y,
+          rotation: Math.random() * Math.PI * 2,
+          createdAt: Date.now(),
+          lifetime: 45.0
+        });
+
         this.state.heroes.splice(i, 1);
         continue;
       }
@@ -293,6 +308,19 @@ export class GameEngine {
           this.state.treasuryGold += monster.goldBountyReward;
           this.addFloatingText(`+${monster.goldBountyReward}g Bounty`, monster.x, monster.y - 10, '#fbbf24');
         }
+
+        // Spawn monster corpse / carcass on battlefield
+        this.state.corpses.push({
+          id: `corpse_mon_${Date.now()}_${monster.id}`,
+          type: 'monster',
+          subType: monster.type,
+          name: monster.name,
+          x: monster.x,
+          y: monster.y,
+          rotation: Math.random() * Math.PI * 2,
+          createdAt: Date.now(),
+          lifetime: monster.isBoss ? 60.0 : 25.0
+        });
 
         // Chance to drop a treasure coin bag / chest on the ground!
         const dropChance = monster.isBoss ? 1.0 : 0.35;
@@ -397,7 +425,16 @@ export class GameEngine {
       }
     }
 
-    // 13. Update Spell Cooldowns
+    // 13. Update Corpses Lifetime (Fades away over time)
+    for (let i = this.state.corpses.length - 1; i >= 0; i--) {
+      const c = this.state.corpses[i];
+      c.lifetime -= delta;
+      if (c.lifetime <= 0) {
+        this.state.corpses.splice(i, 1);
+      }
+    }
+
+    // 14. Update Spell Cooldowns
     for (const spell of this.state.spells) {
       if (spell.currentCooldown > 0) {
         spell.currentCooldown = Math.max(0, spell.currentCooldown - delta);
@@ -552,17 +589,30 @@ export class GameEngine {
           continue;
         }
 
-        // Target the front foundation facade of the building (centered horizontally, right on front edge)
-        const bx = (targetBuilding.x + targetBuilding.width / 2) * this.gridManager.tileSize;
-        const by = (targetBuilding.y + targetBuilding.height) * this.gridManager.tileSize - 4;
-        const dist = Math.hypot(bx - p.x, by - p.y);
+        const ts = this.gridManager.tileSize;
+        const bLeft = targetBuilding.x * ts;
+        const bRight = (targetBuilding.x + targetBuilding.width) * ts;
+        const bTop = targetBuilding.y * ts;
+        const bBottom = (targetBuilding.y + targetBuilding.height) * ts;
 
-        if (dist > 12) {
-          this.movePeasantTowards(p, bx, by, delta);
+        // Find nearest point on building perimeter to peasant
+        const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, p.x));
+        const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, p.y));
+        const distToPerimeter = Math.hypot(clampX - p.x, clampY - p.y);
+
+        if (distToPerimeter > 10) {
+          this.movePeasantTowards(p, clampX, clampY, delta);
         } else {
-          p.x = bx;
-          p.y = by;
-          p.direction = 'up'; // Face towards the building facade
+          // Reached nearest perimeter edge without walking through!
+          const bCenterX = (targetBuilding.x + targetBuilding.width / 2) * ts;
+          const bCenterY = (targetBuilding.y + targetBuilding.height / 2) * ts;
+          const dx = bCenterX - p.x;
+          const dy = bCenterY - p.y;
+          if (Math.abs(dx) > Math.abs(dy)) {
+            p.direction = dx > 0 ? 'right' : 'left';
+          } else {
+            p.direction = dy > 0 ? 'down' : 'up';
+          }
           p.state = targetBuilding.isConstructing ? 'hammering_construction' : 'repairing_building';
         }
       } else if (p.state === 'hammering_construction') {
@@ -573,7 +623,6 @@ export class GameEngine {
           continue;
         }
 
-        p.direction = 'up';
         p.hammerTimer += delta;
         targetBuilding.constructionProgress += (100 / targetBuilding.constructionTime) * delta;
         targetBuilding.hp = Math.min(targetBuilding.maxHp, Math.max(1, Math.floor(targetBuilding.maxHp * (targetBuilding.constructionProgress / 100))));
@@ -597,7 +646,6 @@ export class GameEngine {
           continue;
         }
 
-        p.direction = 'up';
         p.hammerTimer += delta;
         targetBuilding.hp = Math.min(targetBuilding.maxHp, targetBuilding.hp + 35 * delta);
 
@@ -619,8 +667,22 @@ export class GameEngine {
     if (dist < 4) return;
 
     const moveDist = p.speed * delta;
-    p.x += (dx / dist) * moveDist;
-    p.y += (dy / dist) * moveDist;
+    const vx = (dx / dist) * moveDist;
+    const vy = (dy / dist) * moveDist;
+
+    const nextX = p.x + vx;
+    const nextY = p.y + vy;
+
+    if (this.gridManager.isWalkablePosition(nextX, nextY, this.state.buildings, [], p.targetBuildingId)) {
+      p.x = nextX;
+      p.y = nextY;
+    } else {
+      if (this.gridManager.isWalkablePosition(nextX, p.y, this.state.buildings, [], p.targetBuildingId)) {
+        p.x = nextX;
+      } else if (this.gridManager.isWalkablePosition(p.x, nextY, this.state.buildings, [], p.targetBuildingId)) {
+        p.y = nextY;
+      }
+    }
 
     if (Math.abs(dx) > Math.abs(dy)) {
       p.direction = dx > 0 ? 'right' : 'left';

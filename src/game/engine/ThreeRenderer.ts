@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
-import { Building, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
+import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 
 export class ThreeRenderer {
@@ -15,6 +15,12 @@ export class ThreeRenderer {
   private dirLight: THREE.DirectionalLight;
   private hemiLight: THREE.HemisphereLight;
 
+  // Procedural Canvas Textures
+  private grassTexture: THREE.CanvasTexture;
+  private cobbleTexture: THREE.CanvasTexture;
+  private stoneWallTexture: THREE.CanvasTexture;
+  private thatchTexture: THREE.CanvasTexture;
+
   // Object pools / mappings
   private terrainGroup: THREE.Group;
   private fogGroup: THREE.Group;
@@ -25,6 +31,7 @@ export class ThreeRenderer {
   private taxCollectorsMap: Map<string, THREE.Group> = new Map();
   private peasantsMap: Map<string, THREE.Group> = new Map();
   private treasuresMap: Map<string, THREE.Group> = new Map();
+  private corpsesMap: Map<string, THREE.Group> = new Map();
   private flagsMap: Map<string, THREE.Group> = new Map();
   private projectilesMap: Map<string, THREE.Group> = new Map();
 
@@ -49,6 +56,12 @@ export class ThreeRenderer {
 
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
+
+    // Generate Procedural Textures
+    this.grassTexture = this.createGrassTexture();
+    this.cobbleTexture = this.createCobbleTexture();
+    this.stoneWallTexture = this.createStoneWallTexture();
+    this.thatchTexture = this.createThatchTexture();
 
     // 1. Scene Setup
     this.scene = new THREE.Scene();
@@ -108,6 +121,126 @@ export class ThreeRenderer {
     this.buildSelectionMeshes();
   }
 
+  // --- PROCEDURAL PROCEDURAL TEXTURE GENERATORS ---
+  private createGrassTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#2d6a4f';
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Blade and patch variations
+    for (let i = 0; i < 400; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const shade = Math.random() > 0.5 ? '#40916c' : '#1b4332';
+      ctx.fillStyle = shade;
+      ctx.fillRect(x, y, Math.random() * 3 + 1, Math.random() * 6 + 2);
+    }
+
+    // Tiny clover & wild flower dots
+    for (let f = 0; f < 35; f++) {
+      const fx = Math.random() * 256;
+      const fy = Math.random() * 256;
+      ctx.fillStyle = Math.random() > 0.5 ? '#fbbf24' : '#f43f5e';
+      ctx.beginPath();
+      ctx.arc(fx, fy, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(12, 12);
+    return tex;
+  }
+
+  private createCobbleTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#44403c';
+    ctx.fillRect(0, 0, 256, 256);
+
+    const stoneSize = 32;
+    for (let y = 0; y < 256; y += stoneSize) {
+      for (let x = 0; x < 256; x += stoneSize) {
+        const ox = (y / stoneSize) % 2 === 0 ? 0 : stoneSize / 2;
+        const px = (x + ox) % 256;
+        ctx.fillStyle = '#78716c';
+        ctx.beginPath();
+        ctx.roundRect(px + 2, y + 2, stoneSize - 4, stoneSize - 4, 6);
+        ctx.fill();
+
+        ctx.fillStyle = '#a8a29e';
+        ctx.beginPath();
+        ctx.roundRect(px + 4, y + 4, stoneSize - 10, stoneSize - 10, 4);
+        ctx.fill();
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  private createStoneWallTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 256, 256);
+
+    const blockH = 24;
+    const blockW = 48;
+    for (let y = 0; y < 256; y += blockH) {
+      const row = Math.floor(y / blockH);
+      const shift = (row % 2) * (blockW / 2);
+      for (let x = -blockW; x < 256 + blockW; x += blockW) {
+        ctx.fillStyle = (x + y) % 3 === 0 ? '#475569' : '#334155';
+        ctx.fillRect(x + shift + 2, y + 2, blockW - 4, blockH - 4);
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(x + shift + 3, y + 3, blockW - 6, 2);
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  private createThatchTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#b45309';
+    ctx.fillRect(0, 0, 256, 256);
+
+    for (let y = 0; y < 256; y += 16) {
+      ctx.fillStyle = '#ca8a04';
+      ctx.fillRect(0, y, 256, 12);
+      ctx.fillStyle = '#eab308';
+      for (let i = 0; i < 256; i += 8) {
+        ctx.fillRect(i, y + 2, 4, 8);
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
   public handleResize() {
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
@@ -127,7 +260,8 @@ export class ThreeRenderer {
     groundGeo.rotateX(-Math.PI / 2);
 
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x285e46,
+      color: 0x3d7a59,
+      map: this.grassTexture,
       roughness: 0.85,
       metalness: 0.05
     });
@@ -155,7 +289,11 @@ export class ThreeRenderer {
           // Cobblestone Road tile
           const roadGeo = new THREE.PlaneGeometry(ts, ts);
           roadGeo.rotateX(-Math.PI / 2);
-          const roadMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.8 });
+          const roadMat = new THREE.MeshStandardMaterial({
+            color: 0xa8a29e,
+            map: this.cobbleTexture,
+            roughness: 0.8
+          });
           const roadMesh = new THREE.Mesh(roadGeo, roadMat);
           roadMesh.position.set(px, 0.2, pz);
           roadMesh.receiveShadow = true;
@@ -342,6 +480,7 @@ export class ThreeRenderer {
     this.updatePeasants(state);
     this.updateHeroes(state);
     this.updateMonsters(state);
+    this.updateCorpses(state);
     this.updateProjectiles(state);
 
     // Update Selection Visuals
@@ -1619,6 +1758,115 @@ export class ThreeRenderer {
         this.projectilesMap.delete(id);
       }
     }
+  }
+
+  // --- 3D CORPSES (Fades away over time) ---
+  private updateCorpses(state: GameState) {
+    const activeIds = new Set<string>();
+
+    for (const c of state.corpses) {
+      activeIds.add(c.id);
+      let cGroup = this.corpsesMap.get(c.id);
+
+      if (!cGroup) {
+        cGroup = this.create3DCorpseMesh(c);
+        this.scene.add(cGroup);
+        this.corpsesMap.set(c.id, cGroup);
+      }
+
+      cGroup.position.set(c.x, 0, c.y);
+      cGroup.rotation.y = c.rotation;
+      cGroup.visible = this.gridManager.isPixelExplored(c.x, c.y);
+
+      // Smooth fade out when nearing expiration
+      if (c.lifetime < 5.0) {
+        const fadeAlpha = Math.max(0.1, c.lifetime / 5.0);
+        cGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            child.material.transparent = true;
+            child.material.opacity = fadeAlpha;
+          }
+        });
+      }
+    }
+
+    for (const [id, group] of this.corpsesMap.entries()) {
+      if (!activeIds.has(id)) {
+        this.scene.remove(group);
+        this.corpsesMap.delete(id);
+      }
+    }
+  }
+
+  private create3DCorpseMesh(c: Corpse): THREE.Group {
+    const group = new THREE.Group();
+
+    if (c.type === 'hero') {
+      // Wooden Grave Cross with Fallen Iron Helmet & Sword
+      const crossVGeo = new THREE.BoxGeometry(1.2, 8, 1.2);
+      const crossHGeo = new THREE.BoxGeometry(5, 1.2, 1.2);
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+
+      const crossV = new THREE.Mesh(crossVGeo, woodMat);
+      crossV.position.y = 4;
+      group.add(crossV);
+
+      const crossH = new THREE.Mesh(crossHGeo, woodMat);
+      crossH.position.y = 6;
+      group.add(crossH);
+
+      // Fallen Helmet on ground
+      const helmGeo = new THREE.SphereGeometry(2, 6, 6);
+      const helmMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.3 });
+      const helm = new THREE.Mesh(helmGeo, helmMat);
+      helm.position.set(2.5, 1.5, 2);
+      group.add(helm);
+    } else if (c.type === 'monster') {
+      if (c.subType === 'giant_rat') {
+        // Slumped Rat Carcass
+        const bodyGeo = new THREE.SphereGeometry(3.5, 6, 6);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.9 });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 1.5;
+        body.scale.set(1.4, 0.5, 0.8);
+        group.add(body);
+      } else if (c.subType === 'skeleton') {
+        // Pile of bleached bones and skull
+        const skullGeo = new THREE.SphereGeometry(2, 6, 6);
+        const boneMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.9 });
+        const skull = new THREE.Mesh(skullGeo, boneMat);
+        skull.position.set(0, 1.5, 0);
+        group.add(skull);
+
+        const ribGeo = new THREE.BoxGeometry(4, 1, 2);
+        const ribs = new THREE.Mesh(ribGeo, boneMat);
+        ribs.position.set(2, 0.6, -1);
+        group.add(ribs);
+      } else if (c.subType === 'red_dragon') {
+        // Giant Fallen Dragon Carcass
+        const ribGeo = new THREE.BoxGeometry(16, 4, 10);
+        const dragonBoneMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.8 });
+        const ribs = new THREE.Mesh(ribGeo, dragonBoneMat);
+        ribs.position.y = 3;
+        group.add(ribs);
+      } else {
+        // Fallen monster body
+        const bodyGeo = new THREE.BoxGeometry(5, 2, 4);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.9 });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.y = 1;
+        group.add(body);
+      }
+    } else {
+      // Fallen commoner/peasant/taxman
+      const bodyGeo = new THREE.BoxGeometry(4, 2, 3);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: c.type === 'tax_collector' ? 0x6b21a8 : 0xd97706, roughness: 0.8 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 1;
+      group.add(body);
+    }
+
+    return group;
   }
 
   // Screen to 3D World Raycasting

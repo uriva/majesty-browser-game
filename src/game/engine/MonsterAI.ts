@@ -166,16 +166,23 @@ export class MonsterAIManager {
       }
     }
 
-    // C. Check for Buildings / Cottages to raid
+    // C. Check for Buildings / Cottages to raid (Stop at exterior wall, do not walk inside!)
     if (!closestTarget) {
       for (const b of buildings) {
         if (b.hp <= 0) continue;
-        const bx = (b.x + b.width / 2) * this.gridManager.tileSize;
-        const by = (b.y + b.height / 2) * this.gridManager.tileSize;
-        const dist = Math.hypot(bx - monster.x, by - monster.y);
-        const raidRange = b.type === 'peasant_cottage' ? 160 : 130;
+        const halfW = (b.width * this.gridManager.tileSize) / 2;
+        const halfH = (b.height * this.gridManager.tileSize) / 2;
+        const centerBx = (b.x + b.width / 2) * this.gridManager.tileSize;
+        const centerBy = (b.y + b.height / 2) * this.gridManager.tileSize;
+
+        // Find nearest point on exterior perimeter of building
+        const clampX = Math.max(centerBx - halfW, Math.min(centerBx + halfW, monster.x));
+        const clampY = Math.max(centerBy - halfH, Math.min(centerBy + halfH, monster.y));
+        const dist = Math.hypot(clampX - monster.x, clampY - monster.y);
+
+        const raidRange = b.type === 'peasant_cottage' ? 140 : (b.type === 'palace' ? 100 : 120);
         if (dist < raidRange) {
-          closestTarget = { x: bx, y: by, id: b.id, type: 'building' };
+          closestTarget = { x: clampX, y: clampY, id: b.id, type: 'building' };
           break;
         }
       }
@@ -191,10 +198,16 @@ export class MonsterAIManager {
 
       const dist = Math.hypot(closestTarget.x - monster.x, closestTarget.y - monster.y);
 
-      if (dist > monster.attackRange) {
+      if (dist > monster.attackRange + 4) {
         this.moveTowards(monster, closestTarget.x, closestTarget.y, delta, buildings, 1.0, closestTarget.type === 'building' ? closestTarget.id : undefined);
       } else {
-        // In attack range!
+        // Face the target
+        const dx = closestTarget.x - monster.x;
+        const dy = closestTarget.y - monster.y;
+        if (Math.abs(dx) > Math.abs(dy)) monster.direction = dx > 0 ? 'right' : 'left';
+        else monster.direction = dy > 0 ? 'down' : 'up';
+
+        // Attack!
         if (monster.currentCooldown <= 0) {
           monster.currentCooldown = monster.attackCooldown;
           monster.isAttackingAnimation = 0.25;
