@@ -1119,6 +1119,15 @@ export class CanvasRenderer {
     } else if (hero.heroClass === 'wizard') {
       ctx.fillStyle = '#581c87'; // Purple Archmage Robe
       ctx.fillRect(x - 6, y - 12 - bodyBob, 12, 12);
+    } else if (hero.heroClass === 'rogue') {
+      ctx.fillStyle = '#27272a'; // Shadowy Billowing Cloak
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y - 12 - bodyBob);
+      ctx.lineTo(x - 8 + capeWiggle, y - 1 - bodyBob);
+      ctx.lineTo(x + 8 + capeWiggle, y - 1 - bodyBob);
+      ctx.lineTo(x + 5, y - 12 - bodyBob);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // 3. TORSO / ARMOR
@@ -1132,6 +1141,18 @@ export class CanvasRenderer {
       ctx.fillRect(x - 4, y - 10 - bodyBob, 8, 7);
       ctx.fillStyle = '#fbbf24'; // Gold lion crest
       ctx.fillRect(x - 1, y - 8 - bodyBob, 2, 3);
+    }
+
+    // Flowing Robe Hem for spellcasters & holy men
+    if (hero.heroClass === 'wizard' || hero.heroClass === 'cleric') {
+      ctx.fillStyle = hero.heroClass === 'wizard' ? '#581c87' : '#eab308';
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y - 4 - bodyBob);
+      ctx.lineTo(x + 5, y - 4 - bodyBob);
+      ctx.lineTo(x + 6.5, y + 2 - bodyBob);
+      ctx.lineTo(x - 6.5, y + 2 - bodyBob);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // 4. HEAD & HAIR / HELMET
@@ -1164,10 +1185,42 @@ export class CanvasRenderer {
       ctx.beginPath();
       ctx.arc(x, y - 16 - bodyBob, 5.5, Math.PI, 0);
       ctx.fill();
+      // Arrow Quiver peeking over the shoulder
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(x + 3, y - 15 - bodyBob, 3, 6);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(x + 3.5, y - 17 - bodyBob, 1, 2.5);
+      ctx.fillRect(x + 5.5, y - 16.5 - bodyBob, 1, 2.5);
+      // Leather feathered cap brim
+      ctx.fillStyle = '#5d4037';
+      ctx.fillRect(x - 5.5, y - 18.5 - bodyBob, 11, 1.8);
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.moveTo(x + 4, y - 19 - bodyBob);
+      ctx.lineTo(x + 9, y - 23 - bodyBob);
+      ctx.lineTo(x + 7, y - 18.5 - bodyBob);
+      ctx.closePath();
+      ctx.fill();
     } else if (hero.heroClass === 'cleric') {
       // Golden Circlet / Mitre
       ctx.fillStyle = '#fbbf24';
       ctx.fillRect(x - 5, y - 18 - bodyBob, 10, 2);
+      // White Linen Coif
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(x, y - 15.5 - bodyBob, 5, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.fill();
+    } else if (hero.heroClass === 'rogue') {
+      // Dark Shadow Hood with eye slit
+      ctx.fillStyle = '#18181b';
+      ctx.beginPath();
+      ctx.arc(x, y - 16 - bodyBob, 5.5, Math.PI * 0.85, Math.PI * 2.15);
+      ctx.fill();
+      ctx.fillStyle = '#18181b';
+      ctx.fillRect(x - 5.5, y - 16 - bodyBob, 11, 2.2);
+      ctx.fillStyle = '#fbbf24'; // Shifty gleaming eyes in shadow
+      ctx.fillRect(x - 2.5, y - 15 - bodyBob, 2, 1.5);
+      ctx.fillRect(x + 1, y - 15 - bodyBob, 2, 1.5);
     }
 
     // 5. WEAPONS & ATTACK ANIMATIONS
@@ -1345,11 +1398,33 @@ export class CanvasRenderer {
       ctx.stroke();
     } else if (monster.type === 'zombie') {
       // Rotting zombie with dragging gait
+      const dragPhase = Math.sin(walkPhase * 0.6) * 1.5;
+      ctx.fillStyle = '#3f3f46'; // Torn trousers
+      ctx.fillRect(x - 5, y - 4 + dragPhase, 4, 7);
+      ctx.fillRect(x + 1, y - 4, 4, 7);
       ctx.fillStyle = '#4d7c0f'; // Putrid green
       ctx.fillRect(x - 5, y - 10 + walkBob, 10, 10);
+      // Exposed rib bones through torn shirt
+      ctx.strokeStyle = '#e7e5e4';
+      ctx.lineWidth = 1;
+      for (let rIdx = 0; rIdx < 3; rIdx++) {
+        ctx.beginPath();
+        ctx.moveTo(x - 2, y - 8 + rIdx * 2.5 + walkBob);
+        ctx.lineTo(x + 1, y - 8 + rIdx * 2.5 + walkBob);
+        ctx.stroke();
+      }
+      // Dark rot patches
+      ctx.fillStyle = '#365314';
+      ctx.fillRect(x + 1, y - 9 + walkBob, 3, 3);
       ctx.beginPath();
       ctx.arc(x, y - 14 + walkBob, 4.5, 0, Math.PI * 2);
       ctx.fill();
+      // Dangling broken jaw
+      ctx.fillStyle = '#3f6212';
+      ctx.fillRect(x + 0.5, y - 10.5 + walkBob, 3.5, 2);
+      // Glazed dead eye
+      ctx.fillStyle = '#d9f99d';
+      ctx.fillRect(x + 1, y - 15 + walkBob, 2, 2);
       // Outstretched rotting claw arms
       ctx.fillStyle = '#3f6212';
       ctx.fillRect(x - 8, y - 8 + walkBob, 16, 3);
@@ -1375,6 +1450,54 @@ export class CanvasRenderer {
       ctx.lineTo(x + 10, y - 20 + walkBob);
       ctx.closePath();
       ctx.fill();
+    } else if (monster.type === 'goblin_shaman') {
+      // Hooded Goblin Shaman with glowing staff & orbiting spirit
+      const floatY = Math.sin(walkPhase * 1.5) * 1.5;
+      // Purple robe body
+      ctx.fillStyle = '#7c3aed';
+      ctx.beginPath();
+      ctx.moveTo(x - 6, y + walkBob);
+      ctx.lineTo(x - 3, y - 12 + walkBob + floatY);
+      ctx.lineTo(x + 3, y - 12 + walkBob + floatY);
+      ctx.lineTo(x + 6, y + walkBob);
+      ctx.closePath();
+      ctx.fill();
+      // Green goblin head under hood
+      ctx.fillStyle = '#84cc16';
+      ctx.beginPath();
+      ctx.arc(x, y - 13 + walkBob + floatY, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // Dark hood cowl
+      ctx.fillStyle = '#581c87';
+      ctx.beginPath();
+      ctx.arc(x, y - 14 + walkBob + floatY, 5.5, Math.PI * 0.9, Math.PI * 2.1);
+      ctx.fill();
+      // Glowing ritual eyes
+      ctx.fillStyle = '#c084fc';
+      ctx.fillRect(x - 3, y - 14 + walkBob + floatY, 2, 2);
+      ctx.fillRect(x + 1, y - 14 + walkBob + floatY, 2, 2);
+      // Skull-topped staff
+      ctx.strokeStyle = '#451a03';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 6, y + walkBob);
+      ctx.lineTo(x + 9, y - 20 + walkBob + floatY);
+      ctx.stroke();
+      ctx.fillStyle = '#e7e5e4';
+      ctx.beginPath();
+      ctx.arc(x + 9, y - 22 + walkBob + floatY, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#a855f7';
+      ctx.beginPath(); ctx.arc(x + 8.2, y - 22.5 + walkBob + floatY, 0.9, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 9.8, y - 22.5 + walkBob + floatY, 0.9, 0, Math.PI * 2); ctx.fill();
+      // Pulsing arcane orb
+      const pulse = 2.2 + Math.sin(Date.now() * 0.012) * 0.8;
+      ctx.fillStyle = '#a855f7';
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.arc(x + 7.5, y - 16 + walkBob + floatY, pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     } else if (monster.type === 'dire_wolf') {
       // Running Wolf
       ctx.fillStyle = '#52525b';
@@ -1384,6 +1507,43 @@ export class CanvasRenderer {
       ctx.beginPath();
       ctx.arc(x + 10, y - 9 + walkBob, 5, 0, Math.PI * 2);
       ctx.fill();
+      // Pricked ears
+      ctx.fillStyle = '#3f3f46';
+      ctx.beginPath();
+      ctx.moveTo(x + 7, y - 13 + walkBob);
+      ctx.lineTo(x + 9, y - 18 + walkBob);
+      ctx.lineTo(x + 11, y - 13 + walkBob);
+      ctx.closePath();
+      ctx.fill();
+      // Snout with bared fangs
+      ctx.fillStyle = '#52525b';
+      ctx.beginPath();
+      ctx.ellipse(x + 15, y - 8 + walkBob, 3.5, 2.2, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(x + 16, y - 6.5 + walkBob, 1.5, 1.5);
+      ctx.fillRect(x + 17.5, y - 6.5 + walkBob, 1.5, 1.5);
+      // Glowing yellow eye
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(x + 11, y - 10.5 + walkBob, 1.8, 1.8);
+      // Bristling mane
+      ctx.strokeStyle = '#27272a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let mIdx = 0; mIdx < 4; mIdx++) {
+        const mx = x + 6 - mIdx * 4;
+        ctx.moveTo(mx, y - 10 + walkBob);
+        ctx.lineTo(mx - 1.5, y - 14 + walkBob);
+      }
+      ctx.stroke();
+      // Bushy tail
+      ctx.strokeStyle = '#52525b';
+      ctx.lineWidth = 3.5;
+      const tailSwayW = Math.sin(walkPhase * 1.3) * 3;
+      ctx.beginPath();
+      ctx.moveTo(x - 11, y - 7 + walkBob);
+      ctx.quadraticCurveTo(x - 18, y - 10 + tailSwayW, x - 21, y - 5 + tailSwayW);
+      ctx.stroke();
       ctx.fillStyle = '#3f3f46';
       ctx.fillRect(x - 8 + legStride, y - 1, 3, 5);
       ctx.fillRect(x + 6 - legStride, y - 1, 3, 5);
