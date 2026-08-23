@@ -1952,6 +1952,17 @@ export class ThreeRenderer {
 
       const branchPath: { x: number; z: number }[] = [{ x: entranceX, z: entranceZ }];
 
+      // Point-to-segment projection (for merging onto existing road centerlines)
+      const distToSegment = (px: number, pz: number, a: { x: number; z: number }, b: { x: number; z: number }) => {
+        const abx = b.x - a.x, abz = b.z - a.z;
+        const len2 = abx * abx + abz * abz;
+        let t = len2 > 0 ? ((px - a.x) * abx + (pz - a.z) * abz) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const cx = a.x + abx * t, cz = a.z + abz * t;
+        return { d: Math.hypot(px - cx, pz - cz), x: cx, z: cz };
+      };
+
+      let mergedToExisting = false;
       for (let i = 0; i < waypoints.length; i++) {
         const wp = waypoints[i];
         const curP = {
@@ -1960,12 +1971,27 @@ export class ThreeRenderer {
         };
 
         // If path comes within 10 units of ANY existing road node, snap and terminate smoothly!
-        let mergedToExisting = false;
         for (const existingPt of roadNetworkNodes) {
           if (Math.hypot(curP.x - existingPt.x, curP.z - existingPt.z) < 10) {
             branchPath.push({ x: existingPt.x, z: existingPt.z });
             mergedToExisting = true;
             break;
+          }
+        }
+
+        // Also merge onto road SEGMENTS (not just sparse nodes) so parallel streets T-junction instead of running alongside
+        if (!mergedToExisting) {
+          for (const poly of allPolylines) {
+            for (let s = 0; s < poly.length - 1; s++) {
+              const hit = distToSegment(curP.x, curP.z, poly[s], poly[s + 1]);
+              if (hit.d < 9) {
+                branchPath.push({ x: hit.x, z: hit.z });
+                roadNetworkNodes.push({ x: hit.x, z: hit.z });
+                mergedToExisting = true;
+                break;
+              }
+            }
+            if (mergedToExisting) break;
           }
         }
 
@@ -1975,6 +2001,15 @@ export class ThreeRenderer {
 
         if (Math.hypot(curP.x - branchPath[branchPath.length - 1].x, curP.z - branchPath[branchPath.length - 1].z) > 6) {
           branchPath.push(curP);
+        }
+      }
+
+      // Guarantee the road physically touches BOTH ends: A* snaps to tile centers which can stop
+      // half a tile short of the doorstep and the network node — pin them exactly.
+      if (!mergedToExisting) {
+        const last = branchPath[branchPath.length - 1];
+        if (Math.hypot(last.x - closestPoint.x, last.z - closestPoint.z) > 3) {
+          branchPath.push({ x: closestPoint.x, z: closestPoint.z });
         }
       }
 
@@ -3887,47 +3922,98 @@ export class ThreeRenderer {
       group.add(flame);
       group.add(this.createSmokeEmitter(w * 0.05, 5.5, h * 0.16, false, 3));
     } else if (b.type === 'ranger_guild') {
-      // Multi-Building Wilderness Outpost: Great Timber Lodge + Lookout Watchtower + Bowyer Shed + Archery Courtyard (64x64)
+      // Wilderness Rangers' Tent Camp: Cluster of Small Canvas Tents + Lookout Watchtower + Campfire Circle + Archery Range (64x64)
       const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
       const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x271306, roughness: 0.95 });
       const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.9 });
-      const tentMat = new THREE.MeshStandardMaterial({ color: 0x15803d, map: this.tentTexture, roughness: 0.85 });
-      const thatchMat = new THREE.MeshStandardMaterial({ color: 0x166534, map: this.royalRoofSlateTexture, roughness: 0.85 });
+      const tentMat = new THREE.MeshStandardMaterial({ color: 0x166534, map: this.tentTexture, roughness: 0.9 });
+      const tentTrimMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.95 });
+      const flapMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95, side: THREE.DoubleSide });
+      const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd6c9a8, roughness: 1.0 });
       const strawMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.9 });
 
-      // 1. WING A: Great Timber Log Lodge (North-West Wing)
-      const lodgeW = w * 0.52;
-      const lodgeD = h * 0.44;
-      const lodgeX = -w * 0.16;
-      const lodgeZ = -h * 0.12;
+      // Guy rope helper: taut line from tent peak to a ground stake
+      const addGuyRope = (x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) => {
+        const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+        const len = Math.hypot(dx, dy, dz);
+        const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, len, 4), ropeMat);
+        rope.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+        rope.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize());
+        group.add(rope);
 
-      const lodgeBase = new THREE.Mesh(new THREE.BoxGeometry(lodgeW, 11, lodgeD), stoneMat);
-      lodgeBase.position.set(lodgeX, 5.5, lodgeZ);
-      lodgeBase.castShadow = true;
-      group.add(lodgeBase);
+        // Wooden tent peg
+        const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.18, 2.2, 5), darkWoodMat);
+        peg.position.set(x2, 0.8, z2);
+        peg.rotation.z = 0.5;
+        peg.rotation.x = 0.3;
+        group.add(peg);
+      };
 
-      const lodgeUpper = new THREE.Mesh(new THREE.BoxGeometry(lodgeW * 1.04, 6, lodgeD * 1.04), woodMat);
-      lodgeUpper.position.set(lodgeX, 14, lodgeZ);
-      group.add(lodgeUpper);
+      // Small conical canvas tent builder
+      const buildConicalTent = (cx: number, cz: number, radius: number, tentH: number, rot: number) => {
+        const tent = new THREE.Group();
 
-      const lodgeRoof = this.createGableRoof(lodgeW * 1.2, lodgeD * 1.18, 13, thatchMat);
-      lodgeRoof.position.set(lodgeX, 17 + 1.25, lodgeZ);
-      group.add(lodgeRoof);
+        const body = new THREE.Mesh(new THREE.ConeGeometry(radius, tentH, 8), tentMat);
+        body.position.y = tentH / 2;
+        body.castShadow = true;
+        tent.add(body);
 
-      // Carved Elk Antler Crest over Door
-      const antler = new THREE.Mesh(new THREE.BoxGeometry(6, 1.2, 0.6), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
-      antler.position.set(lodgeX, 14, lodgeZ + lodgeD / 2 + 0.6);
-      group.add(antler);
+        // Canvas base skirt (slightly wider, grounded)
+        const skirt = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.04, radius * 1.08, 1.6, 8), tentTrimMat);
+        skirt.position.y = 0.8;
+        tent.add(skirt);
 
-      // Riverstone Chimney with Smoke
-      const chimX = lodgeX - lodgeW / 2 + 2;
-      const chimZ = lodgeZ - lodgeD / 2 + 2;
-      const lodgeChim = new THREE.Mesh(new THREE.BoxGeometry(3.6, 22, 3.6), stoneMat);
-      lodgeChim.position.set(chimX, 14, chimZ);
-      group.add(lodgeChim);
-      group.add(this.createSmokeEmitter(chimX, 26, chimZ, false, 4));
+        // Dark entry flap (front)
+        const flap = new THREE.Mesh(new THREE.PlaneGeometry(radius * 0.55, tentH * 0.62), flapMat);
+        flap.position.set(0, tentH * 0.30, radius * 0.88);
+        flap.rotation.x = -0.12;
+        tent.add(flap);
 
-      // 2. WING B: Elevated 4-Post Forest Watchtower (East Wing)
+        // Center pole poking above the peak + green pennant
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, tentH * 0.35, 5), darkWoodMat);
+        pole.position.y = tentH + tentH * 0.14;
+        tent.add(pole);
+
+        const pennant = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.4, 0.12), new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.7 }));
+        pennant.position.set(1.3, tentH * 1.26, 0);
+        tent.add(pennant);
+
+        // Guy ropes from shoulder height to ground stakes
+        const shoulderY = tentH * 0.55;
+        for (let i = 0; i < 4; i++) {
+          const a = rot + (i * Math.PI) / 2 + Math.PI / 4;
+          const sx = cx + Math.cos(a) * radius * 0.62;
+          const sz = cz + Math.sin(a) * radius * 0.62;
+          const stakeX = cx + Math.cos(a) * (radius + 4.5);
+          const stakeZ = cz + Math.sin(a) * (radius + 4.5);
+          addGuyRope(sx, shoulderY, sz, stakeX, 0.2, stakeZ);
+        }
+
+        tent.position.set(cx, 0, cz);
+        group.add(tent);
+      };
+
+      // 1. MAIN TENT: Chiefs' Conical Pavilion (North-West)
+      buildConicalTent(-w * 0.17, -h * 0.12, 10.5, 13, 0.3);
+
+      // 2. SECOND TENT: Wardens' Tent (South-West)
+      buildConicalTent(-w * 0.30, h * 0.18, 7.0, 9, 1.1);
+
+      // 3. THIRD TENT: Small A-Frame Supply & Fletching Tent (South-East)
+      const aFrame = this.createGableRoof(13, 17, 8, tentMat);
+      aFrame.position.set(w * 0.08, 0, h * 0.22);
+      aFrame.rotation.y = 0.45;
+      group.add(aFrame);
+
+      // A-frame entry flap + ridge guy ropes
+      const aFlap = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 5.2), flapMat);
+      aFlap.position.set(w * 0.08 + Math.sin(0.45) * 8.7, 2.6, h * 0.22 + Math.cos(0.45) * 8.7);
+      aFlap.rotation.y = 0.45;
+      group.add(aFlap);
+      addGuyRope(w * 0.08, 8, h * 0.22, w * 0.08 + 11, 0.2, h * 0.22 - 9);
+      addGuyRope(w * 0.08, 8, h * 0.22, w * 0.08 - 11, 0.2, h * 0.22 + 9);
+
+      // 4. Elevated 4-Post Forest Watchtower (East Wing)
       const towerX = w * 0.28;
       const towerZ = -h * 0.16;
       const postGeo = new THREE.CylinderGeometry(0.7, 0.8, 28, 6);
@@ -3935,6 +4021,11 @@ export class ThreeRenderer {
       const p2 = new THREE.Mesh(postGeo, darkWoodMat); p2.position.set(towerX + 4.5, 14, towerZ - 4.5); group.add(p2);
       const p3 = new THREE.Mesh(postGeo, darkWoodMat); p3.position.set(towerX - 4.5, 14, towerZ + 4.5); group.add(p3);
       const p4 = new THREE.Mesh(postGeo, darkWoodMat); p4.position.set(towerX + 4.5, 14, towerZ + 4.5); group.add(p4);
+
+      // Cross-brace beams between posts
+      const braceGeo = new THREE.BoxGeometry(11.5, 0.9, 0.9);
+      const br1 = new THREE.Mesh(braceGeo, darkWoodMat); br1.position.set(towerX, 9, towerZ - 4.5); br1.rotation.z = 0.5; group.add(br1);
+      const br2 = new THREE.Mesh(braceGeo, darkWoodMat); br2.position.set(towerX, 9, towerZ + 4.5); br2.rotation.z = -0.5; group.add(br2);
 
       // Observation Platform Deck
       const platFloor = new THREE.Mesh(new THREE.BoxGeometry(13, 1.4, 13), woodMat);
@@ -3944,40 +4035,61 @@ export class ThreeRenderer {
       platRail.position.set(towerX, 28, towerZ);
       group.add(platRail);
 
-      // Lookout Canopy Roof (octagonal pavilion cap)
+      // Canvas Lookout Canopy
       const lookRoof = new THREE.Mesh(new THREE.ConeGeometry(9.5, 8, 8), tentMat);
       lookRoof.position.set(towerX, 35, towerZ);
       group.add(lookRoof);
 
-      // 3. WING C: Covered Fletching & Bowyer Lean-To Shed (South-East)
-      const shed = new THREE.Mesh(new THREE.BoxGeometry(12, 6.5, 7), woodMat);
-      shed.position.set(w * 0.22, 3.25, h * 0.24);
-      group.add(shed);
-
-      const shedR = new THREE.Mesh(new THREE.BoxGeometry(14, 0.8, 9), thatchMat);
-      shedR.position.set(w * 0.22, 7.5, h * 0.24);
-      shedR.rotation.x = Math.PI / 10;
-      group.add(shedR);
-
-      // 4. Archery Range & Campfire Courtyard (South-West)
+      // 5. Campfire Circle with Log Seats (Center)
       const firePit = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.8, 6, 12), stoneMat);
       firePit.rotation.x = Math.PI / 2;
-      firePit.position.set(-w * 0.08, 1.2, h * 0.24);
+      firePit.position.set(0, 1.2, h * 0.02);
       group.add(firePit);
 
       const embers = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 8), new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xf59e0b, emissiveIntensity: 2.2 }));
-      embers.position.set(-w * 0.08, 1.8, h * 0.24);
+      embers.position.set(0, 1.8, h * 0.02);
       group.add(embers);
-      group.add(this.createSmokeEmitter(-w * 0.08, 3.8, h * 0.24, false, 4));
+      group.add(this.createSmokeEmitter(0, 3.8, h * 0.02, false, 4));
 
-      // 2 Straw Archery Targets with Bullseyes
+      // Log benches ringing the fire
+      const benchLog = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 7, 7), darkWoodMat);
+      benchLog.rotation.z = Math.PI / 2;
+      benchLog.rotation.y = 0.4;
+      benchLog.position.set(-7.5, 1.1, h * 0.02 + 4);
+      group.add(benchLog);
+      const benchLog2 = benchLog.clone();
+      benchLog2.position.set(7.5, 1.1, h * 0.02 - 3);
+      benchLog2.rotation.y = -0.5;
+      group.add(benchLog2);
+
+      // 6. Straw Archery Targets with Bullseyes (West Range)
       const targetGeo = new THREE.CylinderGeometry(3.8, 3.8, 2.5, 12);
       targetGeo.rotateX(Math.PI / 2);
-      const t1 = new THREE.Mesh(targetGeo, strawMat); t1.position.set(-w * 0.34, 4.0, h * 0.26); group.add(t1);
+      const t1 = new THREE.Mesh(targetGeo, strawMat); t1.position.set(-w * 0.34, 4.0, h * 0.30); t1.rotation.y = 0.3; group.add(t1);
       const bRing = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 2.7, 10), new THREE.MeshStandardMaterial({ color: 0xdc2626 }));
       bRing.rotateX(Math.PI / 2);
-      bRing.position.set(-w * 0.34, 4.0, h * 0.26);
+      bRing.position.set(-w * 0.34, 4.0, h * 0.30);
       group.add(bRing);
+
+      // 7. Ranger Gear: Supply Crates, Barrel & Bedroll
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.6, 3.6), woodMat);
+      crate.position.set(w * 0.20, 1.8, h * 0.10);
+      crate.rotation.y = 0.4;
+      group.add(crate);
+      const crate2 = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.8, 2.8), woodMat);
+      crate2.position.set(w * 0.24, 1.4, h * 0.14);
+      crate2.rotation.y = 0.9;
+      group.add(crate2);
+
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 3.4, 8), darkWoodMat);
+      barrel.position.set(w * 0.16, 1.7, -h * 0.02);
+      group.add(barrel);
+
+      // Bedroll beside the wardens' tent
+      const bedroll = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.8, 6.5), new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.9 }));
+      bedroll.position.set(-w * 0.22, 0.4, h * 0.28);
+      bedroll.rotation.y = -0.5;
+      group.add(bedroll);
     } else if (b.type === 'rogue_guild') {
       // Asymmetrical Thieves' Quarter Compound: Crooked 3-Tier Tenement + Clock Tower + Smuggler Vault + Back-Alley Yard (64x64)
       const stoneMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, map: this.royalCastleWallTexture, roughness: 0.95 });
