@@ -1,5 +1,6 @@
 import { Building, MonsterLair, TaxCollector } from '../types';
 import { GridManager } from './Grid';
+import { audioManager } from './Audio';
 
 export class EconomyManager {
   private gridManager: GridManager;
@@ -106,6 +107,7 @@ export class EconomyManager {
           targetBuilding.goldStored -= collected;
           tc.goldCarried += collected;
           tc.state = 'returning_to_palace';
+          audioManager.playVoice('tax_collect');
           if (onFloatingText) onFloatingText(`+${collected}g Taxes`, tc.x, tc.y - 15, '#fbbf24');
         }
       } else if (tc.state === 'returning_to_palace') {
@@ -116,6 +118,7 @@ export class EconomyManager {
           // Safely reached palace front gate! Deposit into Royal Treasury
           if (tc.goldCarried > 0) {
             onTaxDelivery(tc.goldCarried);
+            audioManager.playVoice('tax_delivered');
             if (onFloatingText) onFloatingText(`+${tc.goldCarried}g Treasury!`, palaceGate.x, palaceGate.y - 25, '#fbbf24');
           }
           // Remove collector after completing duty

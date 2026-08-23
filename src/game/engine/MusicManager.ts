@@ -8,38 +8,39 @@ export interface MusicTrack {
 
 export const MUSIC_TRACKS: MusicTrack[] = [
   {
-    id: 'folk_round',
-    title: 'The Bustling Kingdom',
-    composer: 'Kevin MacLeod (CC-BY)',
+    id: 'general_theme',
+    title: 'Majesty: Main Sovereign Theme',
+    composer: 'Kevin Manthei (Original Majesty OST)',
     type: 'file',
-    url: '/music/folk_round.mp3'
+    url: '/audio/music/GeneralTheme.mp3'
   },
   {
-    id: 'royal_court',
-    title: 'Royal Court of the Sovereign',
-    composer: 'Kevin MacLeod (CC-BY)',
+    id: 'early_game',
+    title: 'The Kingdom Awakes (Early Game)',
+    composer: 'Kevin Manthei (Original Majesty OST)',
     type: 'file',
-    url: '/music/royal_court.mp3'
+    url: '/audio/music/EarlyGame.mp3'
   },
   {
-    id: 'lord_of_the_land',
-    title: 'Heroes of the Realm',
-    composer: 'Kevin MacLeod (CC-BY)',
+    id: 'mid_game',
+    title: 'Call of Ardania (Mid Game)',
+    composer: 'Kevin Manthei (Original Majesty OST)',
     type: 'file',
-    url: '/music/lord_of_the_land.mp3'
+    url: '/audio/music/MidGame.mp3'
   },
   {
-    id: 'celtic_impulse',
-    title: 'Wilderness of Ardania',
-    composer: 'Kevin MacLeod (CC-BY)',
+    id: 'end_game',
+    title: 'Clash of Realms (End Game)',
+    composer: 'Kevin Manthei (Original Majesty OST)',
     type: 'file',
-    url: '/music/celtic_impulse.mp3'
+    url: '/audio/music/EndGame.mp3'
   },
   {
-    id: 'synth_bard',
-    title: 'Minstrel Lute & Flute (Procedural)',
-    composer: 'Royal Minstrel Synth',
-    type: 'synth'
+    id: 'epic_quest',
+    title: 'The Sovereign Triumph (Epic Quest)',
+    composer: 'Kevin Manthei (Original Majesty OST)',
+    type: 'file',
+    url: '/audio/music/EpicQuest.mp3'
   }
 ];
 

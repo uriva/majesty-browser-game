@@ -958,7 +958,7 @@ export class GameEngine {
     building.recruitedHeroIds.push(newHero.id);
     this.state.heroes.push(newHero);
 
-    audioManager.playLevelUp();
+    audioManager.playVoice(`${heroClass}_ready`);
     this.addFloatingText(`+${newHero.name} Trained!`, spawnX, spawnY - 20, '#38bdf8');
     this.addNotification('Hero Ready!', `${newHero.name} (${classDef.name}) has completed training and joined the realm!`, 'success');
   }
