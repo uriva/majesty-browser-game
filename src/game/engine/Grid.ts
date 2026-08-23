@@ -448,6 +448,39 @@ export class GridManager {
     return true;
   }
 
+  public getNearestExteriorWalkablePosition(
+    fromX: number,
+    fromY: number,
+    building: { x: number; y: number; width: number; height: number; id?: string },
+    buildings: Building[],
+    lairs: MonsterLair[],
+    margin: number = 10
+  ): Position {
+    const ts = this.tileSize;
+    const bLeft = building.x * ts;
+    const bRight = (building.x + building.width) * ts;
+    const bTop = building.y * ts;
+    const bBottom = (building.y + building.height) * ts;
+
+    let cx = Math.max(bLeft - margin, Math.min(bRight + margin, fromX));
+    let cy = Math.max(bTop - margin, Math.min(bBottom + margin, fromY));
+
+    // If point is strictly inside or on the inner edge, project outward to nearest side
+    if (fromX >= bLeft - 2 && fromX <= bRight + 2 && fromY >= bTop - 2 && fromY <= bBottom + 2) {
+      const dLeft = Math.abs(fromX - bLeft);
+      const dRight = Math.abs(bRight - fromX);
+      const dTop = Math.abs(fromY - bTop);
+      const dBottom = Math.abs(bBottom - fromY);
+      const minD = Math.min(dLeft, dRight, dTop, dBottom);
+      if (minD === dLeft) { cx = bLeft - margin; cy = fromY; }
+      else if (minD === dRight) { cx = bRight + margin; cy = fromY; }
+      else if (minD === dTop) { cx = fromX; cy = bTop - margin; }
+      else { cx = fromX; cy = bBottom + margin; }
+    }
+
+    return this.findNearestWalkablePosition(cx, cy, buildings, lairs, building.id);
+  }
+
   public findPath(
     startPx: number,
     startPy: number,
@@ -458,11 +491,11 @@ export class GridManager {
     excludeBuildingId?: string
   ): Position[] {
     // 1. Direct line-of-sight shortcut
-    if (this.hasLineOfSight(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId)) {
+    if (this.hasLineOfSight(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId, 7)) {
       return [{ x: endPx, y: endPy }];
     }
 
-    const startTile = this.pixelToTile(startPx, startPy);
+    let startTile = this.pixelToTile(startPx, startPy);
     let endTile = this.pixelToTile(endPx, endPy);
 
     if (!this.isValid(startTile.x, startTile.y)) return [{ x: endPx, y: endPy }];
@@ -471,27 +504,53 @@ export class GridManager {
     if (this.isTileBlocked(endTile.x, endTile.y, buildings, lairs, excludeBuildingId)) {
       let nearestDist = Infinity;
       let bestTile = endTile;
-      for (let dy = -2; dy <= 2; dy++) {
-        for (let dx = -2; dx <= 2; dx++) {
-          const nx = endTile.x + dx;
-          const ny = endTile.y + dy;
-          if (this.isValid(nx, ny) && !this.isTileBlocked(nx, ny, buildings, lairs, excludeBuildingId)) {
-            const d = Math.hypot(nx - endTile.x, ny - endTile.y);
-            if (d < nearestDist) {
-              nearestDist = d;
-              bestTile = { x: nx, y: ny };
+      for (let r = 1; r <= 4; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = endTile.x + dx;
+            const ny = endTile.y + dy;
+            if (this.isValid(nx, ny) && !this.isTileBlocked(nx, ny, buildings, lairs, excludeBuildingId)) {
+              const d = Math.hypot(nx - endTile.x, ny - endTile.y);
+              if (d < nearestDist) {
+                nearestDist = d;
+                bestTile = { x: nx, y: ny };
+              }
             }
           }
         }
+        if (nearestDist < Infinity) break;
       }
       endTile = bestTile;
+    }
+
+    // If start tile itself is blocked (e.g. unit placed on edge), find nearest unblocked start tile
+    if (this.isTileBlocked(startTile.x, startTile.y, buildings, lairs, excludeBuildingId)) {
+      let nearestDist = Infinity;
+      let bestStartTile = startTile;
+      for (let r = 1; r <= 3; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = startTile.x + dx;
+            const ny = startTile.y + dy;
+            if (this.isValid(nx, ny) && !this.isTileBlocked(nx, ny, buildings, lairs, excludeBuildingId)) {
+              const d = Math.hypot(nx - startTile.x, ny - startTile.y);
+              if (d < nearestDist) {
+                nearestDist = d;
+                bestStartTile = { x: nx, y: ny };
+              }
+            }
+          }
+        }
+        if (nearestDist < Infinity) break;
+      }
+      startTile = bestStartTile;
     }
 
     if (startTile.x === endTile.x && startTile.y === endTile.y) {
       return [{ x: endPx, y: endPy }];
     }
 
-    // A* Pathfinding
+    // A* Pathfinding with Min-Heap
     interface AStarNode {
       x: number;
       y: number;
@@ -539,7 +598,7 @@ export class GridManager {
     ];
 
     let iterations = 0;
-    while (openList.length > 0 && iterations < 800) {
+    while (openList.length > 0 && iterations < 3000) {
       iterations++;
       let lowestIdx = 0;
       for (let i = 1; i < openList.length; i++) {
@@ -571,7 +630,7 @@ export class GridManager {
 
         if (this.isTileBlocked(nx, ny, buildings, lairs, excludeBuildingId)) continue;
 
-        // Diagonal corner clearance check
+        // Diagonal corner clearance check: both adjacent orthogonal tiles must be unblocked
         if (dir.x !== 0 && dir.y !== 0) {
           if (
             this.isTileBlocked(current.x + dir.x, current.y, buildings, lairs, excludeBuildingId) ||
@@ -625,7 +684,7 @@ export class GridManager {
     while (curIndex < rawWaypoints.length - 1) {
       let furthest = curIndex + 1;
       for (let j = rawWaypoints.length - 1; j > curIndex + 1; j--) {
-        if (this.hasLineOfSight(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId)) {
+        if (this.hasLineOfSight(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId, 7)) {
           furthest = j;
           break;
         }
@@ -635,7 +694,7 @@ export class GridManager {
     }
 
     // Replace final destination with exact destination coordinate if line of sight is clear
-    if (this.hasLineOfSight(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId)) {
+    if (this.hasLineOfSight(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId, 7)) {
       smoothPath[smoothPath.length - 1] = { x: endPx, y: endPy };
     } else {
       smoothPath.push({ x: endPx, y: endPy });
@@ -705,11 +764,11 @@ export class GridManager {
       return Math.hypot(targetX - entity.x, targetY - entity.y) < 6;
     }
 
-    // 2. Obstacle pathfinding: only recompute A* path if target moved significantly (> 16px) or path is empty
+    // 2. Obstacle pathfinding: only recompute A* path if target moved significantly (> 20px) or path is empty
     let needNewPath = !entity.path || entity.path.length === 0 || !entity.pathTargetKey;
     if (entity.pathTargetKey) {
       const [lastTx, lastTy] = entity.pathTargetKey.split('_').map(Number);
-      if (Math.hypot(targetX - lastTx, targetY - lastTy) > 16) {
+      if (Math.hypot(targetX - lastTx, targetY - lastTy) > 20) {
         needNewPath = true;
       }
     }
@@ -720,8 +779,10 @@ export class GridManager {
     }
 
     let moveBudget = entity.speed * speedMult * delta;
+    let loopGuard = 0;
 
-    while (entity.path && entity.path.length > 0 && moveBudget > 0.001) {
+    while (entity.path && entity.path.length > 0 && moveBudget > 0.001 && loopGuard < 10) {
+      loopGuard++;
       const wp = entity.path[0];
       const dx = wp.x - entity.x;
       const dy = wp.y - entity.y;
@@ -740,7 +801,7 @@ export class GridManager {
           entity.direction = dy > 0 ? 'down' : 'up';
         }
       } else {
-        // Move partially towards waypoint with corner collision safety
+        // Move partially towards waypoint with corner collision sliding
         const vx = (dx / dist) * moveBudget;
         const vy = (dy / dist) * moveBudget;
 
@@ -752,8 +813,26 @@ export class GridManager {
         } else if (this.isWalkablePosition(entity.x, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
           entity.y += vy;
         } else {
-          // Blocked at corner, advance to next waypoint or recalculate
-          entity.path.shift();
+          // Angular deflection checks (rotate move vector by ±35° and ±55°) to glide around corners
+          const angles = [0.6, -0.6, 0.95, -0.95];
+          let deflected = false;
+          for (const ang of angles) {
+            const cosA = Math.cos(ang);
+            const sinA = Math.sin(ang);
+            const rvx = (vx * cosA - vy * sinA) * 0.85;
+            const rvy = (vx * sinA + vy * cosA) * 0.85;
+            if (this.isWalkablePosition(entity.x + rvx, entity.y + rvy, buildings, lairs, targetBuildingId, 7)) {
+              entity.x += rvx;
+              entity.y += rvy;
+              deflected = true;
+              break;
+            }
+          }
+          if (!deflected) {
+            // Cannot make progress; clear path to recalculate on next tick
+            entity.path = undefined;
+            entity.pathTargetKey = undefined;
+          }
         }
         moveBudget = 0;
 

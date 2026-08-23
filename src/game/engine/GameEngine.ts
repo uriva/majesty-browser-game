@@ -939,20 +939,22 @@ export class GameEngine {
     const bBottom = (b.y + b.height) * ts;
     const bW = b.width * ts;
     const bH = b.height * ts;
+    const margin = 12;
 
     const slots: { x: number; y: number }[] = [
-      { x: bLeft + bW * 0.25, y: bBottom + 6 }, // South-left
-      { x: bLeft + bW * 0.75, y: bBottom + 6 }, // South-right
-      { x: bRight + 6, y: bTop + bH * 0.35 },  // East-upper
-      { x: bLeft - 6, y: bTop + bH * 0.35 },   // West-upper
-      { x: bRight + 6, y: bTop + bH * 0.75 },  // East-lower
-      { x: bLeft - 6, y: bTop + bH * 0.75 },   // West-lower
-      { x: bLeft + bW * 0.35, y: bTop - 6 },   // North-left
-      { x: bLeft + bW * 0.65, y: bTop - 6 }    // North-right
+      { x: bLeft + bW * 0.25, y: bBottom + margin }, // South-left
+      { x: bLeft + bW * 0.75, y: bBottom + margin }, // South-right
+      { x: bRight + margin, y: bTop + bH * 0.35 },  // East-upper
+      { x: bLeft - margin, y: bTop + bH * 0.35 },   // West-upper
+      { x: bRight + margin, y: bTop + bH * 0.75 },  // East-lower
+      { x: bLeft - margin, y: bTop + bH * 0.75 },   // West-lower
+      { x: bLeft + bW * 0.35, y: bTop - margin },   // North-left
+      { x: bLeft + bW * 0.65, y: bTop - margin }    // North-right
     ];
 
     const idx = Math.max(0, slotIndex) % slots.length;
-    return slots[idx];
+    const chosen = slots[idx];
+    return this.gridManager.findNearestWalkablePosition(chosen.x, chosen.y, this.state.buildings, this.state.lairs, b.id);
   }
 
   private movePeasantTowards(p: Peasant, targetX: number, targetY: number, delta: number) {

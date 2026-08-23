@@ -407,40 +407,59 @@ export class HeroAIManager {
         hero.targetY = unexploredSpot.y;
         hero.currentThought = 'Scouting the unexplored wilderness';
       } else {
+        const ts = this.gridManager.tileSize;
         const angle = Math.random() * Math.PI * 2;
         const dist = Math.random() * 160 + 80;
-        hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
-        hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+        const rawX = Math.max(ts * 1.5, Math.min((this.gridManager.width - 2) * ts, hero.x + Math.cos(angle) * dist));
+        const rawY = Math.max(ts * 1.5, Math.min((this.gridManager.height - 2) * ts, hero.y + Math.sin(angle) * dist));
+        const safe = this.gridManager.findNearestWalkablePosition(rawX, rawY, buildings, lairs);
+        hero.targetX = safe.x;
+        hero.targetY = safe.y;
         hero.currentThought = 'Patrolling the outer wilderness';
       }
     } else if (hero.heroClass === 'warrior' || hero.heroClass === 'dwarf') {
       // Warriors & Dwarves patrol kingdom buildings, cottages, and gates
-      const patrolCandidates = buildings.filter(b => b.hp > 0 && Math.hypot(b.x * 32 - hero.x, b.y * 32 - hero.y) < 320);
+      const ts = this.gridManager.tileSize;
+      const patrolCandidates = buildings.filter(b => b.hp > 0 && Math.hypot(b.x * ts - hero.x, b.y * ts - hero.y) < 320);
       if (patrolCandidates.length > 0 && Math.random() < 0.75) {
         const chosen = patrolCandidates[Math.floor(Math.random() * patrolCandidates.length)];
-        const ts = this.gridManager.tileSize;
         const angle = Math.random() * Math.PI * 2;
-        hero.targetX = (chosen.x + chosen.width / 2) * ts + Math.cos(angle) * (chosen.width * ts * 0.7);
-        hero.targetY = (chosen.y + chosen.height / 2) * ts + Math.sin(angle) * (chosen.height * ts * 0.7);
+        const radius = Math.max(chosen.width, chosen.height) * ts * 0.5 + 24;
+        const rawX = (chosen.x + chosen.width / 2) * ts + Math.cos(angle) * radius;
+        const rawY = (chosen.y + chosen.height / 2) * ts + Math.sin(angle) * radius;
+        const safe = this.gridManager.findNearestWalkablePosition(rawX, rawY, buildings, lairs);
+        hero.targetX = safe.x;
+        hero.targetY = safe.y;
         hero.currentThought = `Patrolling near ${chosen.name}`;
       } else {
         const angle = Math.random() * Math.PI * 2;
         const dist = Math.random() * 100 + 40;
-        hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
-        hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+        const rawX = Math.max(ts * 1.5, Math.min((this.gridManager.width - 2) * ts, hero.x + Math.cos(angle) * dist));
+        const rawY = Math.max(ts * 1.5, Math.min((this.gridManager.height - 2) * ts, hero.y + Math.sin(angle) * dist));
+        const safe = this.gridManager.findNearestWalkablePosition(rawX, rawY, buildings, lairs);
+        hero.targetX = safe.x;
+        hero.targetY = safe.y;
         hero.currentThought = 'Standing guard over the settlement';
       }
     } else if (hero.heroClass === 'rogue') {
+      const ts = this.gridManager.tileSize;
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * 140 + 60;
-      hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
-      hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+      const rawX = Math.max(ts * 1.5, Math.min((this.gridManager.width - 2) * ts, hero.x + Math.cos(angle) * dist));
+      const rawY = Math.max(ts * 1.5, Math.min((this.gridManager.height - 2) * ts, hero.y + Math.sin(angle) * dist));
+      const safe = this.gridManager.findNearestWalkablePosition(rawX, rawY, buildings, lairs);
+      hero.targetX = safe.x;
+      hero.targetY = safe.y;
       hero.currentThought = 'Prowling for gold & vulnerable prey';
     } else {
+      const ts = this.gridManager.tileSize;
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * 80 + 30;
-      hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
-      hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+      const rawX = Math.max(ts * 1.5, Math.min((this.gridManager.width - 2) * ts, hero.x + Math.cos(angle) * dist));
+      const rawY = Math.max(ts * 1.5, Math.min((this.gridManager.height - 2) * ts, hero.y + Math.sin(angle) * dist));
+      const safe = this.gridManager.findNearestWalkablePosition(rawX, rawY, buildings, lairs);
+      hero.targetX = safe.x;
+      hero.targetY = safe.y;
       hero.currentThought = hero.heroClass === 'wizard' ? 'Studying arcane ley lines' : 'Blessing the town commoners';
     }
 
@@ -504,18 +523,11 @@ export class HeroAIManager {
     // Run towards nearest friendly guild or palace
     const safeBuilding = buildings.find(b => (b.id === hero.homeGuildId || b.type === 'palace') && b.hp > 0);
     if (safeBuilding) {
-      const ts = this.gridManager.tileSize;
-      const bLeft = safeBuilding.x * ts;
-      const bRight = (safeBuilding.x + safeBuilding.width) * ts;
-      const bTop = safeBuilding.y * ts;
-      const bBottom = (safeBuilding.y + safeBuilding.height) * ts;
+      const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, safeBuilding, buildings, lairs, 14);
+      const dist = Math.hypot(targetPos.x - hero.x, targetPos.y - hero.y);
 
-      const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, hero.x));
-      const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, hero.y));
-      const dist = Math.hypot(clampX - hero.x, clampY - hero.y);
-
-      if (dist > 18 && hero.stateTimer > 0) {
-        this.moveTowards(hero, clampX, clampY, delta, buildings, lairs, 1.2, safeBuilding.id); // sprint when fleeing
+      if (dist > 22 && hero.stateTimer > 0) {
+        this.moveTowards(hero, targetPos.x, targetPos.y, delta, buildings, lairs, 1.2, safeBuilding.id); // sprint when fleeing
       } else {
         hero.targetX = undefined;
         hero.targetY = undefined;
@@ -542,18 +554,11 @@ export class HeroAIManager {
       return;
     }
 
-    const ts = this.gridManager.tileSize;
-    const bLeft = building.x * ts;
-    const bRight = (building.x + building.width) * ts;
-    const bTop = building.y * ts;
-    const bBottom = (building.y + building.height) * ts;
+    const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, building, buildings, lairs, 14);
+    const dist = Math.hypot(targetPos.x - hero.x, targetPos.y - hero.y);
 
-    const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, hero.x));
-    const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, hero.y));
-    const dist = Math.hypot(clampX - hero.x, clampY - hero.y);
-
-    if (dist > 20) {
-      this.moveTowards(hero, clampX, clampY, delta, buildings, lairs, 1.0, building.id);
+    if (dist > 24) {
+      this.moveTowards(hero, targetPos.x, targetPos.y, delta, buildings, lairs, 1.0, building.id);
     } else {
       // Arrived at doorstep/entrance
       hero.targetX = undefined;
@@ -597,18 +602,11 @@ export class HeroAIManager {
       return;
     }
 
-    const ts = this.gridManager.tileSize;
-    const bLeft = shop.x * ts;
-    const bRight = (shop.x + shop.width) * ts;
-    const bTop = shop.y * ts;
-    const bBottom = (shop.y + shop.height) * ts;
+    const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, shop, buildings, lairs, 14);
+    const dist = Math.hypot(targetPos.x - hero.x, targetPos.y - hero.y);
 
-    const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, hero.x));
-    const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, hero.y));
-    const dist = Math.hypot(clampX - hero.x, clampY - hero.y);
-
-    if (dist > 20) {
-      this.moveTowards(hero, clampX, clampY, delta, buildings, lairs, 1.0, shop.id);
+    if (dist > 24) {
+      this.moveTowards(hero, targetPos.x, targetPos.y, delta, buildings, lairs, 1.0, shop.id);
     } else {
       // Arrived at shop doorstep
       hero.targetX = undefined;
@@ -735,26 +733,18 @@ export class HeroAIManager {
     if (flag.targetEntityType === 'lair') {
       const lair = lairs.find(l => l.id === flag.targetEntityId);
       if (lair) {
-        const ts = this.gridManager.tileSize;
-        const bLeft = lair.x * ts;
-        const bRight = (lair.x + lair.width) * ts;
-        const bTop = lair.y * ts;
-        const bBottom = (lair.y + lair.height) * ts;
-        targetX = Math.max(bLeft - 6, Math.min(bRight + 6, hero.x));
-        targetY = Math.max(bTop - 6, Math.min(bBottom + 6, hero.y));
-        targetEntityRadius = Math.max(lair.width, lair.height) * ts * 0.5;
+        const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, lair, buildings, lairs, 10);
+        targetX = targetPos.x;
+        targetY = targetPos.y;
+        targetEntityRadius = Math.max(lair.width, lair.height) * this.gridManager.tileSize * 0.5;
       }
     } else if (flag.targetEntityType === 'building') {
       const b = buildings.find(build => build.id === flag.targetEntityId);
       if (b) {
-        const ts = this.gridManager.tileSize;
-        const bLeft = b.x * ts;
-        const bRight = (b.x + b.width) * ts;
-        const bTop = b.y * ts;
-        const bBottom = (b.y + b.height) * ts;
-        targetX = Math.max(bLeft - 6, Math.min(bRight + 6, hero.x));
-        targetY = Math.max(bTop - 6, Math.min(bBottom + 6, hero.y));
-        targetEntityRadius = Math.max(b.width, b.height) * ts * 0.5;
+        const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, b, buildings, lairs, 10);
+        targetX = targetPos.x;
+        targetY = targetPos.y;
+        targetEntityRadius = Math.max(b.width, b.height) * this.gridManager.tileSize * 0.5;
       }
     }
 
@@ -867,13 +857,9 @@ export class HeroAIManager {
       const targetLair = lairs.find(l => l.id === hero.targetEntityId);
       if (targetLair && targetLair.hp > 0) {
         // Calculate nearest point on exterior perimeter of the lair!
-        const halfW = (targetLair.width * this.gridManager.tileSize) / 2;
-        const halfH = (targetLair.height * this.gridManager.tileSize) / 2;
-        const centerLx = (targetLair.x + targetLair.width / 2) * this.gridManager.tileSize;
-        const centerLy = (targetLair.y + targetLair.height / 2) * this.gridManager.tileSize;
-
-        targetX = Math.max(centerLx - halfW, Math.min(centerLx + halfW, hero.x));
-        targetY = Math.max(centerLy - halfH, Math.min(centerLy + halfH, hero.y));
+        const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, targetLair, buildings, lairs, 8);
+        targetX = targetPos.x;
+        targetY = targetPos.y;
         targetAlive = true;
       }
     }

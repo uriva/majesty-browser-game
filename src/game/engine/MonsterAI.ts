@@ -210,19 +210,13 @@ export class MonsterAIManager {
           break;
         }
 
-        const halfW = (b.width * this.gridManager.tileSize) / 2;
-        const halfH = (b.height * this.gridManager.tileSize) / 2;
-        const centerBx = (b.x + b.width / 2) * this.gridManager.tileSize;
-        const centerBy = (b.y + b.height / 2) * this.gridManager.tileSize;
-
         // Find nearest point on exterior perimeter of building
-        const clampX = Math.max(centerBx - halfW, Math.min(centerBx + halfW, monster.x));
-        const clampY = Math.max(centerBy - halfH, Math.min(centerBy + halfH, monster.y));
-        const dist = Math.hypot(clampX - monster.x, clampY - monster.y);
+        const targetPos = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
+        const dist = Math.hypot(targetPos.x - monster.x, targetPos.y - monster.y);
 
         const raidRange = b.type === 'peasant_cottage' ? 140 : (b.type === 'palace' ? 100 : 120);
         if (dist < raidRange) {
-          closestTarget = { x: clampX, y: clampY, id: b.id, type: 'building' };
+          closestTarget = { x: targetPos.x, y: targetPos.y, id: b.id, type: 'building' };
           break;
         }
       }
@@ -339,8 +333,8 @@ export class MonsterAIManager {
         for (let attempt = 0; attempt < 10; attempt++) {
           const angle = Math.random() * Math.PI * 2;
           const dist = Math.random() * (maxRadius - minRadius) + minRadius;
-          const candidateX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, originX + Math.cos(angle) * dist));
-          const candidateY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, originY + Math.sin(angle) * dist));
+          const candidateX = Math.max(ts, Math.min((this.gridManager.width - 2) * ts, originX + Math.cos(angle) * dist));
+          const candidateY = Math.max(ts, Math.min((this.gridManager.height - 2) * ts, originY + Math.sin(angle) * dist));
 
           if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs)) {
             monster.targetX = candidateX;

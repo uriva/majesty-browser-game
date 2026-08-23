@@ -108,19 +108,11 @@ export class EconomyManager {
           continue;
         }
 
-        const ts = this.gridManager.tileSize;
-        const bLeft = targetBuilding.x * ts;
-        const bRight = (targetBuilding.x + targetBuilding.width) * ts;
-        const bTop = targetBuilding.y * ts;
-        const bBottom = (targetBuilding.y + targetBuilding.height) * ts;
+        const targetPos = this.gridManager.getNearestExteriorWalkablePosition(tc.x, tc.y, targetBuilding, buildings, lairs, 12);
+        const dist = Math.hypot(targetPos.x - tc.x, targetPos.y - tc.y);
 
-        const clampX = Math.max(bLeft - 4, Math.min(bRight + 4, tc.x));
-        const clampY = Math.max(bTop - 4, Math.min(bBottom + 4, tc.y));
-
-        const dist = Math.hypot(clampX - tc.x, clampY - tc.y);
-
-        if (dist > 18) {
-          this.moveTowards(tc, clampX, clampY, delta, buildings, lairs, targetBuilding.id);
+        if (dist > 22) {
+          this.moveTowards(tc, targetPos.x, targetPos.y, delta, buildings, lairs, targetBuilding.id);
         } else {
           // Collect the gold!
           const collected = Math.floor(targetBuilding.goldStored);
