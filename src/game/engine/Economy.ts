@@ -4,7 +4,8 @@ import { audioManager } from './Audio';
 
 export class EconomyManager {
   private gridManager: GridManager;
-  private taxSpawnCooldown: number = 0;
+  private taxSpawnCooldown: number = 10.0;
+  private lastVoiceTime: number = 0;
 
   constructor(gridManager: GridManager) {
     this.gridManager = gridManager;
@@ -27,31 +28,34 @@ export class EconomyManager {
       y: (palace.y + palace.height) * this.gridManager.tileSize + 6
     };
 
-    // 1. Peasant cottages generate steady land rent awaiting tax collection
+    // 1. Peasant cottages generate modest periodic land rent awaiting tax collection (~21g/min per cottage)
     for (const b of buildings) {
       if (b.isConstructing || b.hp <= 0) continue;
       if (b.type === 'peasant_cottage') {
-        b.goldStored += 1.4 * delta; // Commoner land rent (~84g/min per cottage)
+        b.goldStored += 0.35 * delta;
       }
     }
 
-    // Dispatch Tax Collector from Palace when buildings have uncollected taxes (>= 10g)
+    // 2. Dispatch Tax Collector periodically when buildings have accumulated significant uncollected taxes (>= 30g)
     this.taxSpawnCooldown -= delta;
-    if (this.taxSpawnCooldown <= 0 && taxCollectors.length < 3) {
+    const maxCollectors = (palace.level || 1) === 1 ? 1 : 2;
+
+    if (this.taxSpawnCooldown <= 0 && taxCollectors.length < maxCollectors) {
       let highestBuilding: Building | null = null;
-      let maxGold = 10;
+      let maxGold = 30;
 
       for (const b of buildings) {
         if (b.type === 'palace' || b.isConstructing || b.hp <= 0) continue;
         const alreadyTargeted = taxCollectors.some(tc => tc.targetBuildingId === b.id);
-        if (!alreadyTargeted && b.goldStored >= maxGold) {
+        const threshold = b.type === 'peasant_cottage' ? 25 : 40;
+        if (!alreadyTargeted && b.goldStored >= threshold && b.goldStored > maxGold) {
           maxGold = b.goldStored;
           highestBuilding = b;
         }
       }
 
       if (highestBuilding) {
-        this.taxSpawnCooldown = 4.0;
+        this.taxSpawnCooldown = 18.0; // Steady 18s cooldown between tax runs
         const newCollector: TaxCollector = {
           id: `tax_${Date.now()}`,
           name: 'Royal Tax Collector',
@@ -59,7 +63,7 @@ export class EconomyManager {
           y: palaceGate.y + 4,
           hp: 100,
           maxHp: 100,
-          speed: 36,
+          speed: 34,
           goldCarried: 0,
           targetBuildingId: highestBuilding.id,
           state: 'seeking_building',
@@ -70,12 +74,15 @@ export class EconomyManager {
     }
 
     // 3. Update existing Tax Collectors
+    const now = Date.now();
+
     for (let i = taxCollectors.length - 1; i >= 0; i--) {
       const tc = taxCollectors[i];
 
       if (tc.hp <= 0) {
         // Tax collector slain!
         if (onFloatingText) onFloatingText('Tax Collector Slain!', tc.x, tc.y - 20, '#ef4444');
+        audioManager.playVoice('tax_death', tc.x, tc.y);
         taxCollectors.splice(i, 1);
         continue;
       }
@@ -88,7 +95,6 @@ export class EconomyManager {
         }
 
         const ts = this.gridManager.tileSize;
-        // Nearest point on building perimeter to tax collector
         const bLeft = targetBuilding.x * ts;
         const bRight = (targetBuilding.x + targetBuilding.width) * ts;
         const bTop = targetBuilding.y * ts;
@@ -107,7 +113,15 @@ export class EconomyManager {
           targetBuilding.goldStored -= collected;
           tc.goldCarried += collected;
           tc.state = 'returning_to_palace';
-          audioManager.playVoice('tax_collect');
+
+          // Debounce voice lines (only play every 25s)
+          if (now - this.lastVoiceTime > 25000) {
+            audioManager.playVoice('tax_collect', tc.x, tc.y);
+            this.lastVoiceTime = now;
+          } else {
+            audioManager.playCoinSound(tc.x, tc.y);
+          }
+
           if (onFloatingText) onFloatingText(`+${collected}g Taxes`, tc.x, tc.y - 15, '#fbbf24');
         }
       } else if (tc.state === 'returning_to_palace') {
@@ -118,7 +132,15 @@ export class EconomyManager {
           // Safely reached palace front gate! Deposit into Royal Treasury
           if (tc.goldCarried > 0) {
             onTaxDelivery(tc.goldCarried);
-            audioManager.playVoice('tax_delivered');
+
+            // Debounce delivery voice line
+            if (now - this.lastVoiceTime > 25000) {
+              audioManager.playVoice('tax_delivered', palaceGate.x, palaceGate.y);
+              this.lastVoiceTime = now;
+            } else {
+              audioManager.playCoinSound(palaceGate.x, palaceGate.y);
+            }
+
             if (onFloatingText) onFloatingText(`+${tc.goldCarried}g Treasury!`, palaceGate.x, palaceGate.y - 25, '#fbbf24');
           }
           // Remove collector after completing duty

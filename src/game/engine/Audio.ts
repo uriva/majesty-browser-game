@@ -8,6 +8,10 @@ class SoundManager {
   private audioBufferCache: Map<string, AudioBuffer> = new Map();
   private isMuted: boolean = false;
 
+  // Spatial Listener World Position (synchronized to 3D Camera Target)
+  public listenerX: number = 960;
+  public listenerY: number = 960;
+
   private initCtx() {
     if (!this.ctx && typeof window !== 'undefined') {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -20,8 +24,44 @@ class SoundManager {
     }
   }
 
-  // Play an authentic extracted WAV sound effect file with fallback to web audio synthesis
-  private playAudioFile(path: string, volumeMult = 1.0, onFallback?: () => void) {
+  public setListenerPosition(x: number, y: number) {
+    this.listenerX = x;
+    this.listenerY = y;
+  }
+
+  // Calculate Distance Attenuation (roll-off) & Stereo Panning based on event position
+  public calculateSpatial(eventX?: number, eventY?: number): { volumeMult: number; pan: number } {
+    if (eventX === undefined || eventY === undefined) {
+      return { volumeMult: 1.0, pan: 0.0 };
+    }
+
+    const dx = eventX - this.listenerX;
+    const dy = eventY - this.listenerY;
+    const dist = Math.hypot(dx, dy);
+
+    // Natural Quadratic Distance Roll-off:
+    // Full volume within ~100px of camera center, smoothly rolling off towards viewport edge (~620px)
+    const minDistance = 100;
+    const maxDistance = 620;
+
+    let volumeMult = 1.0;
+    if (dist <= minDistance) {
+      volumeMult = 1.0;
+    } else if (dist >= maxDistance) {
+      volumeMult = 0.03; // faint ambient off-screen cue
+    } else {
+      const t = (dist - minDistance) / (maxDistance - minDistance);
+      volumeMult = Math.max(0.03, (1 - t) * (1 - t));
+    }
+
+    // Stereo Panning (-0.95 to 0.95)
+    const pan = Math.max(-0.95, Math.min(0.95, dx / 340));
+
+    return { volumeMult, pan };
+  }
+
+  // Play an authentic extracted WAV sound effect file with 3D spatial attenuation & stereo panning
+  private playAudioFile(path: string, eventX?: number, eventY?: number, volumeMult = 1.0, onFallback?: () => void) {
     if (!this.enabled || this.isMuted || typeof window === 'undefined') return;
     this.initCtx();
 
@@ -30,21 +70,39 @@ class SoundManager {
       return;
     }
 
-    const cached = this.audioBufferCache.get(path);
-    if (cached) {
+    const spatial = this.calculateSpatial(eventX, eventY);
+    const finalVolume = this.volume * volumeMult * spatial.volumeMult;
+
+    const playBuffer = (buffer: AudioBuffer) => {
+      if (!this.ctx) return;
       try {
         const source = this.ctx.createBufferSource();
-        source.buffer = cached;
+        source.buffer = buffer;
         const gain = this.ctx.createGain();
-        gain.gain.value = this.volume * volumeMult;
-        source.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.gain.value = finalVolume;
+
+        // Apply Stereo Panning if supported
+        if (this.ctx.createStereoPanner) {
+          const panner = this.ctx.createStereoPanner();
+          panner.pan.value = spatial.pan;
+          source.connect(gain);
+          gain.connect(panner);
+          panner.connect(this.ctx.destination);
+        } else {
+          source.connect(gain);
+          gain.connect(this.ctx.destination);
+        }
+
         source.start(0);
-        return;
       } catch {
         if (onFallback) onFallback();
-        return;
       }
+    };
+
+    const cached = this.audioBufferCache.get(path);
+    if (cached) {
+      playBuffer(cached);
+      return;
     }
 
     fetch(path)
@@ -55,15 +113,7 @@ class SoundManager {
       .then(arrayBuffer => this.ctx!.decodeAudioData(arrayBuffer))
       .then(decodedBuffer => {
         this.audioBufferCache.set(path, decodedBuffer);
-        if (this.ctx) {
-          const source = this.ctx.createBufferSource();
-          source.buffer = decodedBuffer;
-          const gain = this.ctx.createGain();
-          gain.gain.value = this.volume * volumeMult;
-          source.connect(gain);
-          gain.connect(this.ctx.destination);
-          source.start(0);
-        }
+        playBuffer(decodedBuffer);
       })
       .catch(() => {
         if (onFallback) onFallback();
@@ -104,112 +154,113 @@ class SoundManager {
     }
   }
 
-  // --- SOUND EFFECTS ---
-  public playCoinSound() {
-    this.playAudioFile('/audio/sfx/coin.wav', 0.8, () => this.synthCoin());
+  // --- 3D POSITIONAL SOUND EFFECTS ---
+  public playCoinSound(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/coin.wav', x, y, 0.85, () => this.synthCoin(x, y));
   }
 
-  public playSwordClash() {
-    this.playAudioFile('/audio/sfx/sword_hit.wav', 0.7, () => this.synthSwordClash());
+  public playSwordClash(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/sword_hit.wav', x, y, 0.75, () => this.synthSwordClash(x, y));
   }
 
-  public playSwordSwing() {
-    this.playAudioFile('/audio/sfx/sword_swing.wav', 0.6);
+  public playSwordSwing(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/sword_swing.wav', x, y, 0.6);
   }
 
-  public playArrowShoot() {
-    this.playAudioFile('/audio/sfx/bow_fire.wav', 0.75, () => this.synthArrowShoot());
+  public playArrowShoot(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/bow_fire.wav', x, y, 0.8, () => this.synthArrowShoot(x, y));
   }
 
-  public playArrowHit() {
-    this.playAudioFile('/audio/sfx/arrow_hit.wav', 0.7);
+  public playArrowHit(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/arrow_hit.wav', x, y, 0.75);
   }
 
-  public playSpellCast() {
-    this.playAudioFile('/audio/sfx/lightning_spell.wav', 0.8, () => this.synthSpellCast());
+  public playSpellCast(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/lightning_spell.wav', x, y, 0.85, () => this.synthSpellCast(x, y));
   }
 
-  public playLightningBolt() {
-    this.playAudioFile('/audio/sfx/lightning_spell.wav', 0.9, () => this.synthLightning());
+  public playLightningBolt(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/lightning_spell.wav', x, y, 0.95, () => this.synthLightning(x, y));
   }
 
-  public playHealSound() {
-    this.playAudioFile('/audio/sfx/heal_spell.wav', 0.8, () => this.synthHeal());
+  public playHealSound(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/heal_spell.wav', x, y, 0.85, () => this.synthHeal(x, y));
   }
 
-  public playBuildingPlaced() {
-    this.playAudioFile('/audio/sfx/building_placed.wav', 0.9, () => this.synthBuildingPlaced());
+  public playBuildingPlaced(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/building_placed.wav', x, y, 0.9, () => this.synthBuildingPlaced(x, y));
   }
 
-  public playBuildingDestroyed() {
-    this.playAudioFile('/audio/sfx/building_destroyed.wav', 0.9);
+  public playBuildingDestroyed(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/building_destroyed.wav', x, y, 0.95);
   }
 
-  public playLevelUp() {
-    this.playAudioFile('/audio/sfx/level_up.wav', 0.85, () => this.synthLevelUp());
+  public playLevelUp(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/level_up.wav', x, y, 0.85, () => this.synthLevelUp(x, y));
   }
 
-  public playAdvisorChime() {
-    this.playAudioFile('/audio/sfx/horn.wav', 0.75, () => this.synthAdvisorChime());
+  public playAdvisorChime(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/horn.wav', x, y, 0.8, () => this.synthAdvisorChime(x, y));
   }
 
-  public playFlagPlaced() {
-    this.playAudioFile('/audio/sfx/flag_placed.wav', 0.85, () => this.synthFlagPlaced());
+  public playFlagPlaced(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/flag_placed.wav', x, y, 0.85, () => this.synthFlagPlaced(x, y));
   }
 
-  public playFlagCompleted() {
-    this.playAudioFile('/audio/sfx/flag_completed.wav', 0.85);
+  public playFlagCompleted(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/flag_completed.wav', x, y, 0.85);
   }
 
   public playVictoryFanfare() {
-    this.playAudioFile('/audio/sfx/victory.wav', 1.0, () => this.synthVictory());
+    this.playAudioFile('/audio/sfx/victory.wav', undefined, undefined, 1.0, () => this.synthVictory());
   }
 
   public playDefeatSound() {
-    this.playAudioFile('/audio/sfx/defeat.wav', 1.0, () => this.synthDefeat());
+    this.playAudioFile('/audio/sfx/defeat.wav', undefined, undefined, 1.0, () => this.synthDefeat());
   }
 
-  public playPotionSound() {
-    this.playAudioFile('/audio/sfx/potion.wav', 0.8);
+  public playPotionSound(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/potion.wav', x, y, 0.8);
   }
 
-  public playChestOpen() {
-    this.playAudioFile('/audio/sfx/chest_open.wav', 0.85);
+  public playChestOpen(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/chest_open.wav', x, y, 0.85);
   }
 
-  public playRatAttack() {
-    this.playAudioFile('/audio/sfx/rat_attack.wav', 0.7);
+  public playRatAttack(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/rat_attack.wav', x, y, 0.7);
   }
 
-  public playRatDeath() {
-    this.playAudioFile('/audio/sfx/rat_death.wav', 0.7);
+  public playRatDeath(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/rat_death.wav', x, y, 0.7);
   }
 
-  public playDragonFire() {
-    this.playAudioFile('/audio/sfx/dragon_fire.wav', 0.9);
+  public playDragonFire(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/dragon_fire.wav', x, y, 0.9);
   }
 
-  public playDragonDeath() {
-    this.playAudioFile('/audio/sfx/dragon_death.wav', 0.95);
+  public playDragonDeath(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/dragon_death.wav', x, y, 0.95);
   }
 
-  // --- CHARACTER & ADVISOR VOICE ACTING CLIPS ---
-  public playVoice(voiceKey: string) {
+  // --- 3D POSITIONAL CHARACTER & ADVISOR VOICE CLIPS ---
+  public playVoice(voiceKey: string, x?: number, y?: number) {
     const path = `/audio/voices/${voiceKey}.wav`;
-    this.playAudioFile(path, 0.9);
+    this.playAudioFile(path, x, y, 0.9);
   }
 
-  // --- SYNTHESIZED AUDIO FALLBACKS ---
-  private synthCoin() {
+  // --- SYNTHESIZED AUDIO FALLBACKS WITH SPATIAL GAIN ---
+  private synthCoin(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(987.77, now);
       osc.frequency.setValueAtTime(1318.51, now + 0.08);
-      gain.gain.setValueAtTime(this.volume * 0.4, now);
+      gain.gain.setValueAtTime(this.volume * 0.4 * spatial.volumeMult, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
@@ -218,9 +269,10 @@ class SoundManager {
     } catch {}
   }
 
-  private synthSwordClash() {
+  private synthSwordClash(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const bufferSize = this.ctx.sampleRate * 0.1;
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
@@ -233,8 +285,9 @@ class SoundManager {
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'bandpass';
       filter.frequency.value = 2400;
+      filter.Q.value = 3;
       const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(this.volume * 0.3, now);
+      gain.gain.setValueAtTime(this.volume * 0.3 * spatial.volumeMult, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
       noise.connect(filter);
       filter.connect(gain);
@@ -243,16 +296,17 @@ class SoundManager {
     } catch {}
   }
 
-  private synthArrowShoot() {
+  private synthArrowShoot(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(800, now);
       osc.frequency.exponentialRampToValueAtTime(200, now + 0.12);
-      gain.gain.setValueAtTime(this.volume * 0.25, now);
+      gain.gain.setValueAtTime(this.volume * 0.25 * spatial.volumeMult, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
@@ -261,16 +315,17 @@ class SoundManager {
     } catch {}
   }
 
-  private synthSpellCast() {
+  private synthSpellCast(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(300, now);
       osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
-      gain.gain.setValueAtTime(this.volume * 0.35, now);
+      gain.gain.setValueAtTime(this.volume * 0.35 * spatial.volumeMult, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
@@ -279,9 +334,10 @@ class SoundManager {
     } catch {}
   }
 
-  private synthLightning() {
+  private synthLightning(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const bufferSize = this.ctx.sampleRate * 0.4;
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
@@ -296,7 +352,7 @@ class SoundManager {
       filter.frequency.setValueAtTime(1800, now);
       filter.frequency.exponentialRampToValueAtTime(120, now + 0.35);
       const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(this.volume * 0.6, now);
+      gain.gain.setValueAtTime(this.volume * 0.6 * spatial.volumeMult, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
       noise.connect(filter);
       filter.connect(gain);
@@ -305,9 +361,10 @@ class SoundManager {
     } catch {}
   }
 
-  private synthHeal() {
+  private synthHeal(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const notes = [523.25, 659.25, 783.99, 1046.50];
       notes.forEach((freq, i) => {
@@ -317,7 +374,7 @@ class SoundManager {
         osc.type = 'sine';
         osc.frequency.value = freq;
         const startTime = now + i * 0.06;
-        gain.gain.setValueAtTime(this.volume * 0.2, startTime);
+        gain.gain.setValueAtTime(this.volume * 0.2 * spatial.volumeMult, startTime);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.25);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
@@ -327,16 +384,17 @@ class SoundManager {
     } catch {}
   }
 
-  private synthBuildingPlaced() {
+  private synthBuildingPlaced(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(180, now);
       osc.frequency.exponentialRampToValueAtTime(40, now + 0.18);
-      gain.gain.setValueAtTime(this.volume * 0.4, now);
+      gain.gain.setValueAtTime(this.volume * 0.4 * spatial.volumeMult, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
@@ -345,9 +403,10 @@ class SoundManager {
     } catch {}
   }
 
-  private synthLevelUp() {
+  private synthLevelUp(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const notes = [440, 554.37, 659.25, 880];
       notes.forEach((freq, i) => {
@@ -357,7 +416,7 @@ class SoundManager {
         osc.type = 'sawtooth';
         osc.frequency.value = freq;
         const startTime = now + i * 0.08;
-        gain.gain.setValueAtTime(this.volume * 0.25, startTime);
+        gain.gain.setValueAtTime(this.volume * 0.25 * spatial.volumeMult, startTime);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.35);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
@@ -367,9 +426,10 @@ class SoundManager {
     } catch {}
   }
 
-  private synthAdvisorChime() {
+  private synthAdvisorChime(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const notes = [587.33, 880, 1174.66];
       notes.forEach((freq, i) => {
@@ -379,7 +439,7 @@ class SoundManager {
         osc.type = 'sine';
         osc.frequency.value = freq;
         const startTime = now + i * 0.09;
-        gain.gain.setValueAtTime(this.volume * 0.3, startTime);
+        gain.gain.setValueAtTime(this.volume * 0.3 * spatial.volumeMult, startTime);
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
@@ -389,16 +449,17 @@ class SoundManager {
     } catch {}
   }
 
-  private synthFlagPlaced() {
+  private synthFlagPlaced(x?: number, y?: number) {
     if (!this.ctx) return;
     try {
+      const spatial = this.calculateSpatial(x, y);
       const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(520, now);
       osc.frequency.exponentialRampToValueAtTime(780, now + 0.15);
-      gain.gain.setValueAtTime(this.volume * 0.3, now);
+      gain.gain.setValueAtTime(this.volume * 0.3 * spatial.volumeMult, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
       osc.connect(gain);
       gain.connect(this.ctx.destination);

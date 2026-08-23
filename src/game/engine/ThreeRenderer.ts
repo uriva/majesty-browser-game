@@ -20,6 +20,11 @@ export class ThreeRenderer {
   private cobbleTexture: THREE.CanvasTexture;
   private stoneWallTexture: THREE.CanvasTexture;
   private thatchTexture: THREE.CanvasTexture;
+  private royalCastleWallTexture: THREE.CanvasTexture;
+  private royalRoofSlateTexture: THREE.CanvasTexture;
+  private tudorWallTexture: THREE.CanvasTexture;
+  private timberLogTexture: THREE.CanvasTexture;
+  private stainedGlassTexture: THREE.CanvasTexture;
 
   // Object pools / mappings
   private terrainGroup: THREE.Group;
@@ -35,7 +40,7 @@ export class ThreeRenderer {
   private flagsMap: Map<string, THREE.Group> = new Map();
   private projectilesMap: Map<string, THREE.Group> = new Map();
   private floatingTextsMap: Map<string, THREE.Sprite> = new Map();
-  private heroLabelsMap: Map<string, { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; sprite: THREE.Sprite; lastHp: number; lastLevel: number }> = new Map();
+  private heroLabelsMap: Map<string, { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; mesh: THREE.Mesh; lastHp: number; lastLevel: number }> = new Map();
 
   // Selection & Placement Highlights
   private selectionGroup: THREE.Group;
@@ -65,6 +70,11 @@ export class ThreeRenderer {
     this.cobbleTexture = this.createCobbleTexture();
     this.stoneWallTexture = this.createStoneWallTexture();
     this.thatchTexture = this.createThatchTexture();
+    this.royalCastleWallTexture = this.createRoyalCastleWallTexture();
+    this.royalRoofSlateTexture = this.createRoyalRoofSlateTexture();
+    this.tudorWallTexture = this.createTudorWallTexture();
+    this.timberLogTexture = this.createTimberLogTexture();
+    this.stainedGlassTexture = this.createStainedGlassTexture();
 
     // 1. Scene Setup
     this.scene = new THREE.Scene();
@@ -241,6 +251,227 @@ export class ThreeRenderer {
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  private createRoyalCastleWallTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+
+    // Dark medieval stone mortar base
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 512, 512);
+
+    const blockH = 32;
+    const blockW = 64;
+
+    for (let y = 0; y < 512; y += blockH) {
+      const row = Math.floor(y / blockH);
+      const shift = (row % 2) * (blockW / 2);
+      for (let x = -blockW; x < 512 + blockW; x += blockW) {
+        const stoneX = x + shift + 2;
+        const stoneY = y + 2;
+        const stoneW = blockW - 4;
+        const stoneH = blockH - 4;
+
+        // Varied stone ashlar gradient
+        const shadeIndex = ((x * 7 + y * 13) % 4);
+        const stoneColors = ['#475569', '#334155', '#3f3f46', '#52525b'];
+        const baseColor = stoneColors[shadeIndex];
+
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(stoneX, stoneY, stoneW, stoneH);
+
+        // Chiseled top & left bevel highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+        ctx.fillRect(stoneX, stoneY, stoneW, 3);
+        ctx.fillRect(stoneX, stoneY, 3, stoneH);
+
+        // Chiseled bottom & right shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.fillRect(stoneX, stoneY + stoneH - 3, stoneW, 3);
+        ctx.fillRect(stoneX + stoneW - 3, stoneY, 3, stoneH);
+
+        // Weathering speckles
+        for (let s = 0; s < 6; s++) {
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.2)';
+          ctx.fillRect(stoneX + Math.random() * (stoneW - 4) + 2, stoneY + Math.random() * (stoneH - 4) + 2, 2, 2);
+        }
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 3);
+    return tex;
+  }
+
+  private createRoyalRoofSlateTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+
+    // Deep slate base
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 512, 512);
+
+    const tileH = 28;
+    const tileW = 40;
+
+    for (let y = 0; y < 512; y += tileH) {
+      const row = Math.floor(y / tileH);
+      const shift = (row % 2) * (tileW / 2);
+      for (let x = -tileW; x < 512 + tileW; x += tileW) {
+        const tx = x + shift;
+        const ty = y;
+
+        // Fishscale / diamond slate tile
+        const slateColors = ['#1e3a8a', '#1e40af', '#172554', '#1d4ed8'];
+        const color = slateColors[(x + y) % slateColors.length];
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(tx + 2, ty + 2, tileW - 4, tileH - 4, [0, 0, 8, 8]);
+        ctx.fill();
+
+        // Shaded curved bottom edge
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.fillRect(tx + 2, ty + 2, tileW - 4, 3);
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fillRect(tx + 2, ty + tileH - 5, tileW - 4, 3);
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 2);
+    return tex;
+  }
+
+  private createTudorWallTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+
+    // Whitewashed / cream plaster base
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Subtle plaster texture
+    for (let i = 0; i < 600; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255, 255, 255, 0.15)' : 'rgba(202, 138, 4, 0.08)';
+      ctx.fillRect(Math.random() * 512, Math.random() * 512, 4, 4);
+    }
+
+    // Dark Oak Timber Framework (Tudor Trusses)
+    ctx.fillStyle = '#381e05';
+    const beamW = 20;
+
+    // Outer border beams
+    ctx.fillRect(0, 0, 512, beamW);
+    ctx.fillRect(0, 512 - beamW, 512, beamW);
+    ctx.fillRect(0, 0, beamW, 512);
+    ctx.fillRect(512 - beamW, 0, beamW, 512);
+
+    // Middle horizontal and vertical beams
+    ctx.fillRect(0, 256 - beamW / 2, 512, beamW);
+    ctx.fillRect(256 - beamW / 2, 0, beamW, 512);
+
+    // Diagonal cross braces
+    ctx.lineWidth = beamW;
+    ctx.strokeStyle = '#381e05';
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(256, 256);
+    ctx.moveTo(512, 0); ctx.lineTo(256, 256);
+    ctx.moveTo(0, 512); ctx.lineTo(256, 256);
+    ctx.moveTo(512, 512); ctx.lineTo(256, 256);
+    ctx.stroke();
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  private createTimberLogTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(0, 0, 512, 512);
+
+    const logH = 32;
+    for (let y = 0; y < 512; y += logH) {
+      // Rounded log gradient
+      const grad = ctx.createLinearGradient(0, y, 0, y + logH);
+      grad.addColorStop(0, '#78350f');
+      grad.addColorStop(0.5, '#9a3412');
+      grad.addColorStop(1, '#381e05');
+
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, y + 2, 512, logH - 4);
+
+      // Deep groove between logs
+      ctx.fillStyle = '#1c0d02';
+      ctx.fillRect(0, y, 512, 2);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  private createStainedGlassTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Luminous Rose Window Pattern
+    const cx = 128;
+    const cy = 128;
+    const colors = ['#f59e0b', '#ec4899', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444'];
+
+    for (let i = 0; i < 12; i++) {
+      const angle = (i * Math.PI * 2) / 12;
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, 100, angle, angle + (Math.PI * 2) / 12);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Lead came grid
+    ctx.strokeStyle = '#020617';
+    ctx.lineWidth = 6;
+    for (let i = 0; i < 12; i++) {
+      const angle = (i * Math.PI * 2) / 12;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(angle) * 110, cy + Math.sin(angle) * 110);
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 100, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const tex = new THREE.CanvasTexture(canvas);
     return tex;
   }
 
@@ -927,322 +1158,512 @@ export class ThreeRenderer {
     }
 
     if (b.type === 'palace') {
-      // Grand Monumental Royal Stronghold (4x4 tiles = 128x128)
-      const castleBaseGeo = new THREE.BoxGeometry(w * 0.82, 26, h * 0.82);
-      const castleBaseMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
-      const castleBase = new THREE.Mesh(castleBaseGeo, castleBaseMat);
-      castleBase.position.y = 13;
+      // Grand Royal Castle Fortress (Ashlar Masonry, Crenellations, Royal Pennants & Throne Keep)
+      const stoneWallMat = new THREE.MeshStandardMaterial({
+        color: 0x64748b,
+        map: this.royalCastleWallTexture,
+        roughness: 0.75
+      });
+      const roofSlateMat = new THREE.MeshStandardMaterial({
+        color: 0xdc2626,
+        map: this.royalRoofSlateTexture,
+        roughness: 0.6
+      });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.85, roughness: 0.2 });
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+
+      // 1. Raised Cobblestone Plinth
+      const plinthGeo = new THREE.BoxGeometry(w * 0.9, 2.5, h * 0.9);
+      const plinthMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.cobbleTexture, roughness: 0.85 });
+      const plinth = new THREE.Mesh(plinthGeo, plinthMat);
+      plinth.position.y = 1.25;
+      plinth.receiveShadow = true;
+      group.add(plinth);
+
+      // 2. Outer Fortress Curtain Walls
+      const castleBaseGeo = new THREE.BoxGeometry(w * 0.8, 24, h * 0.8);
+      const castleBase = new THREE.Mesh(castleBaseGeo, stoneWallMat);
+      castleBase.position.y = 13.5;
       castleBase.castShadow = true;
       castleBase.receiveShadow = true;
       group.add(castleBase);
 
-      // 4 Corner Round Bastion Turrets with Crimson Roofs
-      const turretGeo = new THREE.CylinderGeometry(6, 7, 36, 12);
-      const turretRoofGeo = new THREE.ConeGeometry(7.5, 16, 12);
-      const turretMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.7 });
-      const turretRoofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 });
+      // Parapet Crenellations on outer walls
+      const wallHalfW = w * 0.4;
+      const wallHalfH = h * 0.4;
+      const merlonGeo = new THREE.BoxGeometry(3.5, 3.5, 3.5);
+
+      for (let i = -3; i <= 3; i += 2) {
+        const mNorth = new THREE.Mesh(merlonGeo, stoneWallMat);
+        mNorth.position.set(i * (wallHalfW / 3), 26.5, -wallHalfH);
+        group.add(mNorth);
+
+        const mSouth = new THREE.Mesh(merlonGeo, stoneWallMat);
+        mSouth.position.set(i * (wallHalfW / 3), 26.5, wallHalfH);
+        group.add(mSouth);
+
+        const mWest = new THREE.Mesh(merlonGeo, stoneWallMat);
+        mWest.position.set(-wallHalfW, 26.5, i * (wallHalfH / 3));
+        group.add(mWest);
+
+        const mEast = new THREE.Mesh(merlonGeo, stoneWallMat);
+        mEast.position.set(wallHalfW, 26.5, i * (wallHalfH / 3));
+        group.add(mEast);
+      }
+
+      // 3. Arched Gatehouse & Iron Portcullis on South Wall
+      const gatehouseGeo = new THREE.BoxGeometry(16, 20, 6);
+      const gatehouse = new THREE.Mesh(gatehouseGeo, stoneWallMat);
+      gatehouse.position.set(0, 11, wallHalfH + 2);
+      group.add(gatehouse);
+
+      const portcullisGeo = new THREE.BoxGeometry(9, 14, 1.2);
+      const portcullisMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.2 });
+      const portcullis = new THREE.Mesh(portcullisGeo, portcullisMat);
+      portcullis.position.set(0, 8, wallHalfH + 4);
+      group.add(portcullis);
+
+      // Torches at gatehouse entrance
+      const torchGeo = new THREE.BoxGeometry(1.2, 2.2, 1.2);
+      const flameMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xf59e0b, emissiveIntensity: 1.5 });
+      const torchL = new THREE.Mesh(torchGeo, flameMat); torchL.position.set(-7, 14, wallHalfH + 5); group.add(torchL);
+      const torchR = new THREE.Mesh(torchGeo, flameMat); torchR.position.set(7, 14, wallHalfH + 5); group.add(torchR);
+
+      // 4. Four Round Corner Bastion Towers
+      const turretGeo = new THREE.CylinderGeometry(7, 8, 38, 12);
+      const turretRoofGeo = new THREE.ConeGeometry(9, 18, 12);
 
       const offsets = [
-        [-w * 0.38, -h * 0.38],
-        [w * 0.38, -h * 0.38],
-        [-w * 0.38, h * 0.38],
-        [w * 0.38, h * 0.38]
+        [-wallHalfW, -wallHalfH],
+        [wallHalfW, -wallHalfH],
+        [-wallHalfW, wallHalfH],
+        [wallHalfW, wallHalfH]
       ];
 
       offsets.forEach(([tx, tz]) => {
-        const turret = new THREE.Mesh(turretGeo, turretMat);
-        turret.position.set(tx, 18, tz);
+        const turret = new THREE.Mesh(turretGeo, stoneWallMat);
+        turret.position.set(tx, 19, tz);
         turret.castShadow = true;
         group.add(turret);
 
-        const tRoof = new THREE.Mesh(turretRoofGeo, turretRoofMat);
-        tRoof.position.set(tx, 44, tz);
+        // Machicolation stone ring overhang
+        const corbelGeo = new THREE.CylinderGeometry(8.5, 7.5, 3.5, 12);
+        const corbel = new THREE.Mesh(corbelGeo, stoneWallMat);
+        corbel.position.set(tx, 37, tz);
+        group.add(corbel);
+
+        const tRoof = new THREE.Mesh(turretRoofGeo, roofSlateMat);
+        tRoof.position.set(tx, 47, tz);
         tRoof.castShadow = true;
         group.add(tRoof);
+
+        // Royal Pennant Flag atop each turret
+        const flagpoleGeo = new THREE.CylinderGeometry(0.3, 0.3, 8, 4);
+        const flagpole = new THREE.Mesh(flagpoleGeo, goldMat);
+        flagpole.position.set(tx, 59, tz);
+        group.add(flagpole);
+
+        const pennantGeo = new THREE.BoxGeometry(5, 3, 0.2);
+        const pennant = new THREE.Mesh(pennantGeo, roofSlateMat);
+        pennant.position.set(tx + 2.5, 59, tz);
+        group.add(pennant);
       });
 
-      // Central Grand Imperial Throne Keep
-      const keepGeo = new THREE.BoxGeometry(w * 0.44, 48, h * 0.44);
-      const keep = new THREE.Mesh(keepGeo, turretMat);
-      keep.position.y = 24;
+      // 5. Central Grand Imperial Throne Keep (Multi-tiered)
+      const keepBaseGeo = new THREE.BoxGeometry(w * 0.44, 48, h * 0.44);
+      const keep = new THREE.Mesh(keepBaseGeo, stoneWallMat);
+      keep.position.y = 25;
       keep.castShadow = true;
       group.add(keep);
 
-      const keepRoofGeo = new THREE.ConeGeometry(w * 0.36, 24, 4);
-      const keepRoof = new THREE.Mesh(keepRoofGeo, turretRoofMat);
-      keepRoof.position.y = 60;
+      // Stained glass grand arched windows on keep
+      const winGeo = new THREE.PlaneGeometry(6, 12);
+      const winMat = new THREE.MeshStandardMaterial({
+        color: 0xfbbf24,
+        map: this.stainedGlassTexture,
+        emissive: 0xd97706,
+        emissiveIntensity: 0.6
+      });
+      const winSouth = new THREE.Mesh(winGeo, winMat);
+      winSouth.position.set(0, 32, (h * 0.22) + 0.5);
+      group.add(winSouth);
+
+      // Royal Golden Balcony
+      const balconyFloorGeo = new THREE.BoxGeometry(14, 1.5, 4);
+      const balconyFloor = new THREE.Mesh(balconyFloorGeo, woodMat);
+      balconyFloor.position.set(0, 24, (h * 0.22) + 2);
+      group.add(balconyFloor);
+
+      const balustradeGeo = new THREE.BoxGeometry(14, 3.5, 0.8);
+      const balustrade = new THREE.Mesh(balustradeGeo, goldMat);
+      balustrade.position.set(0, 26, (h * 0.22) + 3.8);
+      group.add(balustrade);
+
+      // Grand Keep Hip Slate Roof
+      const keepRoofGeo = new THREE.ConeGeometry(w * 0.36, 26, 4);
+      const keepRoof = new THREE.Mesh(keepRoofGeo, roofSlateMat);
+      keepRoof.position.y = 62;
       keepRoof.rotation.y = Math.PI / 4;
       keepRoof.castShadow = true;
       group.add(keepRoof);
 
-      // Golden Sovereign Crown Spire
-      const crownGeo = new THREE.CylinderGeometry(3.5, 4.5, 8, 8);
-      const crownMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8, roughness: 0.2 });
-      const crown = new THREE.Mesh(crownGeo, crownMat);
-      crown.position.y = 76;
+      // Sovereign Golden Crown Spire & Arcane Sovereign Beacon
+      const crownGeo = new THREE.CylinderGeometry(4, 5.5, 9, 8);
+      const crown = new THREE.Mesh(crownGeo, goldMat);
+      crown.position.y = 78;
       group.add(crown);
-    } else if (b.type === 'warrior_guild') {
-      // Fortified Stone Bastion with Pitched Blue Gable Roof & Training Yard (2x2 = 64x64)
-      const hallBaseGeo = new THREE.BoxGeometry(w * 0.82, 22, h * 0.74);
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
-      const hall = new THREE.Mesh(hallBaseGeo, stoneMat);
-      hall.position.y = 11;
-      hall.castShadow = true;
-      group.add(hall);
 
-      // Pitched Blue Slate Roof
+      const beaconGeo = new THREE.OctahedronGeometry(2.5, 0);
+      const beaconMat = new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 1.2
+      });
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+      beacon.position.y = 85;
+      group.add(beacon);
+    } else if (b.type === 'warrior_guild') {
+      // Fortified Bastion Guildhall with Timber Framing, Slate Roof & Training Yard (64x64)
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.8 });
+      const tudorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: this.tudorWallTexture, roughness: 0.8 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, map: this.royalRoofSlateTexture, roughness: 0.6 });
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.2 });
+
+      // Ground stone floor
+      const groundFloorGeo = new THREE.BoxGeometry(w * 0.8, 12, h * 0.72);
+      const groundFloor = new THREE.Mesh(groundFloorGeo, stoneMat);
+      groundFloor.position.y = 6;
+      groundFloor.castShadow = true;
+      group.add(groundFloor);
+
+      // Second floor half-timbering
+      const secondFloorGeo = new THREE.BoxGeometry(w * 0.84, 12, h * 0.76);
+      const secondFloor = new THREE.Mesh(secondFloorGeo, tudorMat);
+      secondFloor.position.y = 18;
+      secondFloor.castShadow = true;
+      group.add(secondFloor);
+
+      // Pitched Blue Slate Gable Roof
       const roofGeo = new THREE.ConeGeometry(w * 0.48, 18, 4);
-      const blueRoofMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
-      const roof = new THREE.Mesh(roofGeo, blueRoofMat);
-      roof.position.y = 31;
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.position.y = 32;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
 
-      // Shield & Crossed Swords Plaque above door
-      const shieldPlaqueGeo = new THREE.BoxGeometry(5, 6.5, 1);
-      const shieldMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.5 });
+      // Stone Chimney
+      const chimneyGeo = new THREE.BoxGeometry(4.5, 26, 4.5);
+      const chimney = new THREE.Mesh(chimneyGeo, stoneMat);
+      chimney.position.set(-w * 0.28, 18, -h * 0.22);
+      group.add(chimney);
+
+      // Ornate Shield & Crossed Broadswords Plaque
+      const shieldPlaqueGeo = new THREE.BoxGeometry(5.5, 7.5, 1.2);
+      const shieldMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.6, roughness: 0.3 });
       const shieldPlaque = new THREE.Mesh(shieldPlaqueGeo, shieldMat);
-      shieldPlaque.position.set(0, 18, h * 0.38);
+      shieldPlaque.position.set(0, 18, h * 0.38 + 0.6);
       group.add(shieldPlaque);
 
-      // Wooden Training Dummy outside in yard
-      const dummyPoleGeo = new THREE.CylinderGeometry(0.8, 0.8, 10, 6);
-      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+      // Oak Arched Double Doors
+      const doorGeo = new THREE.BoxGeometry(6, 9, 0.8);
+      const door = new THREE.Mesh(doorGeo, woodMat);
+      door.position.set(0, 4.5, h * 0.36 + 0.4);
+      group.add(door);
+
+      // Outdoor Training Yard: Straw Practice Dummy
+      const dummyPoleGeo = new THREE.CylinderGeometry(0.8, 0.8, 11, 6);
       const dummy = new THREE.Mesh(dummyPoleGeo, woodMat);
-      dummy.position.set(w * 0.34, 5, h * 0.25);
+      dummy.position.set(w * 0.32, 5.5, h * 0.26);
       dummy.castShadow = true;
       group.add(dummy);
 
-      const dummyTargetGeo = new THREE.SphereGeometry(2.4, 8, 8);
-      const strawMat = new THREE.MeshStandardMaterial({ color: 0xca8a04 });
-      const dummyTarget = new THREE.Mesh(dummyTargetGeo, strawMat);
-      dummyTarget.position.set(w * 0.34, 10, h * 0.25);
-      group.add(dummyTarget);
+      const strawTargetGeo = new THREE.SphereGeometry(2.6, 8, 8);
+      const strawMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.95 });
+      const strawTarget = new THREE.Mesh(strawTargetGeo, strawMat);
+      strawTarget.position.set(w * 0.32, 10.5, h * 0.26);
+      group.add(strawTarget);
+
+      // Weapon rack with swords
+      const rackGeo = new THREE.BoxGeometry(6, 5, 2);
+      const rack = new THREE.Mesh(rackGeo, woodMat);
+      rack.position.set(w * 0.32, 2.5, -h * 0.15);
+      group.add(rack);
     } else if (b.type === 'ranger_guild') {
-      // Rustic Timber Log Lodge with Forest Green Roof (2x2 = 64x64)
-      const logBaseGeo = new THREE.BoxGeometry(w * 0.82, 20, h * 0.74);
-      const logMat = new THREE.MeshStandardMaterial({ color: 0x542608, roughness: 0.9 });
-      const cabin = new THREE.Mesh(logBaseGeo, logMat);
+      // Rustic Log Lodge with Cedar Logs & Forest Green Shingles (64x64)
+      const logMat = new THREE.MeshStandardMaterial({ color: 0x78350f, map: this.timberLogTexture, roughness: 0.9 });
+      const greenRoofMat = new THREE.MeshStandardMaterial({ color: 0x065f46, map: this.royalRoofSlateTexture, roughness: 0.7 });
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.85 });
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+
+      const cabinGeo = new THREE.BoxGeometry(w * 0.82, 20, h * 0.72);
+      const cabin = new THREE.Mesh(cabinGeo, logMat);
       cabin.position.y = 10;
       cabin.castShadow = true;
       group.add(cabin);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.46, 17, 4);
-      const greenRoofMat = new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.7 });
+      // Covered Porch Veranda
+      const porchGeo = new THREE.BoxGeometry(w * 0.82, 1.5, 8);
+      const porch = new THREE.Mesh(porchGeo, woodMat);
+      porch.position.set(0, 0.75, h * 0.36 + 4);
+      group.add(porch);
+
+      const postGeo = new THREE.CylinderGeometry(0.7, 0.7, 12, 6);
+      const p1 = new THREE.Mesh(postGeo, woodMat); p1.position.set(-w * 0.35, 6, h * 0.36 + 7); group.add(p1);
+      const p2 = new THREE.Mesh(postGeo, woodMat); p2.position.set(w * 0.35, 6, h * 0.36 + 7); group.add(p2);
+
+      const roofGeo = new THREE.ConeGeometry(w * 0.48, 18, 4);
       const roof = new THREE.Mesh(roofGeo, greenRoofMat);
-      roof.position.y = 28.5;
+      roof.position.y = 29;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
 
-      // 2 Archery Target Hay Bales outside
-      const targetGeo = new THREE.CylinderGeometry(3.5, 3.5, 2.5, 12);
+      // Fieldstone Chimney
+      const chimneyGeo = new THREE.BoxGeometry(4.5, 25, 4.5);
+      const chimney = new THREE.Mesh(chimneyGeo, stoneMat);
+      chimney.position.set(-w * 0.28, 17, -h * 0.22);
+      group.add(chimney);
+
+      // 2 Archery Target Hay Bales
+      const targetGeo = new THREE.CylinderGeometry(4, 4, 3, 12);
       targetGeo.rotateX(Math.PI / 2);
       const targetMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.8 });
       const t1 = new THREE.Mesh(targetGeo, targetMat);
-      t1.position.set(w * 0.3, 3.5, h * 0.35);
+      t1.position.set(w * 0.3, 4, h * 0.36);
       t1.castShadow = true;
       group.add(t1);
 
       const t2 = new THREE.Mesh(targetGeo, targetMat);
-      t2.position.set(-w * 0.3, 3.5, h * 0.35);
+      t2.position.set(-w * 0.3, 4, h * 0.36);
       t2.castShadow = true;
       group.add(t2);
     } else if (b.type === 'rogue_guild') {
-      // Dark Shadowy Hideout with Lantern (2x2 = 64x64)
+      // Dark Shadowy Hideout with Iron Lantern & Slate Roof (64x64)
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, map: this.royalCastleWallTexture, roughness: 0.9 });
+      const slateMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, map: this.royalRoofSlateTexture, roughness: 0.75 });
+
       const baseGeo = new THREE.BoxGeometry(w * 0.8, 18, h * 0.72);
-      const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
-      const hideout = new THREE.Mesh(baseGeo, darkMat);
+      const hideout = new THREE.Mesh(baseGeo, stoneMat);
       hideout.position.y = 9;
       hideout.castShadow = true;
       group.add(hideout);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.44, 15, 4);
-      const slateMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.7 });
+      const roofGeo = new THREE.ConeGeometry(w * 0.44, 16, 4);
       const roof = new THREE.Mesh(roofGeo, slateMat);
-      roof.position.y = 25.5;
+      roof.position.y = 26;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
 
-      // Hanging Iron Lantern with warm glow
-      const lanternGeo = new THREE.BoxGeometry(2, 3, 2);
-      const lanternMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.8 });
+      // Warm Amber Lantern
+      const lanternGeo = new THREE.BoxGeometry(2.4, 3.4, 2.4);
+      const lanternMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 1.2 });
       const lantern = new THREE.Mesh(lanternGeo, lanternMat);
-      lantern.position.set(w * 0.34, 12, h * 0.38);
+      lantern.position.set(w * 0.34, 13, h * 0.38);
       group.add(lantern);
     } else if (b.type === 'wizard_tower') {
-      // Spiraling Arcane Tower with Balconies (2x2 = 64x64)
-      const cylinderGeo = new THREE.CylinderGeometry(w * 0.24, w * 0.34, 52, 12);
-      const towerMat = new THREE.MeshStandardMaterial({ color: 0x312e81, roughness: 0.7 });
+      // Spiraling Arcane Tower with Balconies & Levitating Pulsing Crystal (64x64)
+      const towerMat = new THREE.MeshStandardMaterial({ color: 0x312e81, map: this.royalCastleWallTexture, roughness: 0.7 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x7c3aed, map: this.royalRoofSlateTexture, roughness: 0.5 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8, roughness: 0.2 });
+
+      // Arcane Tower Shaft
+      const cylinderGeo = new THREE.CylinderGeometry(w * 0.24, w * 0.34, 52, 16);
       const tower = new THREE.Mesh(cylinderGeo, towerMat);
       tower.position.y = 26;
       tower.castShadow = true;
       group.add(tower);
 
-      const balconyGeo = new THREE.CylinderGeometry(w * 0.32, w * 0.32, 3.5, 12);
-      const balcony = new THREE.Mesh(balconyGeo, towerMat);
+      // Observation Balcony with Gold Railing
+      const balconyGeo = new THREE.CylinderGeometry(w * 0.33, w * 0.33, 3.5, 16);
+      const balcony = new THREE.Mesh(balconyGeo, goldMat);
       balcony.position.y = 38;
       group.add(balcony);
 
-      const coneGeo = new THREE.ConeGeometry(w * 0.3, 26, 12);
-      const coneMat = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.5 });
-      const cone = new THREE.Mesh(coneGeo, coneMat);
-      cone.position.y = 65;
+      // Conical Spire Roof
+      const coneGeo = new THREE.ConeGeometry(w * 0.3, 26, 16);
+      const cone = new THREE.Mesh(coneGeo, roofMat);
+      cone.position.y = 66;
       cone.castShadow = true;
       group.add(cone);
 
-      // Levitating Pulsing Arcane Orb
-      const orbGeo = new THREE.SphereGeometry(4.5, 12, 12);
-      const orbMat = new THREE.MeshStandardMaterial({
+      // Levitating Pulsing Arcane Crystal
+      const crystalGeo = new THREE.OctahedronGeometry(5.0, 0);
+      const crystalMat = new THREE.MeshStandardMaterial({
         color: 0xc084fc,
         emissive: 0x9333ea,
-        emissiveIntensity: 1.0,
+        emissiveIntensity: 1.2,
         roughness: 0.2
       });
-      const orb = new THREE.Mesh(orbGeo, orbMat);
-      orb.position.y = 80;
-      group.add(orb);
+      const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+      crystal.position.y = 82;
+      group.add(crystal);
     } else if (b.type === 'cleric_temple') {
-      // White Marble Cathedral with Grand Gold Dome (2x2 = 64x64)
+      // Monumental White Marble Cathedral with Grand Gold Dome (64x64)
+      const marbleMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+      const goldDomeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8, roughness: 0.2 });
+
       const cathedralBaseGeo = new THREE.BoxGeometry(w * 0.82, 24, h * 0.74);
-      const cathedralMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.6 });
-      const cathedral = new THREE.Mesh(cathedralBaseGeo, cathedralMat);
+      const cathedral = new THREE.Mesh(cathedralBaseGeo, marbleMat);
       cathedral.position.y = 12;
       cathedral.castShadow = true;
       group.add(cathedral);
 
-      const domeGeo = new THREE.SphereGeometry(w * 0.34, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-      const domeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.7, roughness: 0.2 });
-      const dome = new THREE.Mesh(domeGeo, domeMat);
+      // Portico Marble Columns
+      const colGeo = new THREE.CylinderGeometry(1.2, 1.4, 18, 10);
+      const colL = new THREE.Mesh(colGeo, marbleMat); colL.position.set(-8, 9, h * 0.37 + 3); group.add(colL);
+      const colR = new THREE.Mesh(colGeo, marbleMat); colR.position.set(8, 9, h * 0.37 + 3); group.add(colR);
+
+      // Grand Golden Dome
+      const domeGeo = new THREE.SphereGeometry(w * 0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+      const dome = new THREE.Mesh(domeGeo, goldDomeMat);
       dome.position.y = 24;
       group.add(dome);
 
-      // Golden Solar Cross
-      const crossVGeo = new THREE.BoxGeometry(1.4, 10, 1.4);
-      const crossHGeo = new THREE.BoxGeometry(5.5, 1.4, 1.4);
-      const crossV = new THREE.Mesh(crossVGeo, domeMat);
-      const crossH = new THREE.Mesh(crossHGeo, domeMat);
-      crossV.position.y = 41;
-      crossH.position.y = 43;
-      group.add(crossV);
-      group.add(crossH);
+      // Solar Cross
+      const crossVGeo = new THREE.BoxGeometry(1.6, 12, 1.6);
+      const crossHGeo = new THREE.BoxGeometry(6.5, 1.6, 1.6);
+      const crossV = new THREE.Mesh(crossVGeo, goldDomeMat); crossV.position.y = 42; group.add(crossV);
+      const crossH = new THREE.Mesh(crossHGeo, goldDomeMat); crossH.position.y = 44; group.add(crossH);
     } else if (b.type === 'marketplace') {
-      // Vibrant Multi-Stall Bazaar (2x2 = 64x64)
-      const baseGeo = new THREE.BoxGeometry(w * 0.85, 4, h * 0.85);
+      // Vibrant Multi-Stall Open Bazaar on Raised Cobblestone Plaza (64x64)
       const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
-      const base = new THREE.Mesh(baseGeo, woodMat);
+      const cobbleMat = new THREE.MeshStandardMaterial({ color: 0x64748b, map: this.cobbleTexture, roughness: 0.85 });
+
+      const baseGeo = new THREE.BoxGeometry(w * 0.86, 4, h * 0.86);
+      const base = new THREE.Mesh(baseGeo, cobbleMat);
       base.position.y = 2;
-      base.castShadow = true;
+      base.receiveShadow = true;
       group.add(base);
 
-      // Striped Red/White Tent Canopy
-      const canopyGeo = new THREE.ConeGeometry(w * 0.46, 18, 4);
-      const canopyMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.7 });
-      const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-      canopy.position.y = 20;
-      canopy.rotation.y = Math.PI / 4;
-      canopy.castShadow = true;
-      group.add(canopy);
+      // 4 Striped Merchant Stalls
+      const stallConfigs = [
+        { x: -w * 0.22, z: -h * 0.22, col: 0xef4444 },
+        { x: w * 0.22, z: -h * 0.22, col: 0x2563eb },
+        { x: -w * 0.22, z: h * 0.22, col: 0x16a34a },
+        { x: w * 0.22, z: h * 0.22, col: 0xd97706 },
+      ];
 
-      // Crates & Barrels
-      const barrelGeo = new THREE.CylinderGeometry(2.5, 2.5, 5, 8);
+      stallConfigs.forEach(s => {
+        const stallCounterGeo = new THREE.BoxGeometry(10, 6, 6);
+        const stallCounter = new THREE.Mesh(stallCounterGeo, woodMat);
+        stallCounter.position.set(s.x, 5, s.z);
+        group.add(stallCounter);
+
+        const canopyGeo = new THREE.ConeGeometry(9, 6, 4);
+        const canopyMat = new THREE.MeshStandardMaterial({ color: s.col, roughness: 0.7 });
+        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+        canopy.position.set(s.x, 14, s.z);
+        canopy.rotation.y = Math.PI / 4;
+        group.add(canopy);
+      });
+
+      // Trade Crates & Wine Barrels in center
+      const barrelGeo = new THREE.CylinderGeometry(2.5, 2.5, 5.5, 8);
       const barrel = new THREE.Mesh(barrelGeo, woodMat);
-      barrel.position.set(w * 0.3, 4.5, h * 0.25);
+      barrel.position.set(0, 4.5, 0);
       group.add(barrel);
     } else if (b.type === 'blacksmith') {
-      // Brick Forge with Tall Stone Chimney & Anvil (2x2 = 64x64)
+      // Brick Forge with Massive Stone Chimney & Anvil (64x64)
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.85 });
+      const brickMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.8 });
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9, roughness: 0.15 });
+
       const forgeBaseGeo = new THREE.BoxGeometry(w * 0.8, 18, h * 0.7);
-      const forgeMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.8 });
-      const forge = new THREE.Mesh(forgeBaseGeo, forgeMat);
+      const forge = new THREE.Mesh(forgeBaseGeo, stoneMat);
       forge.position.y = 9;
       forge.castShadow = true;
       group.add(forge);
 
-      const chimneyGeo = new THREE.BoxGeometry(7, 34, 7);
-      const chimney = new THREE.Mesh(chimneyGeo, forgeMat);
-      chimney.position.set(w * 0.25, 17, -h * 0.2);
+      // Tall Stone Chimney with glowing firebox
+      const chimneyGeo = new THREE.BoxGeometry(8, 36, 8);
+      const chimney = new THREE.Mesh(chimneyGeo, brickMat);
+      chimney.position.set(w * 0.25, 18, -h * 0.2);
       chimney.castShadow = true;
       group.add(chimney);
 
-      // Anvil outside
-      const anvilGeo = new THREE.BoxGeometry(3.5, 4.5, 5);
-      const anvilMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.2 });
-      const anvil = new THREE.Mesh(anvilGeo, anvilMat);
-      anvil.position.set(-w * 0.25, 2.25, h * 0.25);
+      // Anvil on Oak Stump outside
+      const stumpGeo = new THREE.CylinderGeometry(2.5, 2.8, 3, 8);
+      const stump = new THREE.Mesh(stumpGeo, woodMat);
+      stump.position.set(-w * 0.25, 1.5, h * 0.25);
+      group.add(stump);
+
+      const anvilGeo = new THREE.BoxGeometry(3.5, 3.5, 5.5);
+      const anvil = new THREE.Mesh(anvilGeo, metalMat);
+      anvil.position.set(-w * 0.25, 4.5, h * 0.25);
       group.add(anvil);
     } else if (b.type === 'royal_inn') {
-      // Half-Timber Bavarian Tavern (2x2 = 64x64)
+      // Bavarian Half-Timber Tavern with Shingle Roof (64x64)
+      const tudorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: this.tudorWallTexture, roughness: 0.8 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x78350f, map: this.royalRoofSlateTexture, roughness: 0.7 });
+
       const innBaseGeo = new THREE.BoxGeometry(w * 0.82, 22, h * 0.74);
-      const innMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.8 });
-      const inn = new THREE.Mesh(innBaseGeo, innMat);
+      const inn = new THREE.Mesh(innBaseGeo, tudorMat);
       inn.position.y = 11;
       inn.castShadow = true;
       group.add(inn);
 
-      const roofGeo = new THREE.ConeGeometry(w * 0.46, 17, 4);
-      const roofMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+      const roofGeo = new THREE.ConeGeometry(w * 0.48, 18, 4);
       const roof = new THREE.Mesh(roofGeo, roofMat);
-      roof.position.y = 30.5;
+      roof.position.y = 31;
       roof.rotation.y = Math.PI / 4;
       roof.castShadow = true;
       group.add(roof);
     } else if (b.type === 'peasant_cottage') {
-      // Realistic Thatched Peasant Cottage (1x1 tile = 32x32)
-      const cottageBaseGeo = new THREE.BoxGeometry(w * 0.72, 12, h * 0.72);
-      const cottageBaseMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.9 }); // Whitewashed plaster
-      const cottageBase = new THREE.Mesh(cottageBaseGeo, cottageBaseMat);
+      // Detailed Thatched Peasant Cottage with Stone Base (32x32)
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.85 });
+      const thatchMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, map: this.thatchTexture, roughness: 0.95 });
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+
+      const cottageBaseGeo = new THREE.BoxGeometry(w * 0.74, 12, h * 0.74);
+      const cottageBase = new THREE.Mesh(cottageBaseGeo, stoneMat);
       cottageBase.position.y = 6;
       cottageBase.castShadow = true;
       group.add(cottageBase);
 
-      // High-Pitched Straw Thatched Roof
-      const thatchGeo = new THREE.ConeGeometry(w * 0.48, 11, 4);
-      const thatchMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.95 });
+      const thatchGeo = new THREE.ConeGeometry(w * 0.5, 12, 4);
       const thatch = new THREE.Mesh(thatchGeo, thatchMat);
-      thatch.position.y = 17.5;
+      thatch.position.y = 18;
       thatch.rotation.y = Math.PI / 4;
       thatch.castShadow = true;
       group.add(thatch);
 
-      // Stone Chimney with Smoke
-      const chimneyGeo = new THREE.BoxGeometry(2.5, 10, 2.5);
-      const chimneyMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
-      const chimney = new THREE.Mesh(chimneyGeo, chimneyMat);
-      chimney.position.set(w * 0.2, 17, -h * 0.2);
+      // Stone Chimney
+      const chimneyGeo = new THREE.BoxGeometry(2.5, 11, 2.5);
+      const chimney = new THREE.Mesh(chimneyGeo, stoneMat);
+      chimney.position.set(w * 0.2, 18, -h * 0.2);
       group.add(chimney);
 
-      // Wooden door
       const doorGeo = new THREE.BoxGeometry(3, 5, 0.4);
-      const doorMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
-      const door = new THREE.Mesh(doorGeo, doorMat);
-      door.position.set(0, 2.5, h * 0.36);
+      const door = new THREE.Mesh(doorGeo, woodMat);
+      door.position.set(0, 2.5, h * 0.37);
       group.add(door);
     } else if (b.type === 'guard_tower') {
-      // Fortified Stone Watchtower (1x1 tile = 32x32)
+      // Fortified Stone Watchtower (32x32)
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.8 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, map: this.royalRoofSlateTexture, roughness: 0.6 });
+
       const towerGeo = new THREE.BoxGeometry(w * 0.5, 42, h * 0.5);
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
       const tower = new THREE.Mesh(towerGeo, stoneMat);
       tower.position.y = 21;
       tower.castShadow = true;
       group.add(tower);
 
-      const parapetGeo = new THREE.BoxGeometry(w * 0.6, 4, h * 0.6);
+      const parapetGeo = new THREE.BoxGeometry(w * 0.6, 4.5, h * 0.6);
       const parapet = new THREE.Mesh(parapetGeo, stoneMat);
       parapet.position.y = 42;
       group.add(parapet);
 
       const roofGeo = new THREE.ConeGeometry(w * 0.38, 14, 4);
-      const roofMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
       const roof = new THREE.Mesh(roofGeo, roofMat);
       roof.position.y = 51;
       roof.rotation.y = Math.PI / 4;
       group.add(roof);
     } else {
-      // Default structure
       const baseGeo = new THREE.BoxGeometry(w * 0.75, 18, h * 0.75);
-      const baseMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x334155, map: this.royalCastleWallTexture, roughness: 0.8 });
       const base = new THREE.Mesh(baseGeo, baseMat);
       base.position.y = 9;
       base.castShadow = true;
@@ -1904,8 +2325,8 @@ export class ThreeRenderer {
 
   private createHeroNameplate(hero: Hero, heroGroup: THREE.Group) {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
+    canvas.width = 256;
+    canvas.height = 96;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -1913,23 +2334,24 @@ export class ThreeRenderer {
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
-    const spriteMat = new THREE.SpriteMaterial({
+    const badgeGeo = new THREE.PlaneGeometry(13.0, 5.0);
+    badgeGeo.rotateX(-Math.PI / 2);
+    const badgeMat = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
-      depthTest: false
+      depthWrite: false,
+      side: THREE.DoubleSide
     });
-    const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(52, 13.0, 1);
-    const headY = hero.heroClass === 'dwarf' ? 12.0 : 14.5;
-    sprite.position.set(0, headY, 0);
-    sprite.name = 'nameLabel';
+    const badge = new THREE.Mesh(badgeGeo, badgeMat);
+    badge.position.set(0, 0.15, 2.2);
+    badge.name = 'nameLabel';
 
-    heroGroup.add(sprite);
+    heroGroup.add(badge);
 
     this.heroLabelsMap.set(hero.id, {
       canvas,
       texture,
-      sprite,
+      mesh: badge,
       lastHp: hero.hp,
       lastLevel: hero.level
     });
@@ -1951,44 +2373,31 @@ export class ThreeRenderer {
   }
 
   private drawHeroNameCanvas(ctx: CanvasRenderingContext2D, hero: Hero) {
-    ctx.clearRect(0, 0, 512, 128);
+    ctx.clearRect(0, 0, 256, 96);
 
     const classDef = HERO_CLASS_DEFINITIONS[hero.heroClass];
     const color = classDef.color || '#3b82f6';
 
-    // Dark rounded high-contrast translucent pill banner
-    ctx.fillStyle = 'rgba(10, 15, 29, 0.94)';
+    // Subtle, low-noise dark pill badge on the ground
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
     ctx.strokeStyle = color;
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 2.5;
 
     ctx.beginPath();
-    ctx.roundRect(14, 14, 484, 100, 24);
+    ctx.roundRect(8, 8, 240, 80, 16);
     ctx.fill();
     ctx.stroke();
 
-    // Class Color Indicator Dot
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(58, 56, 18, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4;
-    ctx.stroke();
-
-    // Hero Name & Level Text (Large, Bold, High-Contrast)
+    // Clean Hero Name & Level (Minimalist, zero visual clutter)
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 42px sans-serif';
-    ctx.textAlign = 'left';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${hero.name} (L${hero.level})`, 92, 50);
+    ctx.fillText(`${hero.name} (L${hero.level})`, 128, 40);
 
-    // Mini Health Bar along bottom of nameplate
-    const hpRatio = Math.max(0, Math.min(1, hero.hp / hero.maxHp));
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(92, 82, 386, 16);
-
-    ctx.fillStyle = hpRatio > 0.5 ? '#22c55e' : (hpRatio > 0.25 ? '#eab308' : '#ef4444');
-    ctx.fillRect(92, 82, 386 * hpRatio, 16);
+    // Thin class accent underline
+    ctx.fillStyle = color;
+    ctx.fillRect(40, 68, 176, 4);
   }
 
   private create3DHeroMesh(h: Hero): THREE.Group {
