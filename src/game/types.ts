@@ -152,6 +152,7 @@ export interface Building {
   goldStored: number; // uncollected taxes/sales
   heroSlots: number;
   recruitedHeroIds: string[];
+  trainingQueue?: { heroClass: HeroClass; progress: number; totalTime: number }[];
   researchedUpgrades: string[];
   availableUpgrades: string[];
   taxRate: number;

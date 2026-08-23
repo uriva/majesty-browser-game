@@ -309,6 +309,35 @@ export class CanvasRenderer {
       ctx.fillRect(px, py - 10, barW * hpPercent, barH);
     }
 
+    // Training progress bar if training heroes
+    if (b.trainingQueue && b.trainingQueue.length > 0) {
+      const current = b.trainingQueue[0];
+      const barW = w;
+      const barH = 5;
+      const progress = Math.max(0, Math.min(1, current.progress / 100));
+      const barY = b.hp < b.maxHp ? py - 18 : py - 10;
+
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(px, barY, barW, barH);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(px, barY, barW * progress, barH);
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px, barY, barW, barH);
+
+      // Queue badge if multiple
+      if (b.trainingQueue.length > 1) {
+        ctx.fillStyle = '#0284c7';
+        ctx.beginPath();
+        ctx.arc(px + w - 4, barY - 4, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`+${b.trainingQueue.length - 1}`, px + w - 4, barY - 1);
+      }
+    }
+
     // Gold ready indicator (for marketplace/blacksmith/inn with > 30g)
     if (b.goldStored >= 30) {
       ctx.fillStyle = '#fbbf24';

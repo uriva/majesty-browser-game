@@ -103,15 +103,52 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
             </span>
             <span className="text-[11px] text-slate-400 font-normal">
               {building.recruitedHeroIds.length} / {building.heroSlots} Enlisted
+              {building.trainingQueue && building.trainingQueue.length > 0 && (
+                <span className="text-sky-400 font-bold ml-1">
+                  ({building.trainingQueue.length} in training)
+                </span>
+              )}
             </span>
           </div>
+
+          {/* Active Training Progress Card */}
+          {building.trainingQueue && building.trainingQueue.length > 0 && (
+            <div className="bg-sky-950/40 border border-sky-700/60 rounded-lg p-2.5 mb-2.5">
+              <div className="flex justify-between items-center text-xs mb-1">
+                <span className="text-sky-300 font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                  Training {HERO_CLASS_DEFINITIONS[building.trainingQueue[0].heroClass].name}...
+                </span>
+                <span className="font-mono text-[11px] text-sky-400">
+                  {Math.round(building.trainingQueue[0].progress)}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-sky-950">
+                <div
+                  className="bg-gradient-to-r from-sky-500 to-cyan-400 h-full transition-all duration-150"
+                  style={{ width: `${Math.min(100, Math.max(0, building.trainingQueue[0].progress))}%` }}
+                />
+              </div>
+              {building.trainingQueue.length > 1 && (
+                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400">
+                  <span>Queued:</span>
+                  {building.trainingQueue.slice(1).map((q, idx) => (
+                    <span key={idx} className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 text-sky-300 font-mono">
+                      {HERO_CLASS_DEFINITIONS[q.heroClass].name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             {bDef.recruits.map((heroClass) => {
               const classDef = HERO_CLASS_DEFINITIONS[heroClass];
               const cost = bDef.heroRecruitCost?.[heroClass] || 150;
               const canAfford = treasuryGold >= cost;
-              const isFull = building.recruitedHeroIds.length >= building.heroSlots;
+              const totalQueuedAndRecruited = building.recruitedHeroIds.length + (building.trainingQueue?.length || 0);
+              const isFull = totalQueuedAndRecruited >= building.heroSlots;
 
               return (
                 <button
@@ -134,6 +171,9 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
                     <div>
                       <div className="font-semibold text-xs text-slate-200">
                         {classDef.name}
+                        <span className="text-[10px] text-slate-400 font-normal ml-1.5">
+                          ({classDef.trainingTime}s training)
+                        </span>
                       </div>
                       <div className="text-[10px] text-slate-400">
                         {classDef.description}

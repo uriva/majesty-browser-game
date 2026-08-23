@@ -48,9 +48,10 @@ class MusicManager {
   private synthInterval: NodeJS.Timeout | null = null;
   private audioCtx: AudioContext | null = null;
   public currentTrackIndex: number = 0;
-  public isPlaying: boolean = false;
-  public volume: number = 0.4;
+  public isPlaying: boolean = true;
+  public volume: number = 0.45;
   public muted: boolean = false;
+  private hasUserInteracted: boolean = false;
   private listeners: ((state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean }) => void)[] = [];
 
   constructor() {
@@ -65,6 +66,37 @@ class MusicManager {
 
       this.audioElement.addEventListener('error', (e) => {
         console.warn('Audio playback error, falling back or advancing track:', e);
+      });
+
+      // Try autoplay immediately
+      this.tryPlay();
+
+      // Listen for first interaction to unlock browser audio autoplay
+      const unlockAudio = () => {
+        if (!this.hasUserInteracted) {
+          this.hasUserInteracted = true;
+          if (this.isPlaying) {
+            this.play();
+          }
+        }
+        window.removeEventListener('click', unlockAudio);
+        window.removeEventListener('keydown', unlockAudio);
+        window.removeEventListener('pointerdown', unlockAudio);
+      };
+
+      window.addEventListener('click', unlockAudio, { passive: true });
+      window.addEventListener('keydown', unlockAudio, { passive: true });
+      window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    }
+  }
+
+  private tryPlay() {
+    const track = MUSIC_TRACKS[this.currentTrackIndex];
+    if (track.type === 'file' && this.audioElement && track.url) {
+      this.audioElement.src = track.url;
+      this.audioElement.volume = this.muted ? 0 : this.volume;
+      this.audioElement.play().catch(() => {
+        // Will start on first user interaction via listener
       });
     }
   }

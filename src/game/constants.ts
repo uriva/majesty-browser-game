@@ -232,6 +232,7 @@ export interface HeroClassDef {
   speed: number;
   attackRange: number;
   attackCooldown: number;
+  trainingTime: number; // in seconds
   baseBravery: number;
   baseGreed: number;
   baseExploration: number;
@@ -255,6 +256,7 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     speed: 55,
     attackRange: 28,
     attackCooldown: 1.1,
+    trainingTime: 5.5,
     baseBravery: 80,
     baseGreed: 50,
     baseExploration: 35,
@@ -276,6 +278,7 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     speed: 70,
     attackRange: 130,
     attackCooldown: 1.2,
+    trainingTime: 5.0,
     baseBravery: 55,
     baseGreed: 60,
     baseExploration: 95,
@@ -297,6 +300,7 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     speed: 75,
     attackRange: 26,
     attackCooldown: 0.8,
+    trainingTime: 4.0,
     baseBravery: 40,
     baseGreed: 95,
     baseExploration: 65,
@@ -318,6 +322,7 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     speed: 48,
     attackRange: 140,
     attackCooldown: 1.5,
+    trainingTime: 7.0,
     baseBravery: 35,
     baseGreed: 45,
     baseExploration: 40,
@@ -339,6 +344,7 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     speed: 52,
     attackRange: 32,
     attackCooldown: 1.3,
+    trainingTime: 6.0,
     baseBravery: 70,
     baseGreed: 30,
     baseExploration: 40,
@@ -360,6 +366,7 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     speed: 42,
     attackRange: 26,
     attackCooldown: 1.4,
+    trainingTime: 6.5,
     baseBravery: 90,
     baseGreed: 70,
     baseExploration: 30,
@@ -381,6 +388,7 @@ export const HERO_CLASS_DEFINITIONS: Record<HeroClass, HeroClassDef> = {
     speed: 80,
     attackRange: 135,
     attackCooldown: 0.9,
+    trainingTime: 5.0,
     baseBravery: 50,
     baseGreed: 65,
     baseExploration: 85,

@@ -379,6 +379,15 @@ export class GameEngine {
           audioManager.playBuildingPlaced();
           this.addNotification('Construction Complete', `${b.name} is ready to serve your realm!`, 'success');
         }
+      } else if (b.trainingQueue && b.trainingQueue.length > 0) {
+        // Process hero recruitment training over time
+        const currentRecruit = b.trainingQueue[0];
+        currentRecruit.progress += (100 / currentRecruit.totalTime) * delta;
+
+        if (currentRecruit.progress >= 100) {
+          b.trainingQueue.shift();
+          this.spawnTrainedHero(b, currentRecruit.heroClass);
+        }
       }
     }
   }
@@ -445,13 +454,34 @@ export class GameEngine {
       return false;
     }
 
-    if (building.recruitedHeroIds.length >= (building.heroSlots || 4)) {
-      this.addNotification('Guild Full', `This guild has reached its maximum hero roster.`, 'warning');
+    if (!building.trainingQueue) {
+      building.trainingQueue = [];
+    }
+
+    const currentTotal = building.recruitedHeroIds.length + building.trainingQueue.length;
+    if (currentTotal >= (building.heroSlots || 4)) {
+      this.addNotification('Guild Full', `This guild has reached its maximum hero roster and training queue.`, 'warning');
       return false;
     }
 
     this.state.treasuryGold -= cost;
     this.state.stats.goldSpent += cost;
+
+    const classDef = HERO_CLASS_DEFINITIONS[heroClass];
+    const trainingTime = classDef.trainingTime || 5.0;
+
+    building.trainingQueue.push({
+      heroClass,
+      progress: 0,
+      totalTime: trainingTime
+    });
+
+    audioManager.playCoinSound();
+    this.addNotification('Enlisted for Training', `${classDef.name} entered training at ${building.name} (${trainingTime}s).`, 'info');
+    return true;
+  }
+
+  private spawnTrainedHero(building: Building, heroClass: HeroClass) {
     this.state.stats.heroesRecruited += 1;
 
     const classDef = HERO_CLASS_DEFINITIONS[heroClass];
@@ -509,9 +539,9 @@ export class GameEngine {
     building.recruitedHeroIds.push(newHero.id);
     this.state.heroes.push(newHero);
 
-    audioManager.playAdvisorChime();
-    this.addNotification('Hero Enlisted', `${newHero.name} (${classDef.name}) joined the guild!`, 'success');
-    return true;
+    audioManager.playLevelUp();
+    this.addFloatingText(`+${newHero.name} Trained!`, spawnX, spawnY - 20, '#38bdf8');
+    this.addNotification('Hero Ready!', `${newHero.name} (${classDef.name}) has completed training and joined the realm!`, 'success');
   }
 
   public researchUpgrade(buildingId: string, upgradeId: string): boolean {

@@ -15,9 +15,9 @@ import {
 } from 'lucide-react';
 
 export const MusicPlayer: React.FC = () => {
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [currentTrack, setCurrentTrack] = useState<MusicTrack>(MUSIC_TRACKS[0]);
-  const [volume, setVolume] = useState<number>(0.4);
+  const [volume, setVolume] = useState<number>(0.45);
   const [muted, setMuted] = useState<boolean>(false);
   const [showTrackList, setShowTrackList] = useState<boolean>(false);
 
