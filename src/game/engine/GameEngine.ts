@@ -427,6 +427,9 @@ export class GameEngine {
       this.state.heroes,
       this.state.monsters,
       this.state.lairs,
+      this.state.buildings,
+      this.state.taxCollectors,
+      this.state.peasants,
       this.state.particles,
       this.state.floatingTexts,
       () => audioManager.playSwordClash()

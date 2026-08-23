@@ -1,4 +1,4 @@
-import { Building, FloatingText, Hero, Monster, MonsterLair, Particle, Projectile } from '../types';
+import { Building, FloatingText, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector } from '../types';
 import { GridManager } from './Grid';
 
 export class CombatManager {
@@ -14,6 +14,9 @@ export class CombatManager {
     heroes: Hero[],
     monsters: Monster[],
     lairs: MonsterLair[],
+    buildings: Building[],
+    taxCollectors: TaxCollector[],
+    peasants: Peasant[],
     particles: Particle[],
     floatingTexts: FloatingText[],
     onHitSound?: (type: string) => void
@@ -32,7 +35,7 @@ export class CombatManager {
         p.currentY = p.targetY;
 
         // Apply damage & effects
-        this.handleProjectileImpact(p, heroes, monsters, lairs, particles, floatingTexts);
+        this.handleProjectileImpact(p, heroes, monsters, lairs, buildings, taxCollectors, peasants, particles, floatingTexts);
         if (onHitSound) onHitSound(p.type);
 
         projectiles.splice(i, 1);
@@ -65,6 +68,9 @@ export class CombatManager {
     heroes: Hero[],
     monsters: Monster[],
     lairs: MonsterLair[],
+    buildings: Building[],
+    taxCollectors: TaxCollector[],
+    peasants: Peasant[],
     particles: Particle[],
     floatingTexts: FloatingText[]
   ) {
@@ -158,9 +164,9 @@ export class CombatManager {
         }
       }
     } else {
-      // Monster projectile hitting hero
+      // Monster projectile hitting heroes, buildings, tax collectors, or peasants
       if (p.type === 'dragon_breath') {
-        // AOE Damage on heroes
+        // AOE Damage on heroes, peasants, tax collectors, and buildings
         const aoeRadius = 55;
         for (const h of heroes) {
           if (h.isDead) continue;
@@ -181,7 +187,27 @@ export class CombatManager {
             });
           }
         }
+        for (const b of buildings) {
+          if (b.hp <= 0) continue;
+          const bcx = (b.x + b.width / 2) * this.gridManager.tileSize;
+          const bcy = (b.y + b.height / 2) * this.gridManager.tileSize;
+          if (Math.hypot(bcx - p.currentX, bcy - p.currentY) <= aoeRadius + (b.width * 16)) {
+            b.hp -= p.damage;
+            floatingTexts.push({
+              id: `ft_${Date.now()}_${Math.random()}`,
+              text: `-${p.damage}`,
+              x: p.currentX,
+              y: p.currentY - 12,
+              color: '#f97316',
+              fontSize: 14,
+              life: 0.9,
+              maxLife: 0.9,
+              vy: -25
+            });
+          }
+        }
       } else {
+        // Check if target is a Hero
         const targetHero = heroes.find(h => h.id === p.targetEntityId);
         if (targetHero && !targetHero.isDead) {
           const actualDamage = Math.max(1, p.damage - targetHero.defense);
@@ -197,6 +223,57 @@ export class CombatManager {
             maxLife: 0.8,
             vy: -25
           });
+        } else {
+          // Check if target is a Building (e.g. Goblin Shaman attacking a Peasant Cottage!)
+          const targetBuilding = buildings.find(b => b.id === p.targetEntityId);
+          if (targetBuilding && targetBuilding.hp > 0) {
+            targetBuilding.hp -= p.damage;
+            floatingTexts.push({
+              id: `ft_${Date.now()}_${Math.random()}`,
+              text: `-${p.damage}`,
+              x: p.currentX,
+              y: p.currentY - 12,
+              color: '#f97316',
+              fontSize: 13,
+              life: 0.9,
+              maxLife: 0.9,
+              vy: -25
+            });
+          } else {
+            // Check if target is a Tax Collector
+            const targetTax = taxCollectors.find(tc => tc.id === p.targetEntityId);
+            if (targetTax && targetTax.hp > 0) {
+              targetTax.hp -= p.damage;
+              floatingTexts.push({
+                id: `ft_${Date.now()}_${Math.random()}`,
+                text: `-${p.damage}`,
+                x: targetTax.x,
+                y: targetTax.y - 12,
+                color: '#f87171',
+                fontSize: 12,
+                life: 0.8,
+                maxLife: 0.8,
+                vy: -25
+              });
+            } else {
+              // Check if target is a Peasant
+              const targetPeasant = peasants.find(peasant => peasant.id === p.targetEntityId);
+              if (targetPeasant && targetPeasant.hp > 0) {
+                targetPeasant.hp -= p.damage;
+                floatingTexts.push({
+                  id: `ft_${Date.now()}_${Math.random()}`,
+                  text: `-${p.damage}`,
+                  x: targetPeasant.x,
+                  y: targetPeasant.y - 12,
+                  color: '#f87171',
+                  fontSize: 12,
+                  life: 0.8,
+                  maxLife: 0.8,
+                  vy: -25
+                });
+              }
+            }
+          }
         }
       }
     }
