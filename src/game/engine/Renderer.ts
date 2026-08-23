@@ -1390,7 +1390,8 @@ export class CanvasRenderer {
     ctx.textAlign = 'center';
     ctx.shadowColor = '#000000';
     ctx.shadowBlur = 4;
-    ctx.fillText(ft.text, ft.x, ft.y);
+    const displayText = ft.text.replace(/(\d+)\.\d+/g, (match) => Math.round(parseFloat(match)).toString());
+    ctx.fillText(displayText, ft.x, ft.y);
     ctx.restore();
   }
 

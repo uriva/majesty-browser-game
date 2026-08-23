@@ -6189,7 +6189,10 @@ export class ThreeRenderer {
     const ctx = canvas.getContext('2d');
     if (!ctx) return new THREE.Sprite();
 
-    const isGold = ft.text.includes('g') || ft.text.includes('Tax') || ft.text.includes('Treasury') || ft.text.includes('Bounty') || ft.text.includes('Loot') || ft.text.includes('Ale');
+    // Sanitize any raw floating point fractions into clean integers (e.g. 4.000000003 -> 4)
+    const displayText = ft.text.replace(/(\d+)\.\d+/g, (match) => Math.round(parseFloat(match)).toString());
+
+    const isGold = displayText.includes('g') || displayText.includes('Tax') || displayText.includes('Treasury') || displayText.includes('Bounty') || displayText.includes('Loot') || displayText.includes('Ale');
 
     if (isGold) {
       // 1. Draw Large 3D Shaded Metallic Sovereign Gold Coin
@@ -6228,10 +6231,10 @@ export class ThreeRenderer {
 
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 12;
-      ctx.strokeText(ft.text, 144, cy);
+      ctx.strokeText(displayText, 144, cy);
 
       ctx.fillStyle = '#fef08a';
-      ctx.fillText(ft.text, 144, cy);
+      ctx.fillText(displayText, 144, cy);
     } else {
       // Large Combat damage, healing, or level up banner
       ctx.font = 'bold 58px sans-serif';
@@ -6240,10 +6243,10 @@ export class ThreeRenderer {
 
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 12;
-      ctx.strokeText(ft.text, 256, 80);
+      ctx.strokeText(displayText, 256, 80);
 
       ctx.fillStyle = ft.color || '#ffffff';
-      ctx.fillText(ft.text, 256, 80);
+      ctx.fillText(displayText, 256, 80);
     }
 
     const texture = new THREE.CanvasTexture(canvas);

@@ -1562,9 +1562,12 @@ export class GameEngine {
   }
 
   public addFloatingText(text: string, x: number, y: number, color: string) {
+    // Cleanly sanitize any floating numbers into rounded integers (e.g. 4.000000003 -> 4)
+    const cleanText = text.replace(/(\d+)\.\d+/g, (match) => Math.round(parseFloat(match)).toString());
+
     this.state.floatingTexts.push({
       id: `ft_${Date.now()}_${Math.random()}`,
-      text,
+      text: cleanText,
       x,
       y,
       color,

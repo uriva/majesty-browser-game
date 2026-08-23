@@ -280,27 +280,30 @@ export class MonsterAIManager {
             if (closestTarget.type === 'hero') {
               const h = heroes.find(hero => hero.id === closestTarget!.id);
               if (h) {
-                const damage = Math.max(1, monster.attackPower - h.defense);
+                const damage = Math.max(1, Math.round(monster.attackPower - h.defense));
                 h.hp -= damage;
                 if (onFloatingText) onFloatingText(`-${damage}`, h.x, h.y - 12, '#ef4444');
               }
             } else if (closestTarget.type === 'tax_collector') {
               const tc = taxCollectors.find(collector => collector.id === closestTarget!.id);
               if (tc) {
-                tc.hp -= monster.attackPower;
-                if (onFloatingText) onFloatingText(`-${monster.attackPower}`, tc.x, tc.y - 12, '#f87171');
+                const damage = Math.max(1, Math.round(monster.attackPower));
+                tc.hp -= damage;
+                if (onFloatingText) onFloatingText(`-${damage}`, tc.x, tc.y - 12, '#f87171');
               }
             } else if (closestTarget.type === 'peasant') {
               const p = peasants.find(peasant => peasant.id === closestTarget!.id);
               if (p && p.hp > 0) {
-                p.hp -= monster.attackPower;
-                if (onFloatingText) onFloatingText(`-${monster.attackPower}`, closestTarget.x, closestTarget.y - 12, '#f87171');
+                const damage = Math.max(1, Math.round(monster.attackPower));
+                p.hp -= damage;
+                if (onFloatingText) onFloatingText(`-${damage}`, closestTarget.x, closestTarget.y - 12, '#f87171');
               }
             } else if (closestTarget.type === 'building') {
               const b = buildings.find(build => build.id === closestTarget!.id);
               if (b && (!b.isConstructing || b.constructionProgress > 0)) {
-                b.hp -= monster.attackPower;
-                if (onFloatingText) onFloatingText(`-${monster.attackPower}`, closestTarget.x, closestTarget.y - 12, '#f97316');
+                const damage = Math.max(1, Math.round(monster.attackPower));
+                b.hp -= damage;
+                if (onFloatingText) onFloatingText(`-${damage}`, closestTarget.x, closestTarget.y - 12, '#f97316');
               }
             }
           }

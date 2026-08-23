@@ -112,7 +112,7 @@ export class CombatManager {
         for (const m of monsters) {
           const dist = Math.hypot(m.x - p.currentX, m.y - p.currentY);
           if (dist <= aoeRadius) {
-            const actualDamage = Math.max(1, p.damage - m.defense);
+            const actualDamage = Math.max(1, Math.round(p.damage - m.defense));
             m.hp -= actualDamage;
             if (ownerHero) {
               ownerHero.xp += Math.max(3, Math.round(actualDamage * 0.35));
@@ -134,7 +134,7 @@ export class CombatManager {
         // Single target
         const targetMonster = monsters.find(m => m.id === p.targetEntityId);
         if (targetMonster) {
-          const actualDamage = Math.max(1, p.damage - targetMonster.defense);
+          const actualDamage = Math.max(1, Math.round(p.damage - targetMonster.defense));
           targetMonster.hp -= actualDamage;
           if (ownerHero) {
             ownerHero.xp += Math.max(3, Math.round(actualDamage * 0.4));
@@ -154,13 +154,14 @@ export class CombatManager {
           // Check if target is a lair
           const targetLair = lairs.find(l => l.id === p.targetEntityId);
           if (targetLair) {
-            targetLair.hp -= p.damage;
+            const dmg = Math.round(p.damage);
+            targetLair.hp -= dmg;
             if (ownerHero) {
-              ownerHero.xp += Math.max(2, Math.round(p.damage * 0.25));
+              ownerHero.xp += Math.max(2, Math.round(dmg * 0.25));
             }
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
-              text: `-${p.damage}`,
+              text: `-${dmg}`,
               x: p.currentX,
               y: p.currentY - 12,
               color: '#fbbf24',
@@ -181,7 +182,7 @@ export class CombatManager {
           if (h.isDead) continue;
           const dist = Math.hypot(h.x - p.currentX, h.y - p.currentY);
           if (dist <= aoeRadius) {
-            const actualDamage = Math.max(1, p.damage - h.defense);
+            const actualDamage = Math.max(1, Math.round(p.damage - h.defense));
             h.hp -= actualDamage;
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
@@ -202,10 +203,11 @@ export class CombatManager {
           const bcx = (b.x + b.width / 2) * this.gridManager.tileSize;
           const bcy = (b.y + b.height / 2) * this.gridManager.tileSize;
           if (Math.hypot(bcx - p.currentX, bcy - p.currentY) <= aoeRadius + (b.width * 16)) {
-            b.hp -= p.damage;
+            const dmg = Math.round(p.damage);
+            b.hp -= dmg;
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
-              text: `-${p.damage}`,
+              text: `-${dmg}`,
               x: p.currentX,
               y: p.currentY - 12,
               color: '#f97316',
@@ -220,7 +222,7 @@ export class CombatManager {
         // Check if target is a Hero
         const targetHero = heroes.find(h => h.id === p.targetEntityId);
         if (targetHero && !targetHero.isDead) {
-          const actualDamage = Math.max(1, p.damage - targetHero.defense);
+          const actualDamage = Math.max(1, Math.round(p.damage - targetHero.defense));
           targetHero.hp -= actualDamage;
           floatingTexts.push({
             id: `ft_${Date.now()}_${Math.random()}`,
@@ -237,10 +239,11 @@ export class CombatManager {
           // Check if target is a Building (e.g. Goblin Shaman attacking a Peasant Cottage!)
           const targetBuilding = buildings.find(b => b.id === p.targetEntityId);
           if (targetBuilding && targetBuilding.hp > 0 && (!targetBuilding.isConstructing || targetBuilding.constructionProgress > 0)) {
-            targetBuilding.hp -= p.damage;
+            const dmg = Math.round(p.damage);
+            targetBuilding.hp -= dmg;
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
-              text: `-${p.damage}`,
+              text: `-${dmg}`,
               x: p.currentX,
               y: p.currentY - 12,
               color: '#f97316',
@@ -253,10 +256,11 @@ export class CombatManager {
             // Check if target is a Tax Collector
             const targetTax = taxCollectors.find(tc => tc.id === p.targetEntityId);
             if (targetTax && targetTax.hp > 0) {
-              targetTax.hp -= p.damage;
+              const dmg = Math.round(p.damage);
+              targetTax.hp -= dmg;
               floatingTexts.push({
                 id: `ft_${Date.now()}_${Math.random()}`,
-                text: `-${p.damage}`,
+                text: `-${dmg}`,
                 x: targetTax.x,
                 y: targetTax.y - 12,
                 color: '#f87171',
@@ -269,10 +273,11 @@ export class CombatManager {
               // Check if target is a Peasant
               const targetPeasant = peasants.find(peasant => peasant.id === p.targetEntityId);
               if (targetPeasant && targetPeasant.hp > 0) {
-                targetPeasant.hp -= p.damage;
+                const dmg = Math.round(p.damage);
+                targetPeasant.hp -= dmg;
                 floatingTexts.push({
                   id: `ft_${Date.now()}_${Math.random()}`,
-                  text: `-${p.damage}`,
+                  text: `-${dmg}`,
                   x: targetPeasant.x,
                   y: targetPeasant.y - 12,
                   color: '#f87171',

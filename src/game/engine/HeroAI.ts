@@ -940,7 +940,7 @@ export class HeroAIManager {
           if (hero.targetEntityType === 'monster') {
             const m = monsters.find(mon => mon.id === hero.targetEntityId);
             if (m) {
-              const actualDamage = Math.max(1, totalDamage - m.defense);
+              const actualDamage = Math.max(1, Math.round(totalDamage - m.defense));
               m.hp -= actualDamage;
               audioManager.playSwordClash(m.x, m.y);
               // Award hit combat XP
@@ -954,10 +954,11 @@ export class HeroAIManager {
           } else if (hero.targetEntityType === 'lair') {
             const l = lairs.find(lair => lair.id === hero.targetEntityId);
             if (l) {
-              l.hp -= totalDamage;
+              const dmg = Math.round(totalDamage);
+              l.hp -= dmg;
               audioManager.playSwordClash(targetX, targetY);
-              hero.xp += Math.max(2, Math.round(totalDamage * 0.25));
-              if (onFloatingText) onFloatingText(`-${totalDamage}`, targetX, targetY - 12, '#fbbf24');
+              hero.xp += Math.max(2, Math.round(dmg * 0.25));
+              if (onFloatingText) onFloatingText(`-${dmg}`, targetX, targetY - 12, '#fbbf24');
             }
           }
         }
@@ -1003,12 +1004,12 @@ export class HeroAIManager {
     hero.level += 1;
     hero.xp -= hero.xpToNextLevel;
     hero.xpToNextLevel = Math.round(hero.xpToNextLevel * 1.5);
-    hero.maxHp += def.hpPerLevel;
+    hero.maxHp = Math.round(hero.maxHp + def.hpPerLevel);
     hero.hp = hero.maxHp;
-    hero.maxMp += def.mpPerLevel;
+    hero.maxMp = Math.round(hero.maxMp + def.mpPerLevel);
     hero.mp = hero.maxMp;
-    hero.attackPower += def.attackPerLevel;
-    hero.defense += def.defensePerLevel;
+    hero.attackPower = Math.round((hero.attackPower + def.attackPerLevel) * 10) / 10;
+    hero.defense = Math.round((hero.defense + def.defensePerLevel) * 10) / 10;
     audioManager.playVoice(`${hero.heroClass}_levelup`, hero.x, hero.y);
 
     // Upgrade Title
