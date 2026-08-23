@@ -565,9 +565,11 @@ export class GameEngine {
 
         p.hammerTimer += delta;
         targetBuilding.constructionProgress += (100 / targetBuilding.constructionTime) * delta;
+        targetBuilding.hp = Math.min(targetBuilding.maxHp, Math.max(1, Math.floor(targetBuilding.maxHp * (targetBuilding.constructionProgress / 100))));
 
         if (targetBuilding.constructionProgress >= 100) {
           targetBuilding.constructionProgress = 100;
+          targetBuilding.hp = targetBuilding.maxHp;
           targetBuilding.isConstructing = false;
           this.state.stats.buildingsConstructed += 1;
           audioManager.playBuildingPlaced();
@@ -658,7 +660,7 @@ export class GameEngine {
             y: ty,
             width: cottageDef.width,
             height: cottageDef.height,
-            hp: cottageDef.maxHp,
+            hp: 1,
             maxHp: cottageDef.maxHp,
             level: 1,
             maxLevel: 1,
@@ -724,7 +726,7 @@ export class GameEngine {
       y: tileY,
       width: bDef.width,
       height: bDef.height,
-      hp: bDef.maxHp,
+      hp: 1,
       maxHp: bDef.maxHp,
       level: 1,
       maxLevel: 3,

@@ -71,12 +71,21 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
               <Heart className="w-3.5 h-3.5 fill-rose-500/30" /> Integrity
             </span>
             <span className="text-slate-300 font-mono">
-              {Math.round(building.hp)} / {building.maxHp}
+              {Math.round(building.hp)} / {building.maxHp} HP
+              {building.isConstructing && (
+                <span className="text-amber-400 font-bold ml-1.5">
+                  ({Math.round(building.constructionProgress)}% Built)
+                </span>
+              )}
             </span>
           </div>
-          <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-rose-950">
+          <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-rose-950">
             <div
-              className="bg-rose-500 h-full transition-all duration-300"
+              className={`h-full transition-all duration-300 ${
+                building.isConstructing
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-400 animate-pulse'
+                  : 'bg-rose-500'
+              }`}
               style={{ width: `${hpPercent}%` }}
             />
           </div>
