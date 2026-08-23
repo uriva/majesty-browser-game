@@ -607,6 +607,27 @@ export class GridManager {
     return this.isValid(tx, ty) ? this.visible[ty][tx] : false;
   }
 
+  public findNearestUnexploredTile(startPx: number, startPy: number, maxRadiusTiles: number = 24): Position | null {
+    const start = this.pixelToTile(startPx, startPy);
+    for (let r = 2; r <= maxRadiusTiles; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) === r || Math.abs(dy) === r) {
+            const tx = start.x + dx;
+            const ty = start.y + dy;
+            if (this.isValid(tx, ty) && !this.explored[ty][tx]) {
+              const tile = this.grid[ty][tx];
+              if (tile !== 2 && tile !== 4) {
+                return this.tileToPixel(tx, ty);
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   public pixelToTile(px: number, py: number): Position {
     return {
       x: Math.floor(px / this.tileSize),

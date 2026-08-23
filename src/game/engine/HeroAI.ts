@@ -280,14 +280,15 @@ export class HeroAIManager {
       return;
     }
 
-    // E. Look for nearby monsters within hero's awareness radius
-    const searchRadius = hero.heroClass === 'warrior' ? 180 : 140;
+    // E. Look for nearby monsters & kingdom threats within hero's awareness radius
+    const searchRadius = hero.heroClass === 'warrior' || hero.heroClass === 'dwarf' ? 240 : (hero.heroClass === 'ranger' ? 200 : 160);
     let closestMonster: Monster | null = null;
     let closestDist = searchRadius;
 
     for (const m of monsters) {
+      if (m.hp <= 0) continue;
       const dist = Math.hypot(m.x - hero.x, m.y - hero.y);
-      // Only target visible monsters (in explored and visible tile)
+      // Target visible monsters in explored/visible tile
       if (dist < closestDist && this.gridManager.isPixelVisible(m.x, m.y)) {
         closestDist = dist;
         closestMonster = m;
@@ -298,45 +299,86 @@ export class HeroAIManager {
       hero.state = 'attacking_target';
       hero.targetEntityId = closestMonster.id;
       hero.targetEntityType = 'monster';
+      hero.targetX = undefined;
+      hero.targetY = undefined;
       hero.currentThought = `Engaging ${closestMonster.name}!`;
       return;
     }
 
-    // F. Default: Wander around town perimeter or explore
-    if (hero.stateTimer <= 0 || !hero.targetX || !hero.targetY) {
-      hero.state = 'wandering';
-      hero.stateTimer = Math.random() * 4 + 3;
-
-      let wanderRadius = 140;
-      if (hero.heroClass === 'ranger') wanderRadius = 260; // rangers roam wider
-
-      const homeGuild = buildings.find(b => b.id === hero.homeGuildId);
-      const originX = homeGuild ? (homeGuild.x + homeGuild.width / 2) * this.gridManager.tileSize : hero.x;
-      const originY = homeGuild ? (homeGuild.y + homeGuild.height / 2) * this.gridManager.tileSize : hero.y;
-
-      let foundSpot = false;
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist = Math.random() * wanderRadius + 20;
-        const candidateX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, originX + Math.cos(angle) * dist));
-        const candidateY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, originY + Math.sin(angle) * dist));
-
-        if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs)) {
-          hero.targetX = candidateX;
-          hero.targetY = candidateY;
-          foundSpot = true;
-          break;
-        }
+    // F. Purposeful Autonomous Life & Patrol Cycles
+    // If hero is currently walking towards an active destination, continue walking until reached!
+    if (hero.state === 'wandering' && hero.targetX !== undefined && hero.targetY !== undefined) {
+      const distToDestination = Math.hypot(hero.targetX - hero.x, hero.targetY - hero.y);
+      if (distToDestination > 8) {
+        this.moveTowards(hero, hero.targetX, hero.targetY, delta, buildings, lairs);
+        return;
+      } else {
+        // Reached destination! Pause to look around / stand guard
+        hero.state = 'idle';
+        hero.stateTimer = Math.random() * 2.5 + 1.5;
+        hero.targetX = undefined;
+        hero.targetY = undefined;
+        return;
       }
-
-      if (!foundSpot) {
-        hero.targetX = originX;
-        hero.targetY = originY;
-      }
-      hero.currentThought = hero.heroClass === 'ranger' ? 'Scouting the perimeter' : 'Patrolling the kingdom';
     }
 
-    // Move toward target position
+    // If hero is pausing / standing guard, wait until stateTimer expires
+    if (hero.state === 'idle' && hero.stateTimer > 0) {
+      return;
+    }
+
+    // Pick new purposeful destination based on hero class
+    hero.state = 'wandering';
+    hero.stateTimer = 0;
+
+    if (hero.heroClass === 'ranger') {
+      // Rangers scout towards the nearest unexplored Fog of War frontier!
+      const unexploredSpot = this.gridManager.findNearestUnexploredTile(hero.x, hero.y, 28);
+      if (unexploredSpot) {
+        hero.targetX = unexploredSpot.x;
+        hero.targetY = unexploredSpot.y;
+        hero.currentThought = 'Scouting the unexplored wilderness';
+      } else {
+        // Entire realm explored: roam long distances
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 180 + 100;
+        hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
+        hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+        hero.currentThought = 'Patrolling the outer perimeter';
+      }
+    } else if (hero.heroClass === 'warrior' || hero.heroClass === 'dwarf') {
+      // Warriors & Dwarves patrol between peasant hamlets, cottages, towers, and palace
+      const patrolCandidates = buildings.filter(b => b.hp > 0 && Math.hypot(b.x * 32 - hero.x, b.y * 32 - hero.y) < 320);
+      if (patrolCandidates.length > 0 && Math.random() < 0.75) {
+        const chosen = patrolCandidates[Math.floor(Math.random() * patrolCandidates.length)];
+        const ts = this.gridManager.tileSize;
+        const angle = Math.random() * Math.PI * 2;
+        hero.targetX = (chosen.x + chosen.width / 2) * ts + Math.cos(angle) * (chosen.width * ts * 0.7);
+        hero.targetY = (chosen.y + chosen.height / 2) * ts + Math.sin(angle) * (chosen.height * ts * 0.7);
+        hero.currentThought = `Patrolling near ${chosen.name}`;
+      } else {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 100 + 40;
+        hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
+        hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+        hero.currentThought = 'Standing guard over the realm';
+      }
+    } else if (hero.heroClass === 'rogue') {
+      // Rogues prowl around looking for lone beasts or lairs to plunder
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 140 + 60;
+      hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
+      hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+      hero.currentThought = 'Prowling for gold & vulnerable prey';
+    } else {
+      // Wizards & Clerics: stroll peacefully near town structures
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 80 + 30;
+      hero.targetX = Math.max(48, Math.min((this.gridManager.width - 2) * 32, hero.x + Math.cos(angle) * dist));
+      hero.targetY = Math.max(48, Math.min((this.gridManager.height - 2) * 32, hero.y + Math.sin(angle) * dist));
+      hero.currentThought = hero.heroClass === 'wizard' ? 'Studying arcane ley lines' : 'Blessing the town commoners';
+    }
+
     if (hero.targetX !== undefined && hero.targetY !== undefined) {
       this.moveTowards(hero, hero.targetX, hero.targetY, delta, buildings, lairs);
     }
