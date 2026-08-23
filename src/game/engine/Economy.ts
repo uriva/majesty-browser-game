@@ -20,9 +20,9 @@ export class EconomyManager {
     const palace = buildings.find(b => b.type === 'palace' && b.hp > 0);
     if (!palace) return;
 
-    const palaceCenter = {
+    const palaceGate = {
       x: (palace.x + palace.width / 2) * this.gridManager.tileSize,
-      y: (palace.y + palace.height / 2) * this.gridManager.tileSize
+      y: (palace.y + palace.height) * this.gridManager.tileSize + 6
     };
 
     // 1. Peasant cottages generate modest land rent awaiting tax collection
@@ -53,8 +53,8 @@ export class EconomyManager {
         const newCollector: TaxCollector = {
           id: `tax_${Date.now()}`,
           name: 'Royal Tax Collector',
-          x: palaceCenter.x,
-          y: palaceCenter.y + 20,
+          x: palaceGate.x,
+          y: palaceGate.y + 4,
           hp: 100,
           maxHp: 100,
           speed: 32,
@@ -100,14 +100,14 @@ export class EconomyManager {
           if (onFloatingText) onFloatingText(`+${collected}g Taxes`, tc.x, tc.y - 15, '#fbbf24');
         }
       } else if (tc.state === 'returning_to_palace') {
-        const dist = Math.hypot(palaceCenter.x - tc.x, palaceCenter.y - tc.y);
-        if (dist > 30) {
-          this.moveTowards(tc, palaceCenter.x, palaceCenter.y, delta);
+        const dist = Math.hypot(palaceGate.x - tc.x, palaceGate.y - tc.y);
+        if (dist > 15) {
+          this.moveTowards(tc, palaceGate.x, palaceGate.y, delta);
         } else {
-          // Safely reached palace! Deposit into Royal Treasury
+          // Safely reached palace front gate! Deposit into Royal Treasury
           if (tc.goldCarried > 0) {
             onTaxDelivery(tc.goldCarried);
-            if (onFloatingText) onFloatingText(`+${tc.goldCarried}g Treasury!`, palaceCenter.x, palaceCenter.y - 25, '#fbbf24');
+            if (onFloatingText) onFloatingText(`+${tc.goldCarried}g Treasury!`, palaceGate.x, palaceGate.y - 25, '#fbbf24');
           }
           // Remove collector after completing duty
           taxCollectors.splice(i, 1);

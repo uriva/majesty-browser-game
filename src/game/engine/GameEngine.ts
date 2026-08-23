@@ -491,6 +491,11 @@ export class GameEngine {
       y: (palace.y + palace.height / 2) * this.gridManager.tileSize
     };
 
+    const palaceGate = {
+      x: (palace.x + palace.width / 2) * this.gridManager.tileSize,
+      y: (palace.y + palace.height) * this.gridManager.tileSize + 6
+    };
+
     // Ensure adequate peasant workforce
     const peasantCottages = this.state.buildings.filter(b => b.type === 'peasant_cottage' && !b.isConstructing && b.hp > 0).length;
     const targetPeasantCount = 2 + (palace.level - 1) + Math.floor(peasantCottages / 2);
@@ -500,8 +505,8 @@ export class GameEngine {
       this.state.peasants.push({
         id: `peasant_${Date.now()}_${pIdx}`,
         name: pIdx % 2 === 0 ? 'Robin the Carpenter' : 'Will the Mason',
-        x: palaceCenter.x,
-        y: palaceCenter.y + 15,
+        x: palaceGate.x + (pIdx % 2 === 0 ? -8 : 8),
+        y: palaceGate.y + 4,
         hp: 120,
         maxHp: 120,
         speed: 40,
@@ -518,10 +523,10 @@ export class GameEngine {
       if (p.hp <= 0) continue;
 
       if (isNight) {
-        // At night, peasants retreat to the safety of the Palace/Cottage to sleep
-        const distToPalace = Math.hypot(palaceCenter.x - p.x, palaceCenter.y - p.y);
-        if (distToPalace > 35) {
-          this.movePeasantTowards(p, palaceCenter.x, palaceCenter.y, delta);
+        // At night, peasants walk to the Palace Front Gate and enter inside to sleep
+        const distToGate = Math.hypot(palaceGate.x - p.x, palaceGate.y - p.y);
+        if (distToGate > 14) {
+          this.movePeasantTowards(p, palaceGate.x, palaceGate.y, delta);
         } else {
           p.state = 'idle_at_palace';
           p.targetBuildingId = undefined;
@@ -547,13 +552,17 @@ export class GameEngine {
           continue;
         }
 
+        // Target the front foundation facade of the building (centered horizontally, right on front edge)
         const bx = (targetBuilding.x + targetBuilding.width / 2) * this.gridManager.tileSize;
-        const by = (targetBuilding.y + targetBuilding.height) * this.gridManager.tileSize + 6;
+        const by = (targetBuilding.y + targetBuilding.height) * this.gridManager.tileSize - 4;
         const dist = Math.hypot(bx - p.x, by - p.y);
 
-        if (dist > 15) {
+        if (dist > 12) {
           this.movePeasantTowards(p, bx, by, delta);
         } else {
+          p.x = bx;
+          p.y = by;
+          p.direction = 'up'; // Face towards the building facade
           p.state = targetBuilding.isConstructing ? 'hammering_construction' : 'repairing_building';
         }
       } else if (p.state === 'hammering_construction') {
@@ -564,6 +573,7 @@ export class GameEngine {
           continue;
         }
 
+        p.direction = 'up';
         p.hammerTimer += delta;
         targetBuilding.constructionProgress += (100 / targetBuilding.constructionTime) * delta;
         targetBuilding.hp = Math.min(targetBuilding.maxHp, Math.max(1, Math.floor(targetBuilding.maxHp * (targetBuilding.constructionProgress / 100))));
@@ -587,6 +597,7 @@ export class GameEngine {
           continue;
         }
 
+        p.direction = 'up';
         p.hammerTimer += delta;
         targetBuilding.hp = Math.min(targetBuilding.maxHp, targetBuilding.hp + 35 * delta);
 
@@ -862,6 +873,23 @@ export class GameEngine {
     const bDef = BUILDING_DEFINITIONS[building.type];
     const upg = bDef.upgrades?.find(u => u.id === upgradeId);
     if (!upg) return false;
+
+    // Check Hero Count Requirement (e.g. Palace Lv.2 requires 4+ heroes, Palace Lv.3 requires 8+ heroes)
+    const livingHeroes = this.state.heroes.filter(h => !h.isDead).length;
+    if (upg.requiredHeroes && livingHeroes < upg.requiredHeroes) {
+      this.addNotification('Prerequisite Not Met', `${upg.name} requires at least ${upg.requiredHeroes} active heroes in your realm (currently ${livingHeroes}/${upg.requiredHeroes})!`, 'warning');
+      return false;
+    }
+
+    // Check Building Requirement (e.g. Palace Lv.2 requires Marketplace, Palace Lv.3 requires Blacksmith)
+    if (upg.requiredBuilding) {
+      const hasReqBuilding = this.state.buildings.some(b => b.type === upg.requiredBuilding && !b.isConstructing && b.hp > 0);
+      if (!hasReqBuilding) {
+        const reqName = BUILDING_DEFINITIONS[upg.requiredBuilding].name;
+        this.addNotification('Prerequisite Not Met', `${upg.name} requires a functioning ${reqName}!`, 'warning');
+        return false;
+      }
+    }
 
     if (this.state.treasuryGold < upg.cost) {
       this.addNotification('Insufficient Gold', `Researching ${upg.name} costs ${upg.cost}g.`, 'warning');

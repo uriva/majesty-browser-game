@@ -550,6 +550,8 @@ export const GameView: React.FC = () => {
         {selectedBuilding && gameState && (
           <BuildingInspector
             building={selectedBuilding}
+            allBuildings={gameState.buildings}
+            heroesCount={gameState.heroes.filter(h => !h.isDead).length}
             treasuryGold={gameState.treasuryGold}
             onClose={() => {
               if (engineRef.current) engineRef.current.state.selectedEntity = null;

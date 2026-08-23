@@ -1418,6 +1418,12 @@ export class ThreeRenderer {
       mGroup.position.set(m.x, 0, m.y);
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
+      // Rotate monster to face where it is moving
+      if (m.direction === 'left') mGroup.rotation.y = -Math.PI / 2;
+      else if (m.direction === 'right') mGroup.rotation.y = Math.PI / 2;
+      else if (m.direction === 'up') mGroup.rotation.y = Math.PI;
+      else mGroup.rotation.y = 0;
+
       if (m.type === 'red_dragon') {
         const wingL = mGroup.getObjectByName('wingL');
         const wingR = mGroup.getObjectByName('wingR');

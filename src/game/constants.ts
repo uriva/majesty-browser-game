@@ -26,6 +26,8 @@ export interface BuildingDef {
     cost: number;
     description: string;
     icon: string;
+    requiredHeroes?: number;
+    requiredBuilding?: BuildingType;
   }[];
   requiresPalaceLevel?: number;
   requiresBuilding?: BuildingType;
@@ -50,8 +52,24 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     attackRange: 160,
     attackCooldown: 1.2,
     upgrades: [
-      { id: 'palace_lvl2', name: 'Palace Fortress (Lvl 2)', cost: 1200, description: 'Increases Palace HP, unlocks Tier 2 guilds and defenses.', icon: 'Castle' },
-      { id: 'palace_lvl3', name: 'Imperial Citadel (Lvl 3)', cost: 3000, description: 'Max palace upgrades, unlocks Grand Magic & Elite Champions.', icon: 'Crown' }
+      {
+        id: 'palace_lvl2',
+        name: 'Palace Fortress (Lvl 2)',
+        cost: 1200,
+        description: 'Increases Palace HP and unlocks Tier 2 guilds, Wizard Tower & Blacksmith. Requires: 4+ Active Heroes & Marketplace.',
+        requiredHeroes: 4,
+        requiredBuilding: 'marketplace',
+        icon: 'Castle'
+      },
+      {
+        id: 'palace_lvl3',
+        name: 'Imperial Citadel (Lvl 3)',
+        cost: 3000,
+        description: 'Max palace upgrades, unlocks Dwarven Settlement, Sovereign Statue & Grand Magic. Requires: 8+ Active Heroes & Blacksmith.',
+        requiredHeroes: 8,
+        requiredBuilding: 'blacksmith',
+        icon: 'Crown'
+      }
     ]
   },
   warrior_guild: {

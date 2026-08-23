@@ -10,13 +10,13 @@ import {
   UserPlus, 
   Sparkles, 
   X, 
-  Wrench,
-  Shield,
-  ArrowUpCircle
+  Lock
 } from 'lucide-react';
 
 interface BuildingInspectorProps {
   building: Building;
+  allBuildings: Building[];
+  heroesCount: number;
   treasuryGold: number;
   onClose: () => void;
   onRecruitHero: (buildingId: string, heroClass: HeroClass) => void;
@@ -25,6 +25,8 @@ interface BuildingInspectorProps {
 
 export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
   building,
+  allBuildings,
+  heroesCount,
   treasuryGold,
   onClose,
   onRecruitHero,
@@ -205,7 +207,7 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
       {bDef.upgrades && bDef.upgrades.length > 0 && (
         <div>
           <div className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5" /> Guild & Shop Upgrades
+            <Sparkles className="w-3.5 h-3.5" /> Guild & Palace Upgrades
           </div>
 
           <div className="space-y-2">
@@ -213,12 +215,26 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
               const isResearched = building.researchedUpgrades.includes(upg.id);
               const canAfford = treasuryGold >= upg.cost;
 
+              // Check requirements
+              const heroesMet = !upg.requiredHeroes || heroesCount >= upg.requiredHeroes;
+              const buildingMet = !upg.requiredBuilding || allBuildings.some(b => b.type === upg.requiredBuilding && !b.isConstructing && b.hp > 0);
+              const isUnlocked = heroesMet && buildingMet;
+
+              let lockReason = '';
+              if (!heroesMet) {
+                lockReason = `Req: ${upg.requiredHeroes}+ Active Heroes (${heroesCount}/${upg.requiredHeroes})`;
+              } else if (!buildingMet && upg.requiredBuilding) {
+                lockReason = `Req: ${BUILDING_DEFINITIONS[upg.requiredBuilding].name}`;
+              }
+
               return (
                 <div
                   key={upg.id}
                   className={`p-2.5 rounded-lg border text-left ${
                     isResearched
                       ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-200'
+                      : !isUnlocked
+                      ? 'bg-slate-950/70 border-slate-900 opacity-70'
                       : canAfford
                       ? 'bg-slate-900/80 border-slate-700 hover:border-amber-500'
                       : 'bg-slate-900/40 border-slate-800 text-slate-500'
@@ -231,6 +247,10 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
                     {isResearched ? (
                       <span className="text-[10px] bg-emerald-900/80 text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-600">
                         Researched
+                      </span>
+                    ) : !isUnlocked ? (
+                      <span className="text-[10px] text-rose-400 font-bold font-mono flex items-center gap-1 bg-rose-950/60 border border-rose-800 px-2 py-0.5 rounded">
+                        <Lock className="w-3 h-3" /> Locked
                       </span>
                     ) : (
                       <button
@@ -246,6 +266,13 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
                       </button>
                     )}
                   </div>
+
+                  {!isUnlocked && !isResearched && (
+                    <div className="text-[10px] text-rose-400/90 font-mono mb-1">
+                      {lockReason}
+                    </div>
+                  )}
+
                   <div className="text-[11px] text-slate-400 leading-snug">
                     {upg.description}
                   </div>
