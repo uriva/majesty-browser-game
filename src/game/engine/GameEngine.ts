@@ -437,6 +437,25 @@ export class GameEngine {
     const bDef = BUILDING_DEFINITIONS[type];
     if (!bDef) return false;
 
+    const palace = this.state.buildings.find(b => b.type === 'palace' && b.hp > 0);
+    const palaceLevel = palace?.level || 1;
+
+    // 1. Check Palace Level requirement
+    if (bDef.requiresPalaceLevel && palaceLevel < bDef.requiresPalaceLevel) {
+      this.addNotification('Prerequisite Not Met', `${bDef.name} requires Palace Level ${bDef.requiresPalaceLevel}! Upgrade your Palace first.`, 'warning');
+      return false;
+    }
+
+    // 2. Check Prerequisite Building requirement
+    if (bDef.requiresBuilding) {
+      const hasPrereq = this.state.buildings.some(b => b.type === bDef.requiresBuilding && !b.isConstructing && b.hp > 0);
+      if (!hasPrereq) {
+        const reqName = BUILDING_DEFINITIONS[bDef.requiresBuilding].name;
+        this.addNotification('Prerequisite Not Met', `${bDef.name} requires an existing ${reqName}!`, 'warning');
+        return false;
+      }
+    }
+
     if (this.state.treasuryGold < bDef.cost) {
       this.addNotification('Insufficient Gold', `You need ${bDef.cost}g to construct ${bDef.name}.`, 'warning');
       return false;

@@ -104,7 +104,7 @@ export class HeroAIManager {
 
       case 'resting_at_guild':
       case 'visiting_inn':
-        this.handleResting(hero, delta, buildings);
+        this.handleResting(hero, delta, buildings, onFloatingText);
         break;
 
       case 'visiting_marketplace':
@@ -155,37 +155,53 @@ export class HeroAIManager {
       }
     }
 
-    // B. Check if hero wants to shop or upgrade gear
-    if (hero.gold >= 50 && !hero.equipment.hasHealingPotion) {
-      const market = buildings.find(b => b.type === 'marketplace' && !b.isConstructing && b.hp > 0);
-      if (market && market.researchedUpgrades.includes('healing_elixirs')) {
-        hero.state = 'visiting_marketplace';
-        hero.targetEntityId = market.id;
-        hero.targetEntityType = 'building';
-        hero.currentThought = 'Heading to Market for potions';
-        return;
+    // B. Check if hero wants to shop or upgrade gear with their earned bounty gold
+    if (hero.gold >= 30) {
+      // 1. Visit Marketplace for healing potions or travel rations
+      if (!hero.equipment.hasHealingPotion || (!hero.equipment.hasSpeedPotion && hero.gold >= 60)) {
+        const market = buildings.find(b => b.type === 'marketplace' && !b.isConstructing && b.hp > 0);
+        if (market) {
+          hero.state = 'visiting_marketplace';
+          hero.targetEntityId = market.id;
+          hero.targetEntityType = 'building';
+          hero.currentThought = 'Heading to Marketplace to buy potions & gear';
+          return;
+        }
+      }
+
+      // 2. Visit Blacksmith for Weapon or Armor forged upgrades
+      if (hero.gold >= 60 && (hero.equipment.weaponLevel < 3 || hero.equipment.armorLevel < 3)) {
+        const blacksmith = buildings.find(b => b.type === 'blacksmith' && !b.isConstructing && b.hp > 0);
+        if (blacksmith) {
+          hero.state = 'visiting_blacksmith';
+          hero.targetEntityId = blacksmith.id;
+          hero.targetEntityType = 'building';
+          hero.currentThought = 'Visiting Blacksmith to forge weapon & armor';
+          return;
+        }
+      }
+
+      // 3. Visit Inn to celebrate, drink ale, gamble, and socialize
+      if (hero.gold >= 25 && Math.random() < 0.25) {
+        const inn = buildings.find(b => b.type === 'royal_inn' && !b.isConstructing && b.hp > 0);
+        if (inn) {
+          hero.state = 'visiting_inn';
+          hero.targetEntityId = inn.id;
+          hero.targetEntityType = 'building';
+          hero.currentThought = 'Heading to the Inn for ale & celebration';
+          return;
+        }
       }
     }
 
-    if (hero.gold >= 100 && hero.equipment.weaponLevel < 3) {
-      const blacksmith = buildings.find(b => b.type === 'blacksmith' && !b.isConstructing && b.hp > 0);
-      if (blacksmith && blacksmith.researchedUpgrades.length > 0) {
-        hero.state = 'visiting_blacksmith';
-        hero.targetEntityId = blacksmith.id;
-        hero.targetEntityType = 'building';
-        hero.currentThought = 'Visiting Blacksmith for weapon upgrade';
-        return;
-      }
-    }
-
-    // C. Check if hero needs to rest at Inn or Guild
+    // C. Check if hero needs to rest at Inn or Guild hall
     if (hero.hp < hero.maxHp * 0.75) {
       const inn = buildings.find(b => b.type === 'royal_inn' && !b.isConstructing && b.hp > 0);
       if (inn && hero.gold >= 15) {
         hero.state = 'visiting_inn';
         hero.targetEntityId = inn.id;
         hero.targetEntityType = 'building';
-        hero.currentThought = 'Heading to the Inn for ale & rest';
+        hero.currentThought = 'Resting at the Inn with warm food & ale';
         return;
       } else {
         const homeGuild = buildings.find(b => b.id === hero.homeGuildId && b.hp > 0);
@@ -193,7 +209,7 @@ export class HeroAIManager {
           hero.state = 'resting_at_guild';
           hero.targetEntityId = homeGuild.id;
           hero.targetEntityType = 'building';
-          hero.currentThought = 'Returning to guild hall to recuperate';
+          hero.currentThought = 'Returning to guild hall to recover';
           return;
         }
       }
@@ -305,7 +321,12 @@ export class HeroAIManager {
     }
   }
 
-  private handleResting(hero: Hero, delta: number, buildings: Building[]) {
+  private handleResting(
+    hero: Hero,
+    delta: number,
+    buildings: Building[],
+    onFloatingText?: (text: string, x: number, y: number, color: string) => void
+  ) {
     const building = buildings.find(b => b.id === hero.targetEntityId || b.id === hero.homeGuildId);
     if (!building) {
       hero.state = 'idle';
@@ -323,7 +344,12 @@ export class HeroAIManager {
       hero.hp = Math.min(hero.maxHp, hero.hp + healSpeed * delta);
       hero.mp = Math.min(hero.maxMp, hero.mp + 25 * delta);
 
-      if (building.type === 'royal_inn' && hero.gold >= 10 && !hero.restingProgress) {
+      if (building.type === 'royal_inn' && hero.gold >= 15 && !hero.restingProgress) {
+        hero.gold -= 15;
+        building.goldStored += 15;
+        hero.restingProgress = 1;
+        if (onFloatingText) onFloatingText('-15g Tavern Ale & Meal', hero.x, hero.y - 15, '#fbbf24');
+      } else if (building.id === hero.homeGuildId && hero.gold >= 10 && !hero.restingProgress) {
         hero.gold -= 10;
         building.goldStored += 10;
         hero.restingProgress = 1;
@@ -355,29 +381,57 @@ export class HeroAIManager {
     if (Math.hypot(sx - hero.x, sy - hero.y) > 35) {
       this.moveTowards(hero, sx, sy, delta);
     } else {
-      // At shop! Perform purchase
+      // At shop! Perform purchase with hero's gold -> transfers to shop.goldStored
       if (shop.type === 'marketplace') {
-        if (hero.gold >= 40 && !hero.equipment.hasHealingPotion && shop.researchedUpgrades.includes('healing_elixirs')) {
-          hero.gold -= 40;
-          shop.goldStored += 40;
+        if (hero.gold >= 35 && !hero.equipment.hasHealingPotion) {
+          hero.gold -= 35;
+          shop.goldStored += 35;
           hero.equipment.hasHealingPotion = true;
-          if (onFloatingText) onFloatingText('+Bought Potion (40g)', hero.x, hero.y - 15, '#38bdf8');
+          if (onFloatingText) onFloatingText('-35g Healing Elixir', hero.x, hero.y - 15, '#38bdf8');
+        } else if (hero.gold >= 30 && !hero.equipment.hasSpeedPotion) {
+          hero.gold -= 30;
+          shop.goldStored += 30;
+          hero.equipment.hasSpeedPotion = true;
+          hero.speed += 8;
+          if (onFloatingText) onFloatingText('-30g Speed Draught', hero.x, hero.y - 15, '#fbbf24');
+        } else if (hero.gold >= 50 && !hero.equipment.hasAmulet) {
+          hero.gold -= 50;
+          shop.goldStored += 50;
+          hero.equipment.hasAmulet = true;
+          hero.defense += 4;
+          if (onFloatingText) onFloatingText('-50g Warding Amulet', hero.x, hero.y - 15, '#c084fc');
         }
       } else if (shop.type === 'blacksmith') {
         // Upgrade weapon or armor
-        const cost = (hero.equipment.weaponLevel + 1) * 75;
-        if (hero.gold >= cost && hero.equipment.weaponLevel < 3) {
-          hero.gold -= cost;
-          shop.goldStored += cost;
+        const nextWepTier = hero.equipment.weaponLevel + 1;
+        const wepCost = nextWepTier * 50;
+        const nextArmorTier = hero.equipment.armorLevel + 1;
+        const armorCost = nextArmorTier * 45;
+
+        if (hero.gold >= wepCost && hero.equipment.weaponLevel < 3) {
+          hero.gold -= wepCost;
+          shop.goldStored += wepCost;
           hero.equipment.weaponLevel += 1;
-          hero.attackPower += 6;
-          if (onFloatingText) onFloatingText(`+Weapon Tier ${hero.equipment.weaponLevel}!`, hero.x, hero.y - 15, '#fbbf24');
+          hero.attackPower += 5;
+          if (onFloatingText) onFloatingText(`-${wepCost}g Weapon Tier ${hero.equipment.weaponLevel}!`, hero.x, hero.y - 15, '#fbbf24');
+        } else if (hero.gold >= armorCost && hero.equipment.armorLevel < 3) {
+          hero.gold -= armorCost;
+          shop.goldStored += armorCost;
+          hero.equipment.armorLevel += 1;
+          hero.defense += 4;
+          if (onFloatingText) onFloatingText(`-${armorCost}g Armor Tier ${hero.equipment.armorLevel}!`, hero.x, hero.y - 15, '#38bdf8');
+        }
+      } else if (shop.type === 'royal_inn') {
+        if (hero.gold >= 20) {
+          hero.gold -= 20;
+          shop.goldStored += 20;
+          if (onFloatingText) onFloatingText('-20g Tavern Entertainment', hero.x, hero.y - 15, '#fbbf24');
         }
       }
 
       hero.state = 'idle';
       hero.stateTimer = 1.5;
-      hero.currentThought = 'Finished shopping';
+      hero.currentThought = 'Finished shopping and gear preparation';
     }
   }
 

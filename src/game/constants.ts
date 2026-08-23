@@ -28,6 +28,7 @@ export interface BuildingDef {
     icon: string;
   }[];
   requiresPalaceLevel?: number;
+  requiresBuilding?: BuildingType;
   isDefense?: boolean;
   attackPower?: number;
   attackRange?: number;
@@ -108,11 +109,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 600,
     width: 3,
     height: 3,
-    description: 'Recruits mystical spellcasters wielding destructive fireballs and arcana.',
+    description: 'Recruits mystical spellcasters wielding destructive fireballs and arcana. Requires Palace Level 2.',
     recruits: ['wizard'],
     heroRecruitCost: { wizard: 220 },
     maxHeroSlots: 3,
-    requiresPalaceLevel: 1,
+    requiresPalaceLevel: 2,
     upgrades: [
       { id: 'arcane_library', name: 'Arcane Library', cost: 350, description: 'Wizards learn Fireball spell for AOE damage.', icon: 'Flame' },
       { id: 'teleportation', name: 'Emergency Blink', cost: 500, description: 'Wizards automatically teleport to safety when near death.', icon: 'Sparkles' }
@@ -125,10 +126,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 1000,
     width: 3,
     height: 3,
-    description: 'Trains holy Clerics who heal wounded companions and banish undead.',
+    description: 'Trains holy Clerics who heal wounded companions and banish undead. Requires Palace Level 2.',
     recruits: ['cleric'],
     heroRecruitCost: { cleric: 180 },
     maxHeroSlots: 4,
+    requiresPalaceLevel: 2,
     upgrades: [
       { id: 'holy_blessing', name: 'Holy Radiance', cost: 300, description: 'Cleric healing aura is 40% stronger and hits nearby allies.', icon: 'Heart' },
       { id: 'smite_undead', name: 'Divine Smite', cost: 400, description: 'Clerics deal double damage against skeletons, zombies & wraiths.', icon: 'Sun' }
@@ -141,11 +143,12 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 1300,
     width: 3,
     height: 3,
-    description: 'Recruits tough Dwarves with high siege damage and building repair prowess.',
+    description: 'Recruits tough Dwarves with high siege damage and building repair prowess. Requires Palace Level 3 & Blacksmith.',
     recruits: ['dwarf'],
     heroRecruitCost: { dwarf: 200 },
     maxHeroSlots: 3,
-    requiresPalaceLevel: 2,
+    requiresPalaceLevel: 3,
+    requiresBuilding: 'blacksmith',
     upgrades: [
       { id: 'dwarf_stonecraft', name: 'Stonecraft Reinforcement', cost: 350, description: 'All kingdom buildings gain +25% Max HP.', icon: 'Hammer' }
     ]
@@ -171,7 +174,9 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 850,
     width: 3,
     height: 3,
-    description: 'Forges upgraded weapons and armor. Heroes spend their bounty earnings here.',
+    description: 'Forges upgraded weapons and armor. Heroes spend their bounty earnings here. Requires Palace Level 2 & Marketplace.',
+    requiresPalaceLevel: 2,
+    requiresBuilding: 'marketplace',
     upgrades: [
       { id: 'iron_weapons', name: 'Iron Weapons (Tier 1)', cost: 150, description: 'Heroes can purchase Iron weapons (+5 ATK).', icon: 'Sword' },
       { id: 'steel_armor', name: 'Steel Armor (Tier 1)', cost: 200, description: 'Heroes can purchase Steel armor (+4 DEF).', icon: 'Shield' },
@@ -202,7 +207,9 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 700,
     width: 3,
     height: 3,
-    description: 'Heroes rest, party, and recover health/mana. Generates continuous tavern revenue.',
+    description: 'Heroes rest, party, and recover health/mana. Generates continuous tavern revenue. Requires Palace Level 2 & Marketplace.',
+    requiresPalaceLevel: 2,
+    requiresBuilding: 'marketplace',
     upgrades: [
       { id: 'fine_ales', name: 'Dwarven Stout & Spirits', cost: 180, description: 'Resting heroes recover HP 50% faster and gain temporary Morale Boost.', icon: 'Beer' }
     ]
@@ -214,7 +221,8 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 1200,
     width: 2,
     height: 2,
-    description: 'Inspires your subjects. Heroes within vicinity gain +15% Bravery and +10% Attack.',
+    description: 'Inspires your subjects. Heroes within vicinity gain +15% Bravery and +10% Attack. Requires Palace Level 3.',
+    requiresPalaceLevel: 3,
     upgrades: []
   }
 };

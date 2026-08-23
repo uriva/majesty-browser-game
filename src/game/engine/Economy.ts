@@ -25,26 +25,11 @@ export class EconomyManager {
       y: (palace.y + palace.height / 2) * this.gridManager.tileSize
     };
 
-    // 1. Trade and commercial activity generates gold stored inside buildings (awaiting Tax Collector)
-    for (const b of buildings) {
-      if (b.isConstructing || b.hp <= 0) continue;
-
-      if (b.type === 'marketplace') {
-        b.goldStored += 5.0 * delta; // Trade activity
-      } else if (b.type === 'royal_inn') {
-        b.goldStored += 3.5 * delta; // Tavern patronage
-      } else if (b.type === 'blacksmith') {
-        b.goldStored += 3.0 * delta; // Weapon and armor forging
-      } else if (b.type.includes('guild') || b.type.includes('temple') || b.type.includes('tower')) {
-        b.goldStored += 1.0 * delta; // Guild membership dues
-      }
-    }
-
-    // 2. Dispatch Tax Collector from Palace when buildings have uncollected taxes (> 20g)
+    // Dispatch Tax Collector from Palace when buildings have uncollected taxes from hero transactions (> 15g)
     this.taxSpawnCooldown -= delta;
     if (this.taxSpawnCooldown <= 0 && taxCollectors.length < 2) {
       let highestBuilding: Building | null = null;
-      let maxGold = 20;
+      let maxGold = 15;
 
       for (const b of buildings) {
         if (b.type === 'palace' || b.isConstructing || b.hp <= 0) continue;

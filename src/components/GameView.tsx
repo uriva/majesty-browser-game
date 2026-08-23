@@ -411,6 +411,7 @@ export const GameView: React.FC = () => {
           <div className="pointer-events-auto">
             <BuildMenu
               treasuryGold={gameState.treasuryGold}
+              buildings={gameState.buildings}
               activeBuildingType={activeBuildingType}
               onSelectBuilding={(type) => {
                 setActiveBuildingType(type);
