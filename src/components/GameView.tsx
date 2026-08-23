@@ -80,8 +80,14 @@ export const GameView: React.FC = () => {
           rendererRef.current.render(engine.state, mouseWorldPos);
         }
 
-        // Sync react state periodically
-        setGameState({ ...engine.state });
+        // Sync react state with fresh arrays for reactive inspectors
+        setGameState({
+          ...engine.state,
+          heroes: [...engine.state.heroes],
+          buildings: [...engine.state.buildings],
+          monsters: [...engine.state.monsters],
+          lairs: [...engine.state.lairs]
+        });
       } else if (engine && engine.state.isGameOver && rendererRef.current) {
         rendererRef.current.render(engine.state, mouseWorldPos);
       }

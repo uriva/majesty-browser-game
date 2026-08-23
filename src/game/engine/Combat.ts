@@ -89,6 +89,8 @@ export class CombatManager {
     }
 
     if (p.isHeroProjectile) {
+      const ownerHero = p.ownerHeroId ? heroes.find(h => h.id === p.ownerHeroId) : null;
+
       if (p.type === 'fireball') {
         // AOE Damage around impact point
         const aoeRadius = 45;
@@ -97,6 +99,9 @@ export class CombatManager {
           if (dist <= aoeRadius) {
             const actualDamage = Math.max(1, p.damage - m.defense);
             m.hp -= actualDamage;
+            if (ownerHero) {
+              ownerHero.xp += Math.max(3, Math.round(actualDamage * 0.35));
+            }
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
               text: `-${actualDamage}`,
@@ -116,6 +121,9 @@ export class CombatManager {
         if (targetMonster) {
           const actualDamage = Math.max(1, p.damage - targetMonster.defense);
           targetMonster.hp -= actualDamage;
+          if (ownerHero) {
+            ownerHero.xp += Math.max(3, Math.round(actualDamage * 0.4));
+          }
           floatingTexts.push({
             id: `ft_${Date.now()}_${Math.random()}`,
             text: `-${actualDamage}`,
@@ -132,6 +140,9 @@ export class CombatManager {
           const targetLair = lairs.find(l => l.id === p.targetEntityId);
           if (targetLair) {
             targetLair.hp -= p.damage;
+            if (ownerHero) {
+              ownerHero.xp += Math.max(2, Math.round(p.damage * 0.25));
+            }
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
               text: `-${p.damage}`,

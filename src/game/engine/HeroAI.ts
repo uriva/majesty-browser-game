@@ -25,6 +25,7 @@ export class HeroAIManager {
       targetX: number;
       targetY: number;
       targetEntityId?: string;
+      ownerHeroId?: string;
       damage: number;
     }) => void,
     onFloatingText?: (text: string, x: number, y: number, color: string) => void
@@ -458,6 +459,7 @@ export class HeroAIManager {
       targetX: number;
       targetY: number;
       targetEntityId?: string;
+      ownerHeroId?: string;
       damage: number;
     }) => void,
     onFloatingText?: (text: string, x: number, y: number, color: string) => void
@@ -511,6 +513,7 @@ export class HeroAIManager {
               targetX,
               targetY,
               targetEntityId: hero.targetEntityId,
+              ownerHeroId: hero.id,
               damage: totalDamage
             });
           }
@@ -523,6 +526,7 @@ export class HeroAIManager {
               targetX,
               targetY,
               targetEntityId: hero.targetEntityId,
+              ownerHeroId: hero.id,
               damage: totalDamage
             });
           }
@@ -535,6 +539,7 @@ export class HeroAIManager {
               targetX,
               targetY,
               targetEntityId: hero.targetEntityId,
+              ownerHeroId: hero.id,
               damage: totalDamage
             });
           }
@@ -545,6 +550,10 @@ export class HeroAIManager {
             if (m) {
               const actualDamage = Math.max(1, totalDamage - m.defense);
               m.hp -= actualDamage;
+              // Award hit combat XP
+              const hitXp = Math.max(3, Math.round(actualDamage * 0.4));
+              hero.xp += hitXp;
+
               if (onFloatingText) {
                 onFloatingText(isCrit ? `CRIT! -${actualDamage}` : `-${actualDamage}`, m.x, m.y - 12, isCrit ? '#ef4444' : '#ffffff');
               }
@@ -553,6 +562,7 @@ export class HeroAIManager {
             const l = lairs.find(lair => lair.id === hero.targetEntityId);
             if (l) {
               l.hp -= totalDamage;
+              hero.xp += Math.max(2, Math.round(totalDamage * 0.25));
               if (onFloatingText) onFloatingText(`-${totalDamage}`, targetX, targetY - 12, '#fbbf24');
             }
           }

@@ -200,6 +200,7 @@ export class GameEngine {
           this.state.projectiles.push({
             id: `h_proj_${Date.now()}_${Math.random()}`,
             ...proj,
+            ownerHeroId: hero.id,
             currentX: proj.startX,
             currentY: proj.startY,
             speed: proj.type === 'arrow' ? 320 : 250,
@@ -216,8 +217,39 @@ export class GameEngine {
       const monster = this.state.monsters[i];
       if (monster.hp <= 0) {
         this.state.stats.monstersKilled += 1;
-        this.addFloatingText(`+${monster.xpReward} XP`, monster.x, monster.y - 10, '#38bdf8');
         audioManager.playSwordClash();
+
+        // Award kill XP & gold bounty to the hero(es) involved
+        const nearbyHeroes = this.state.heroes.filter(
+          h => !h.isDead && (h.targetEntityId === monster.id || Math.hypot(h.x - monster.x, h.y - monster.y) < 180)
+        );
+
+        if (nearbyHeroes.length > 0) {
+          nearbyHeroes.sort((a, b) => Math.hypot(a.x - monster.x, a.y - monster.y) - Math.hypot(b.x - monster.x, b.y - monster.y));
+          
+          // Primary killer
+          const killer = nearbyHeroes[0];
+          killer.kills += 1;
+          killer.xp += monster.xpReward;
+          killer.gold += monster.goldBountyReward;
+          this.addFloatingText(`+${monster.xpReward} XP`, killer.x, killer.y - 20, '#38bdf8');
+          if (monster.goldBountyReward > 0) {
+            this.addFloatingText(`+${monster.goldBountyReward}g`, killer.x, killer.y - 32, '#fbbf24');
+          }
+
+          // Assisting heroes
+          for (let k = 1; k < nearbyHeroes.length; k++) {
+            const assistHero = nearbyHeroes[k];
+            const assistXp = Math.round(monster.xpReward * 0.5);
+            assistHero.xp += assistXp;
+            this.addFloatingText(`+${assistXp} XP (Assist)`, assistHero.x, assistHero.y - 20, '#38bdf8');
+          }
+        } else {
+          // Monster slain by defenses
+          this.state.treasuryGold += monster.goldBountyReward;
+          this.addFloatingText(`+${monster.goldBountyReward}g Bounty`, monster.x, monster.y - 10, '#fbbf24');
+        }
+
         this.state.monsters.splice(i, 1);
         continue;
       }

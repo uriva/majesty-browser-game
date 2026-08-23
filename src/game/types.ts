@@ -222,6 +222,7 @@ export interface Projectile {
   speed: number;
   damage: number;
   isHeroProjectile: boolean;
+  ownerHeroId?: string;
   progress: number;
 }
 
