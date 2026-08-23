@@ -54,6 +54,7 @@ export class MonsterAIManager {
           direction: 'down',
           isAttackingAnimation: 0,
           isBoss: def.isBoss,
+          isFlying: def.isFlying,
           specialCooldown: 0,
           wanderTimer: 0
         };
@@ -97,18 +98,20 @@ export class MonsterAIManager {
       monster.specialCooldown -= delta;
     }
 
-    // 1. CROWD SEPARATION: Repulse from other nearby monsters so they NEVER stack!
-    for (const other of allMonsters) {
-      if (other.id === monster.id || other.hp <= 0) continue;
-      const dx = monster.x - other.x;
-      const dy = monster.y - other.y;
-      const dist = Math.hypot(dx, dy);
-      const minSeparation = monster.type === 'giant_rat' ? 16 : 22;
+    // 1. CROWD SEPARATION: Repulse from other nearby monsters so they NEVER stack! (Flying monsters fly free in the air)
+    if (!monster.isFlying && monster.type !== 'red_dragon') {
+      for (const other of allMonsters) {
+        if (other.id === monster.id || other.hp <= 0 || other.isFlying) continue;
+        const dx = monster.x - other.x;
+        const dy = monster.y - other.y;
+        const dist = Math.hypot(dx, dy);
+        const minSeparation = monster.type === 'giant_rat' ? 16 : 22;
 
-      if (dist < minSeparation && dist > 0.1) {
-        const pushForce = ((minSeparation - dist) / minSeparation) * 40 * delta;
-        monster.x += (dx / dist) * pushForce;
-        monster.y += (dy / dist) * pushForce;
+        if (dist < minSeparation && dist > 0.1) {
+          const pushForce = ((minSeparation - dist) / minSeparation) * 40 * delta;
+          monster.x += (dx / dist) * pushForce;
+          monster.y += (dy / dist) * pushForce;
+        }
       }
     }
 
@@ -323,35 +326,47 @@ export class MonsterAIManager {
         const originX = lair ? (lair.x + lair.width / 2) * ts : monster.x;
         const originY = lair ? (lair.y + lair.height / 2) * ts : monster.y;
 
-        // Radius based on monster type (rats stay close to sewers, wolves/goblins roam further)
+        // Radius based on monster type (rats stay close to sewers, wolves/goblins roam further, dragons roam the skies)
         let maxRadius = 90;
         let minRadius = 22;
         if (monster.type === 'giant_rat') { maxRadius = 75; minRadius = 22; }
         else if (monster.type === 'dire_wolf') { maxRadius = 160; minRadius = 28; }
         else if (monster.type === 'goblin_spearman' || monster.type === 'goblin_shaman') { maxRadius = 140; minRadius = 26; }
         else if (monster.type === 'skeleton' || monster.type === 'zombie') { maxRadius = 110; minRadius = 24; }
+        else if (monster.type === 'red_dragon' || monster.isFlying) { maxRadius = 280; minRadius = 60; }
 
-        // Pick a clear walkable destination outside lair bounds
-        let foundSpot = false;
-        for (let attempt = 0; attempt < 10; attempt++) {
+        if (monster.isFlying || monster.type === 'red_dragon') {
+          // Flying dragon soars across the kingdom skies freely
           const angle = Math.random() * Math.PI * 2;
           const dist = Math.random() * (maxRadius - minRadius) + minRadius;
-          const candidateX = Math.max(ts, Math.min((this.gridManager.width - 2) * ts, originX + Math.cos(angle) * dist));
-          const candidateY = Math.max(ts, Math.min((this.gridManager.height - 2) * ts, originY + Math.sin(angle) * dist));
+          const candidateX = Math.max(ts * 3, Math.min((this.gridManager.width - 3) * ts, originX + Math.cos(angle) * dist));
+          const candidateY = Math.max(ts * 3, Math.min((this.gridManager.height - 3) * ts, originY + Math.sin(angle) * dist));
+          monster.targetX = candidateX;
+          monster.targetY = candidateY;
+          monster.wanderTimer = Math.random() * 5 + 4;
+        } else {
+          // Pick a clear walkable destination outside lair bounds
+          let foundSpot = false;
+          for (let attempt = 0; attempt < 10; attempt++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = Math.random() * (maxRadius - minRadius) + minRadius;
+            const candidateX = Math.max(ts, Math.min((this.gridManager.width - 2) * ts, originX + Math.cos(angle) * dist));
+            const candidateY = Math.max(ts, Math.min((this.gridManager.height - 2) * ts, originY + Math.sin(angle) * dist));
 
-          if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs)) {
-            monster.targetX = candidateX;
-            monster.targetY = candidateY;
-            foundSpot = true;
-            break;
+            if (this.gridManager.isWalkablePosition(candidateX, candidateY, buildings, lairs)) {
+              monster.targetX = candidateX;
+              monster.targetY = candidateY;
+              foundSpot = true;
+              break;
+            }
           }
-        }
 
-        if (!foundSpot) {
-          const fallbackAngle = Math.random() * Math.PI * 2;
-          const fallbackDist = monster.type === 'giant_rat' ? 26 : 34;
-          monster.targetX = originX + Math.cos(fallbackAngle) * fallbackDist;
-          monster.targetY = originY + Math.sin(fallbackAngle) * fallbackDist;
+          if (!foundSpot) {
+            const fallbackAngle = Math.random() * Math.PI * 2;
+            const fallbackDist = monster.type === 'giant_rat' ? 26 : 34;
+            monster.targetX = originX + Math.cos(fallbackAngle) * fallbackDist;
+            monster.targetY = originY + Math.sin(fallbackAngle) * fallbackDist;
+          }
         }
       }
 
@@ -370,6 +385,44 @@ export class MonsterAIManager {
     speedMult = 1.0,
     targetBuildingId?: string
   ) {
+    if (monster.isFlying || monster.type === 'red_dragon') {
+      const dx = targetX - monster.x;
+      const dy = targetY - monster.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < 8) {
+        monster.targetX = undefined;
+        monster.targetY = undefined;
+        monster.path = undefined;
+        monster.pathTargetKey = undefined;
+        if (monster.state === 'wandering') {
+          monster.wanderTimer = 0;
+        }
+        return true;
+      }
+
+      // Flying monsters soar straight over all terrain and obstacles without pathfinding or collision slowdown
+      const moveDist = Math.min(dist, monster.speed * speedMult * delta);
+      monster.x += (dx / dist) * moveDist;
+      monster.y += (dy / dist) * moveDist;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        monster.direction = dx > 0 ? 'right' : 'left';
+      } else {
+        monster.direction = dy > 0 ? 'down' : 'up';
+      }
+
+      const reached = Math.hypot(targetX - monster.x, targetY - monster.y) < 8;
+      if (reached) {
+        monster.targetX = undefined;
+        monster.targetY = undefined;
+        if (monster.state === 'wandering') {
+          monster.wanderTimer = 0;
+        }
+      }
+      return reached;
+    }
+
     const reached = this.gridManager.moveEntityAlongPath(
       monster,
       targetX,

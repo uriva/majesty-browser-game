@@ -1173,29 +1173,75 @@ export class CanvasRenderer {
       ctx.arc(orbX, orbY, 3, 0, Math.PI * 2);
       ctx.fill();
     } else if (monster.type === 'red_dragon') {
-      // Red Dragon Fryre with Animated Flapping Wings
-      const wingFlap = Math.sin(Date.now() * 0.006) * 12;
-      ctx.fillStyle = '#7f1d1d';
-      // Wings
+      // Flying Red Dragon Fryre with Animated Altitude & Flapping Wings
+      const time = Date.now() * 0.005;
+      const flyAltitude = 26 + Math.sin(time * 0.7) * 4;
+      const wingFlap = Math.sin(time * 1.6) * 14;
+
+      // Ground Shadow on Terrain below Flying Dragon
+      ctx.fillStyle = 'rgba(0,0,0,0.32)';
       ctx.beginPath();
-      ctx.moveTo(x - 30, y - 24 + wingFlap);
-      ctx.lineTo(x, y - 10);
-      ctx.lineTo(x + 30, y - 24 + wingFlap);
-      ctx.lineTo(x + 16, y - 2);
-      ctx.lineTo(x - 16, y - 2);
+      ctx.ellipse(x, y + 4, 22, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Elevated Dragon Body Position
+      const flyY = y - flyAltitude;
+
+      // Sinuous Tail
+      const tailSway = Math.sin(time * 1.2) * 8;
+      ctx.fillStyle = '#991b1b';
+      ctx.beginPath();
+      ctx.moveTo(x - 6, flyY - 2);
+      ctx.quadraticCurveTo(x + tailSway, flyY + 16, x + tailSway * 1.4, flyY + 24);
+      ctx.lineTo(x + 4, flyY - 2);
       ctx.closePath();
       ctx.fill();
-      // Body & Head
+
+      // Massive Flying Wings
+      ctx.fillStyle = '#7f1d1d';
+      ctx.beginPath();
+      ctx.moveTo(x - 34, flyY - 24 + wingFlap);
+      ctx.lineTo(x - 4, flyY - 10);
+      ctx.lineTo(x + 34, flyY - 24 + wingFlap);
+      ctx.lineTo(x + 18, flyY - 2);
+      ctx.lineTo(x - 18, flyY - 2);
+      ctx.closePath();
+      ctx.fill();
+
+      // Wing Bone Struts
+      ctx.strokeStyle = '#450a0a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, flyY - 10);
+      ctx.lineTo(x - 34, flyY - 24 + wingFlap);
+      ctx.moveTo(x, flyY - 10);
+      ctx.lineTo(x + 34, flyY - 24 + wingFlap);
+      ctx.stroke();
+
+      // Main Torso & Head
       ctx.fillStyle = '#dc2626';
       ctx.beginPath();
-      ctx.ellipse(x, y - 10, 16, 12, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, flyY - 10, 16, 12, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(x + 12, y - 18, 8, 0, Math.PI * 2);
+      ctx.arc(x + 12, flyY - 18, 8, 0, Math.PI * 2);
       ctx.fill();
-      // Glowing Fire Maw
+
+      // Obsidian Horns
+      ctx.fillStyle = '#1c1917';
+      ctx.beginPath();
+      ctx.moveTo(x + 8, flyY - 24);
+      ctx.lineTo(x + 12, flyY - 18);
+      ctx.lineTo(x + 4, flyY - 20);
+      ctx.closePath();
+      ctx.fill();
+
+      // Glowing Fire Eyes & Fire Maw
       ctx.fillStyle = '#fbbf24';
-      ctx.fillRect(x + 16, y - 16, 4, 3);
+      ctx.beginPath();
+      ctx.arc(x + 15, flyY - 20, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(x + 16, flyY - 16, 5, 3);
     } else {
       ctx.fillStyle = def.color;
       ctx.fillRect(x - 4, y - 8, 8, 10);

@@ -147,7 +147,7 @@ export class GridManager {
       }
     }
 
-    // Clear and pave central kingdom area with cobblestone dirt roads
+    // Clear and pave central kingdom area
     for (let y = centerY - 6; y <= centerY + 6; y++) {
       for (let x = centerX - 6; x <= centerX + 6; x++) {
         if (this.isValid(x, y)) {
@@ -156,14 +156,26 @@ export class GridManager {
       }
     }
 
-    // Cobblestone town crossroad
-    for (let x = centerX - 8; x <= centerX + 8; x++) {
+    // Cobblestone town avenues extending outward from Palace perimeter (Palace occupies centerX-2..centerX+1, centerY-2..centerY+1)
+    // South Royal Avenue (heading south from Palace Gate)
+    for (let y = centerY + 2; y <= centerY + 8; y++) {
+      if (this.isValid(centerX, y)) this.grid[y][centerX] = 1;
+      if (this.isValid(centerX - 1, y)) this.grid[y][centerX - 1] = 1;
+    }
+    // North Road
+    for (let y = centerY - 8; y <= centerY - 3; y++) {
+      if (this.isValid(centerX, y)) this.grid[y][centerX] = 1;
+      if (this.isValid(centerX - 1, y)) this.grid[y][centerX - 1] = 1;
+    }
+    // East Road
+    for (let x = centerX + 2; x <= centerX + 8; x++) {
       if (this.isValid(x, centerY)) this.grid[centerY][x] = 1;
       if (this.isValid(x, centerY + 1)) this.grid[centerY + 1][x] = 1;
     }
-    for (let y = centerY - 8; y <= centerY + 8; y++) {
-      if (this.isValid(centerX, y)) this.grid[y][centerX] = 1;
-      if (this.isValid(centerX + 1, y)) this.grid[y][centerX + 1] = 1;
+    // West Road
+    for (let x = centerX - 8; x <= centerX - 3; x++) {
+      if (this.isValid(x, centerY)) this.grid[centerY][x] = 1;
+      if (this.isValid(x, centerY + 1)) this.grid[centerY + 1][x] = 1;
     }
 
     // Reveal initial town center
@@ -171,33 +183,72 @@ export class GridManager {
     this.roadVersion = 1;
   }
 
-  public paveRoadToBuilding(building: Building) {
+  public clearRoadsUnderBuilding(area: { x: number; y: number; width: number; height: number }) {
+    for (let y = area.y; y < area.y + area.height; y++) {
+      for (let x = area.x; x < area.x + area.width; x++) {
+        if (this.isValid(x, y) && this.grid[y][x] === 1) {
+          this.grid[y][x] = 0; // return to clean grass
+        }
+      }
+    }
+  }
+
+  public paveRoadToBuilding(building: Building, buildings: Building[] = [], lairs: MonsterLair[] = []) {
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
 
-    // Entrance point (South side of the building)
-    const entranceX = Math.floor(building.x + building.width / 2);
-    const entranceY = Math.min(this.height - 2, building.y + building.height);
+    // 1. Clear any road tiles directly beneath this building foundation
+    this.clearRoadsUnderBuilding(building);
 
-    // Pave 1-tile entrance apron
-    for (let dx = -1; dx <= 1; dx++) {
-      const ax = entranceX + dx;
-      if (this.isValid(ax, entranceY) && (this.grid[entranceY][ax] === 0 || this.grid[entranceY][ax] === 3)) {
-        this.grid[entranceY][ax] = 1;
-      }
+    // 2. Determine doorstep/entrance tile outside the building based on facing
+    const facing = building.facing || 'south';
+    let entranceX = Math.floor(building.x + building.width / 2);
+    let entranceY = building.y + building.height; // South default
+
+    if (facing === 'north') {
+      entranceX = Math.floor(building.x + building.width / 2);
+      entranceY = building.y - 1;
+    } else if (facing === 'east') {
+      entranceX = building.x + building.width;
+      entranceY = Math.floor(building.y + building.height / 2);
+    } else if (facing === 'west') {
+      entranceX = building.x - 1;
+      entranceY = Math.floor(building.y + building.height / 2);
     }
 
-    // Find closest existing road tile (or palace crossroads)
+    entranceX = Math.max(1, Math.min(this.width - 2, entranceX));
+    entranceY = Math.max(1, Math.min(this.height - 2, entranceY));
+
+    // Helper to check if a tile is inside any solid building or lair
+    const isTileInsideStructure = (tx: number, ty: number) => {
+      for (const b of buildings) {
+        if (b.hp <= 0 || b.type === 'marketplace' || b.type === 'statue_king') continue;
+        if (tx >= b.x && tx < b.x + b.width && ty >= b.y && ty < b.y + b.height) return true;
+      }
+      for (const l of lairs) {
+        if (l.hp <= 0) continue;
+        if (tx >= l.x && tx < l.x + l.width && ty >= l.y && ty < l.y + l.height) return true;
+      }
+      return false;
+    };
+
+    // Pave entrance doorstep tile if not inside a structure
+    if (!isTileInsideStructure(entranceX, entranceY) && (this.grid[entranceY][entranceX] === 0 || this.grid[entranceY][entranceX] === 3)) {
+      this.grid[entranceY][entranceX] = 1;
+    }
+
+    // 3. Find closest existing road tile (or palace crossroads) that is NOT inside any structure
     let bestRoadTile: Position | null = null;
     let minRoadDist = Infinity;
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        if (this.grid[y][x] === 1) {
-          // Skip if inside this building's perimeter
+        if ((this.grid[y][x] === 1 || this.grid[y][x] === 5) && !isTileInsideStructure(x, y)) {
+          // Skip if inside this building's perimeter or right at entrance
           if (x >= building.x && x < building.x + building.width && y >= building.y && y < building.y + building.height) continue;
+          if (x === entranceX && y === entranceY) continue;
           const d = Math.hypot(x - entranceX, y - entranceY);
-          if (d < minRoadDist && d > 1) {
+          if (d < minRoadDist && d >= 1) {
             minRoadDist = d;
             bestRoadTile = { x, y };
           }
@@ -205,28 +256,78 @@ export class GridManager {
       }
     }
 
-    const targetRoad = bestRoadTile || { x: centerX, y: centerY };
+    const palace = buildings.find(b => b.type === 'palace');
+    const targetRoad = bestRoadTile || (palace ? { x: Math.floor(palace.x + palace.width / 2), y: palace.y + palace.height } : { x: centerX, y: centerY + 3 });
 
-    // Pave road connecting entrance to target road
-    let curX = entranceX;
-    let curY = entranceY;
+    // 4. BFS Pathfinding on Tile Grid avoiding water, rock, and all structures
+    interface BFSNode {
+      x: number;
+      y: number;
+      parent?: BFSNode;
+    }
 
-    let steps = 0;
-    while ((curX !== targetRoad.x || curY !== targetRoad.y) && steps < 60) {
-      steps++;
-      if (this.grid[curY][curX] === 0 || this.grid[curY][curX] === 3) {
-        this.grid[curY][curX] = 1; // Pave as brick road
-      }
+    const queue: BFSNode[] = [{ x: entranceX, y: entranceY }];
+    const visited = new Uint8Array(this.width * this.height);
+    visited[entranceY * this.width + entranceX] = 1;
+    let reachedNode: BFSNode | null = null;
+    let iterations = 0;
 
-      if (Math.abs(targetRoad.x - curX) > Math.abs(targetRoad.y - curY)) {
-        curX += targetRoad.x > curX ? 1 : -1;
-      } else {
-        curY += targetRoad.y > curY ? 1 : -1;
-      }
+    const dirs = [
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+      { x: 1, y: 0 },
+      { x: -1, y: 0 }
+    ];
 
-      if (!this.isValid(curX, curY) || this.grid[curY][curX] === 2 || this.grid[curY][curX] === 4) {
+    while (queue.length > 0 && iterations < 800) {
+      iterations++;
+      const curr = queue.shift()!;
+      if (curr.x === targetRoad.x && curr.y === targetRoad.y) {
+        reachedNode = curr;
         break;
       }
+
+      // If we touched any existing valid road tile outside the start point, we reached the road network!
+      if ((curr.x !== entranceX || curr.y !== entranceY) && (this.grid[curr.y][curr.x] === 1 || this.grid[curr.y][curr.x] === 5) && !isTileInsideStructure(curr.x, curr.y)) {
+        reachedNode = curr;
+        break;
+      }
+
+      for (const d of dirs) {
+        const nx = curr.x + d.x;
+        const ny = curr.y + d.y;
+        if (!this.isValid(nx, ny)) continue;
+        const idx = ny * this.width + nx;
+        if (visited[idx]) continue;
+        visited[idx] = 1;
+
+        // Cannot path through water, rock, or any solid building/lair
+        const t = this.grid[ny][nx];
+        if (t === 2 || t === 4) continue;
+        if (isTileInsideStructure(nx, ny)) continue;
+
+        queue.push({ x: nx, y: ny, parent: curr });
+      }
+    }
+
+    // Pave along the BFS path from entrance to connected road
+    let step: BFSNode | null | undefined = reachedNode;
+    while (step) {
+      if (!isTileInsideStructure(step.x, step.y)) {
+        if (this.grid[step.y][step.x] === 0 || this.grid[step.y][step.x] === 3) {
+          this.grid[step.y][step.x] = 1;
+        }
+      }
+      step = step.parent;
+    }
+
+    // Safety: ensure all existing buildings and lairs have no road tiles beneath them
+    for (const b of buildings) {
+      if (b.type === 'marketplace' || b.type === 'statue_king') continue;
+      this.clearRoadsUnderBuilding(b);
+    }
+    for (const l of lairs) {
+      this.clearRoadsUnderBuilding(l);
     }
 
     this.roadVersion++;
@@ -286,7 +387,7 @@ export class GridManager {
 
     // 2. Check solid buildings (Marketplace & Statue are open plazas heroes can walk through)
     for (const b of buildings) {
-      if (b.id === excludeBuildingId || b.hp <= 0) continue;
+      if (b.hp <= 0) continue;
       if (b.type === 'marketplace' || b.type === 'statue_king') continue;
 
       const bx = b.x * ts;
@@ -306,7 +407,7 @@ export class GridManager {
 
     // 3. Check monster lairs
     for (const l of lairs) {
-      if (l.id === excludeBuildingId || l.hp <= 0) continue;
+      if (l.hp <= 0) continue;
       const lx = l.x * ts;
       const ly = l.y * ts;
       const lw = l.width * ts;
@@ -334,7 +435,7 @@ export class GridManager {
   ) {
     const ts = this.tileSize;
     for (const b of buildings) {
-      if (b.id === excludeBuildingId || b.hp <= 0) continue;
+      if (b.hp <= 0) continue;
       if (b.type === 'marketplace' || b.type === 'statue_king') continue;
 
       const bx = b.x * ts;
@@ -363,7 +464,7 @@ export class GridManager {
     }
 
     for (const l of lairs) {
-      if (l.id === excludeBuildingId || l.hp <= 0) continue;
+      if (l.hp <= 0) continue;
       const lx = l.x * ts;
       const ly = l.y * ts;
       const lw = l.width * ts;
@@ -401,7 +502,7 @@ export class GridManager {
     if (tile === 2 || tile === 4) return true; // water or rock
 
     for (const b of buildings) {
-      if (b.id === excludeBuildingId || b.hp <= 0) continue;
+      if (b.hp <= 0) continue;
       if (b.type === 'marketplace' || b.type === 'statue_king') continue;
       if (tx >= b.x && tx < b.x + b.width && ty >= b.y && ty < b.y + b.height) {
         return true;
@@ -409,7 +510,7 @@ export class GridManager {
     }
 
     for (const l of lairs) {
-      if (l.id === excludeBuildingId || l.hp <= 0) continue;
+      if (l.hp <= 0) continue;
       if (tx >= l.x && tx < l.x + l.width && ty >= l.y && ty < l.y + l.height) {
         return true;
       }

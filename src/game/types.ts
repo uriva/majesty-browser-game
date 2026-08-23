@@ -135,6 +135,7 @@ export interface Monster {
   direction: 'left' | 'right' | 'up' | 'down';
   isAttackingAnimation: number;
   isBoss?: boolean;
+  isFlying?: boolean;
   specialCooldown?: number;
   targetX?: number;
   targetY?: number;
@@ -168,7 +169,7 @@ export interface Building {
   goldStored: number; // uncollected taxes/sales
   heroSlots: number;
   recruitedHeroIds: string[];
-  trainingQueue?: { heroClass: HeroClass; progress: number; totalTime: number }[];
+  trainingQueue?: { id?: string; heroClass: HeroClass; progress: number; totalTime: number }[];
   researchQueue?: ResearchItem[];
   researchedUpgrades: string[];
   availableUpgrades: string[];

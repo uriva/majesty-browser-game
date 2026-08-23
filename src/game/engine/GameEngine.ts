@@ -132,7 +132,8 @@ export class GameEngine {
       currentAttackCooldown: 0
     };
     this.state.buildings.push(palace);
-    this.gridManager.paveRoadToBuilding(palace);
+    this.gridManager.clearRoadsUnderBuilding(palace);
+    this.gridManager.paveRoadToBuilding(palace, this.state.buildings, this.state.lairs);
 
     // Spawn 3 initial Peasant Cottages snug around Palace outskirts generating initial kingdom taxes
     const cottageOffsets = [
@@ -171,7 +172,8 @@ export class GameEngine {
           taxRate: 0.15
         };
         this.state.buildings.push(initCottage);
-        this.gridManager.paveRoadToBuilding(initCottage);
+        this.gridManager.clearRoadsUnderBuilding(initCottage);
+        this.gridManager.paveRoadToBuilding(initCottage, this.state.buildings, this.state.lairs);
       }
     });
 
@@ -212,6 +214,7 @@ export class GameEngine {
         currentMonsters: 0
       };
       this.state.lairs.push(lair);
+      this.gridManager.clearRoadsUnderBuilding(lair);
     }
 
     // Seed hidden ancient treasure chests in uncharted wilderness
@@ -877,7 +880,7 @@ export class GameEngine {
           targetBuilding.hp = targetBuilding.maxHp;
           targetBuilding.isConstructing = false;
           this.state.stats.buildingsConstructed += 1;
-          this.gridManager.paveRoadToBuilding(targetBuilding);
+          this.gridManager.paveRoadToBuilding(targetBuilding, this.state.buildings, this.state.lairs);
           audioManager.playBuildingPlaced();
           this.addFloatingText('Building Complete!', p.x, p.y - 20, '#22c55e');
           this.addNotification('Construction Complete', `${targetBuilding.name} was built by your peasants!`, 'success');
@@ -1196,6 +1199,7 @@ export class GameEngine {
     const trainingTime = classDef.trainingTime || 5.0;
 
     building.trainingQueue.push({
+      id: `recruit_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
       heroClass,
       progress: 0,
       totalTime: trainingTime

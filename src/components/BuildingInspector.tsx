@@ -198,7 +198,10 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
 
           {/* Active Training Progress Card */}
           {building.trainingQueue && building.trainingQueue.length > 0 && (
-            <div className="bg-sky-950/40 border border-sky-700/60 rounded-lg p-2.5 mb-2.5">
+            <div
+              key={building.trainingQueue[0].id || `${building.trainingQueue[0].heroClass}_${building.trainingQueue.length}`}
+              className="bg-sky-950/40 border border-sky-700/60 rounded-lg p-2.5 mb-2.5"
+            >
               <div className="flex justify-between items-center text-xs mb-1">
                 <span className="text-sky-300 font-bold flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
@@ -210,7 +213,7 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
               </div>
               <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-sky-950">
                 <div
-                  className="bg-gradient-to-r from-sky-500 to-cyan-400 h-full transition-all duration-150"
+                  className="bg-gradient-to-r from-sky-500 to-cyan-400 h-full"
                   style={{ width: `${Math.min(100, Math.max(0, building.trainingQueue[0].progress))}%` }}
                 />
               </div>
@@ -218,7 +221,7 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
                 <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400">
                   <span>Queued:</span>
                   {building.trainingQueue.slice(1).map((q, idx) => (
-                    <span key={idx} className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 text-sky-300 font-mono">
+                    <span key={q.id || idx} className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 text-sky-300 font-mono">
                       {HERO_CLASS_DEFINITIONS[q.heroClass].name}
                     </span>
                   ))}
@@ -293,7 +296,10 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
 
           {/* Active Research Progress */}
           {building.researchQueue && building.researchQueue.length > 0 && (
-            <div className="bg-purple-950/40 border border-purple-800/80 rounded-xl p-2.5 mb-2.5">
+            <div
+              key={building.researchQueue[0].upgradeId}
+              className="bg-purple-950/40 border border-purple-800/80 rounded-xl p-2.5 mb-2.5"
+            >
               <div className="flex justify-between text-xs font-semibold text-purple-200 mb-1">
                 <span className="flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-spin" />
@@ -305,7 +311,7 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
               </div>
               <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-purple-950">
                 <div
-                  className="h-full bg-gradient-to-r from-purple-500 to-amber-400 transition-all duration-200"
+                  className="h-full bg-gradient-to-r from-purple-500 to-amber-400"
                   style={{ width: `${Math.min(100, Math.max(0, building.researchQueue[0].progress))}%` }}
                 />
               </div>

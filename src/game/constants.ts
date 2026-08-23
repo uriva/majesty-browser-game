@@ -466,6 +466,7 @@ export interface MonsterDef {
   goldBountyReward: number;
   isRanged?: boolean;
   isBoss?: boolean;
+  isFlying?: boolean;
   color: string;
 }
 
@@ -579,6 +580,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     attackCooldown: 2.4,
     isRanged: true,
     isBoss: true,
+    isFlying: true,
     xpReward: 1000,
     goldBountyReward: 100,
     color: '#dc2626'

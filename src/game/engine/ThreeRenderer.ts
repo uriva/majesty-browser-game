@@ -1697,13 +1697,22 @@ export class ThreeRenderer {
     const allPolylines: { x: number; z: number }[][] = [];
 
     // Grand Avenue from Palace Gatehouse heading south
-    const avenuePoints = [
+    const rawAvenuePoints = [
       { x: palaceCenterX, z: palaceGateZ + 4 },
       { x: palaceCenterX, z: palaceGateZ + 20 },
       { x: palaceCenterX, z: palaceGateZ + 38 },
       { x: palaceCenterX, z: palaceGateZ + 58 },
     ];
-    allPolylines.push(avenuePoints);
+    const avenuePoints: { x: number; z: number }[] = [];
+    for (const p of rawAvenuePoints) {
+      if (!this.gridManager.isWalkablePosition(p.x, p.z, state.buildings, state.lairs, palace?.id, 6)) {
+        break;
+      }
+      avenuePoints.push(p);
+    }
+    if (avenuePoints.length >= 2) {
+      allPolylines.push(avenuePoints);
+    }
     avenuePoints.forEach(p => roadNetworkNodes.push(p));
 
     // Also register bridge crossing approach points
@@ -1942,6 +1951,30 @@ export class ThreeRenderer {
       ctx.strokeStyle = 'rgba(28, 25, 23, 0.9)';
       ctx.lineWidth = scaleDist(1.0);
       ctx.strokeRect(plazaX + scaleDist(0.5), plazaY + scaleDist(0.5), plazaW - scaleDist(1), plazaH - scaleDist(1));
+    }
+
+    // --- PASS 5: Erase Road Canvas Beneath All Solid Structures ---
+    // Guarantees zero road textures or curb outlines ever pass beneath any building or lair
+    for (const b of state.buildings) {
+      if (b.type === 'marketplace' || b.type === 'statue_king') continue;
+      const marginPx = scaleDist(0.5);
+      const bx = toCanvasX(b.x * ts) + marginPx;
+      const by = toCanvasY(b.y * ts) + marginPx;
+      const bw = scaleDist(b.width * ts) - marginPx * 2;
+      const bh = scaleDist(b.height * ts) - marginPx * 2;
+      if (bw > 0 && bh > 0) {
+        ctx.clearRect(bx, by, bw, bh);
+      }
+    }
+    for (const l of state.lairs) {
+      const marginPx = scaleDist(0.5);
+      const lx = toCanvasX(l.x * ts) + marginPx;
+      const ly = toCanvasY(l.y * ts) + marginPx;
+      const lw = scaleDist(l.width * ts) - marginPx * 2;
+      const lh = scaleDist(l.height * ts) - marginPx * 2;
+      if (lw > 0 && lh > 0) {
+        ctx.clearRect(lx, ly, lw, lh);
+      }
     }
 
     // 4. Update Street Lamps along roads, plazas, and building entrances
@@ -5049,8 +5082,17 @@ export class ThreeRenderer {
         this.monstersMap.set(m.id, mGroup);
       }
 
-      mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y), m.y);
+      // Flight Altitude: dragons soar majestically high in the skies
+      const isFlying = m.type === 'red_dragon' || m.isFlying;
+      const flightAltitude = isFlying ? 24 + Math.sin(time * 0.35) * 4 : 0;
+      mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y) + flightAltitude, m.y);
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
+
+      // Keep ground shadow projected on terrain beneath flying dragon
+      const groundShadow = mGroup.getObjectByName('dragonShadow');
+      if (groundShadow) {
+        groundShadow.position.y = -flightAltitude + 0.2;
+      }
 
       // Smooth Natural 360-degree Facing Direction
       let targetAngle = mGroup.rotation.y;
@@ -5080,10 +5122,20 @@ export class ThreeRenderer {
         const wingR = mGroup.getObjectByName('wingR');
         const dragonHead = mGroup.getObjectByName('dragonHead');
         const dragonTail = mGroup.getObjectByName('dragonTail');
-        const flap = Math.sin(time * 1.2) * 0.45;
+        const dragonBody = mGroup.getObjectByName('dragonBody');
 
-        if (wingL) wingL.rotation.z = flap + (isAttacking ? attackFactor * 0.5 : 0);
-        if (wingR) wingR.rotation.z = -flap - (isAttacking ? attackFactor * 0.5 : 0);
+        // Dynamic Soaring & Wing Flap: vigorous wing beat when moving/attacking, steady soaring glide when hovering
+        const flapRate = isMoving ? 0.95 : 0.45;
+        const flap = Math.sin(time * flapRate) * 0.65;
+
+        if (wingL) {
+          wingL.rotation.z = flap + (isAttacking ? attackFactor * 0.4 : 0);
+          wingL.rotation.y = Math.cos(time * flapRate) * 0.15;
+        }
+        if (wingR) {
+          wingR.rotation.z = -flap - (isAttacking ? attackFactor * 0.4 : 0);
+          wingR.rotation.y = -Math.cos(time * flapRate) * 0.15;
+        }
 
         if (dragonHead) {
           if (isAttacking) {
@@ -5091,12 +5143,18 @@ export class ThreeRenderer {
             dragonHead.rotation.x = -attackFactor * 0.4;
           } else {
             dragonHead.position.z = 8;
-            dragonHead.rotation.x = Math.sin(time * 1.2) * 0.1;
+            dragonHead.rotation.x = Math.sin(time * 0.4) * 0.15;
           }
         }
 
         if (dragonTail) {
-          dragonTail.rotation.y = Math.sin(time * 1.5) * 0.4;
+          dragonTail.rotation.y = Math.sin(time * 0.6) * 0.45;
+          dragonTail.rotation.x = Math.cos(time * 0.3) * 0.1;
+        }
+
+        if (dragonBody) {
+          // Slight banking / pitch when swooping
+          dragonBody.rotation.x = isAttacking ? -0.2 : Math.sin(time * 0.4) * 0.06;
         }
       } else if (m.type === 'giant_rat') {
         const ratTail = mGroup.getObjectByName('ratTail');
@@ -5311,19 +5369,43 @@ export class ThreeRenderer {
 
       group.add(headGroup);
 
-      // Massive Wings
-      const wingGeo = new THREE.PlaneGeometry(22, 14);
-      const wingMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, side: THREE.DoubleSide });
+      // Massive Articulated Dragon Wings with Shoulder Pivots
+      const wingMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6, side: THREE.DoubleSide });
+      const boneMat = new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.8 });
 
-      const wingL = new THREE.Mesh(wingGeo, wingMat);
-      wingL.position.set(-14, 20, 0);
-      wingL.name = 'wingL';
-      group.add(wingL);
+      // Left Wing (Pivoting from left shoulder)
+      const wingPivotL = new THREE.Group();
+      wingPivotL.position.set(-7, 18, 0);
+      wingPivotL.name = 'wingL';
 
-      const wingR = new THREE.Mesh(wingGeo, wingMat);
-      wingR.position.set(14, 20, 0);
-      wingR.name = 'wingR';
-      group.add(wingR);
+      const wingGeoL = new THREE.PlaneGeometry(26, 16);
+      wingGeoL.translate(-13, 0, 0);
+      const wingMeshL = new THREE.Mesh(wingGeoL, wingMat);
+      wingMeshL.castShadow = true;
+      wingPivotL.add(wingMeshL);
+
+      const wingBoneL = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.3, 26, 6), boneMat);
+      wingBoneL.rotation.z = Math.PI / 2;
+      wingBoneL.position.set(-13, 7, 0);
+      wingPivotL.add(wingBoneL);
+      group.add(wingPivotL);
+
+      // Right Wing (Pivoting from right shoulder)
+      const wingPivotR = new THREE.Group();
+      wingPivotR.position.set(7, 18, 0);
+      wingPivotR.name = 'wingR';
+
+      const wingGeoR = new THREE.PlaneGeometry(26, 16);
+      wingGeoR.translate(13, 0, 0);
+      const wingMeshR = new THREE.Mesh(wingGeoR, wingMat);
+      wingMeshR.castShadow = true;
+      wingPivotR.add(wingMeshR);
+
+      const wingBoneR = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.3, 26, 6), boneMat);
+      wingBoneR.rotation.z = -Math.PI / 2;
+      wingBoneR.position.set(13, 7, 0);
+      wingPivotR.add(wingBoneR);
+      group.add(wingPivotR);
 
       // Sinuous Spiked Tail
       const tailGeo = new THREE.CylinderGeometry(1.4, 0.4, 18, 6);
@@ -5332,6 +5414,20 @@ export class ThreeRenderer {
       tail.position.set(0, 15, -12);
       tail.name = 'dragonTail';
       group.add(tail);
+
+      // Ground Shadow Decal below Flying Dragon
+      const shadowGeo = new THREE.PlaneGeometry(28, 20);
+      shadowGeo.rotateX(-Math.PI / 2);
+      const shadowMat = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false
+      });
+      const dragonShadow = new THREE.Mesh(shadowGeo, shadowMat);
+      dragonShadow.name = 'dragonShadow';
+      dragonShadow.position.set(0, -24, 0);
+      group.add(dragonShadow);
     } else if (m.type === 'giant_rat') {
       // Proportional 3D Giant Sewer Rat Monster
       const bodyGeo = new THREE.SphereGeometry(2.4, 10, 8);

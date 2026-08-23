@@ -96,7 +96,11 @@ export const GameView: React.FC = () => {
         setGameState({
           ...engine.state,
           heroes: [...engine.state.heroes],
-          buildings: [...engine.state.buildings],
+          buildings: engine.state.buildings.map(b => ({
+            ...b,
+            trainingQueue: b.trainingQueue ? b.trainingQueue.map(q => ({ ...q })) : [],
+            researchQueue: b.researchQueue ? b.researchQueue.map(r => ({ ...r })) : []
+          })),
           monsters: [...engine.state.monsters],
           lairs: [...engine.state.lairs],
           treasures: [...engine.state.treasures],
