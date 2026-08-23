@@ -727,48 +727,96 @@ export class HeroAIManager {
       return;
     }
 
-    const dist = Math.hypot(flag.x - hero.x, flag.y - hero.y);
-    if (dist > 30) {
-      // While traveling to flag, engage any monster directly blocking or attacking
-      const nearbyMonster = monsters.find(
-        m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < 130 && this.gridManager.isPixelVisible(m.x, m.y)
-      );
-      if (nearbyMonster) {
-        hero.state = 'attacking_target';
-        hero.targetEntityId = nearbyMonster.id;
-        hero.targetEntityType = 'monster';
-        hero.currentThought = `Engaging ${nearbyMonster.name}!`;
+    // Determine destination target position (exterior perimeter if target is inside a building/lair)
+    let targetX = flag.x;
+    let targetY = flag.y;
+    let targetEntityRadius = 0;
+
+    if (flag.targetEntityType === 'lair') {
+      const lair = lairs.find(l => l.id === flag.targetEntityId);
+      if (lair) {
+        const ts = this.gridManager.tileSize;
+        const bLeft = lair.x * ts;
+        const bRight = (lair.x + lair.width) * ts;
+        const bTop = lair.y * ts;
+        const bBottom = (lair.y + lair.height) * ts;
+        targetX = Math.max(bLeft - 6, Math.min(bRight + 6, hero.x));
+        targetY = Math.max(bTop - 6, Math.min(bBottom + 6, hero.y));
+        targetEntityRadius = Math.max(lair.width, lair.height) * ts * 0.5;
+      }
+    } else if (flag.targetEntityType === 'building') {
+      const b = buildings.find(build => build.id === flag.targetEntityId);
+      if (b) {
+        const ts = this.gridManager.tileSize;
+        const bLeft = b.x * ts;
+        const bRight = (b.x + b.width) * ts;
+        const bTop = b.y * ts;
+        const bBottom = (b.y + b.height) * ts;
+        targetX = Math.max(bLeft - 6, Math.min(bRight + 6, hero.x));
+        targetY = Math.max(bTop - 6, Math.min(bBottom + 6, hero.y));
+        targetEntityRadius = Math.max(b.width, b.height) * ts * 0.5;
+      }
+    }
+
+    // While traveling to flag, engage any monster directly blocking or attacking
+    const nearbyMonster = monsters.find(
+      m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < 130 && this.gridManager.isPixelVisible(m.x, m.y)
+    );
+    if (nearbyMonster) {
+      hero.state = 'attacking_target';
+      hero.targetEntityId = nearbyMonster.id;
+      hero.targetEntityType = 'monster';
+      hero.currentThought = `Engaging ${nearbyMonster.name}!`;
+      return;
+    }
+
+    const distToPerimeter = Math.hypot(targetX - hero.x, targetY - hero.y);
+    const distToCenter = Math.hypot(flag.x - hero.x, flag.y - hero.y);
+    const arrivalThreshold = Math.max(30, targetEntityRadius + 18);
+
+    const hasReached = distToPerimeter <= 24 || distToCenter <= arrivalThreshold;
+
+    if (!hasReached) {
+      const speedMult = hero.traits.quirk === 'Gold Hungry' || hero.heroClass === 'rogue' ? 1.2 : 1.0;
+      const reached = this.moveTowards(hero, targetX, targetY, delta, buildings, lairs, speedMult, flag.targetEntityType === 'lair' ? flag.targetEntityId : undefined);
+      if (!reached && Math.hypot(targetX - hero.x, targetY - hero.y) > 24) {
         return;
       }
+    }
 
-      const speedMult = hero.traits.quirk === 'Gold Hungry' || hero.heroClass === 'rogue' ? 1.2 : 1.0;
-      this.moveTowards(hero, flag.x, flag.y, delta, buildings, lairs, speedMult);
-    } else {
-      // Hero reached the flag!
-      if (flag.type === 'attack') {
-        const monster = monsters.find(m => m.id === flag.targetEntityId && m.hp > 0);
-        const lair = lairs.find(l => l.id === flag.targetEntityId && l.hp > 0);
-        if (monster) {
+    // Hero reached the flag / bounty target perimeter!
+    if (flag.type === 'attack') {
+      const monster = monsters.find(m => m.id === flag.targetEntityId && m.hp > 0);
+      const lair = lairs.find(l => l.id === flag.targetEntityId && l.hp > 0);
+      if (monster) {
+        hero.state = 'attacking_target';
+        hero.targetEntityId = monster.id;
+        hero.targetEntityType = 'monster';
+        hero.currentThought = `Attacking ${monster.name}!`;
+      } else if (lair) {
+        const guardMonster = monsters.find(
+          m => m.hp > 0 && Math.hypot(m.x - flag.x, m.y - flag.y) < 180 && this.gridManager.isPixelVisible(m.x, m.y)
+        );
+        if (guardMonster) {
           hero.state = 'attacking_target';
-          hero.targetEntityId = monster.id;
+          hero.targetEntityId = guardMonster.id;
           hero.targetEntityType = 'monster';
-        } else if (lair) {
-          // If monsters are guarding the lair, engage monster first
-          const guardMonster = monsters.find(
-            m => m.hp > 0 && Math.hypot(m.x - flag.x, m.y - flag.y) < 180 && this.gridManager.isPixelVisible(m.x, m.y)
-          );
-          if (guardMonster) {
-            hero.state = 'attacking_target';
-            hero.targetEntityId = guardMonster.id;
-            hero.targetEntityType = 'monster';
-            hero.currentThought = `Engaging ${guardMonster.name}!`;
-          } else {
-            hero.state = 'attacking_target';
-            hero.targetEntityId = lair.id;
-            hero.targetEntityType = 'lair';
-          }
+          hero.currentThought = `Engaging ${guardMonster.name}!`;
+        } else {
+          hero.state = 'attacking_target';
+          hero.targetEntityId = lair.id;
+          hero.targetEntityType = 'lair';
+          hero.currentThought = `Razing ${lair.name}!`;
         }
+      } else {
+        hero.state = 'idle';
       }
+    } else if (flag.type === 'defend') {
+      hero.state = 'idle';
+      hero.stateTimer = 4.0;
+      hero.currentThought = 'Defending royal territory';
+    } else {
+      hero.state = 'idle';
     }
   }
 
