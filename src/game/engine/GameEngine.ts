@@ -474,7 +474,7 @@ export class GameEngine {
   private recalculateVisibility() {
     this.gridManager.resetVisibility();
 
-    // Palace & Buildings sight
+    // 1. Palace & Buildings sight
     for (const b of this.state.buildings) {
       if (b.hp <= 0) continue;
       const bx = Math.floor(b.x + b.width / 2);
@@ -483,12 +483,26 @@ export class GameEngine {
       this.gridManager.revealArea(bx, by, radius);
     }
 
-    // Heroes sight
+    // 2. Heroes sight
     for (const h of this.state.heroes) {
       if (h.isDead) continue;
       const hTile = this.gridManager.pixelToTile(h.x, h.y);
       const radius = h.heroClass === 'ranger' ? 9 : 7;
       this.gridManager.revealArea(hTile.x, hTile.y, radius);
+    }
+
+    // 3. Peasants sight (Dispel fog of war as peasants walk, construct, repair)
+    for (const p of this.state.peasants) {
+      if (p.hp <= 0) continue;
+      const pTile = this.gridManager.pixelToTile(p.x, p.y);
+      this.gridManager.revealArea(pTile.x, pTile.y, MAP_CONFIG.FOG_REVEAL_RADIUS_PEASANT);
+    }
+
+    // 4. Tax Collectors sight
+    for (const tc of this.state.taxCollectors) {
+      if (tc.hp <= 0) continue;
+      const tcTile = this.gridManager.pixelToTile(tc.x, tc.y);
+      this.gridManager.revealArea(tcTile.x, tcTile.y, MAP_CONFIG.FOG_REVEAL_RADIUS_TAX_COLLECTOR);
     }
   }
 
