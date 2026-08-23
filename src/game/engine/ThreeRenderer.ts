@@ -611,10 +611,15 @@ export class ThreeRenderer {
 
     for (const b of state.buildings) {
       activeIds.add(b.id);
+      const stateKey = `${b.id}_${b.isConstructing ? 'building' : 'done'}_lvl${b.level}`;
       let group = this.buildingsMap.get(b.id);
 
-      if (!group) {
+      if (!group || group.name !== stateKey) {
+        if (group) {
+          this.scene.remove(group);
+        }
         group = this.create3DBuilding(b);
+        group.name = stateKey;
         this.scene.add(group);
         this.buildingsMap.set(b.id, group);
       }
@@ -643,24 +648,49 @@ export class ThreeRenderer {
     const h = b.height * ts;
 
     if (b.isConstructing) {
-      // 3D Construction Scaffolding
+      // 3D Construction Site (Timber Platform, Corner Posts, Crossbeams, Foundation)
       const postMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
       const plankMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 });
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 });
 
-      // 4 Corner Wooden Posts
-      const postGeo = new THREE.CylinderGeometry(1.5, 1.5, 24, 6);
-      const halfW = w * 0.4;
-      const halfH = h * 0.4;
+      // Ground Timber Foundation
+      const foundationGeo = new THREE.BoxGeometry(w * 0.85, 2, h * 0.85);
+      const foundation = new THREE.Mesh(foundationGeo, plankMat);
+      foundation.position.y = 1;
+      foundation.castShadow = true;
+      group.add(foundation);
 
-      const p1 = new THREE.Mesh(postGeo, postMat); p1.position.set(-halfW, 12, -halfH); group.add(p1);
-      const p2 = new THREE.Mesh(postGeo, postMat); p2.position.set(halfW, 12, -halfH); group.add(p2);
-      const p3 = new THREE.Mesh(postGeo, postMat); p3.position.set(-halfW, 12, halfH); group.add(p3);
-      const p4 = new THREE.Mesh(postGeo, postMat); p4.position.set(halfW, 12, halfH); group.add(p4);
+      // Rising Stone Wall Base
+      const risingWallGeo = new THREE.BoxGeometry(w * 0.7, 6, h * 0.7);
+      const risingWall = new THREE.Mesh(risingWallGeo, stoneMat);
+      risingWall.position.y = 4;
+      risingWall.castShadow = true;
+      group.add(risingWall);
 
-      // Crossbeams
-      const plankGeo = new THREE.BoxGeometry(w * 0.85, 2, 2);
-      const beam1 = new THREE.Mesh(plankGeo, plankMat); beam1.position.set(0, 16, -halfH); group.add(beam1);
-      const beam2 = new THREE.Mesh(plankGeo, plankMat); beam2.position.set(0, 16, halfH); group.add(beam2);
+      // 4 Corner Timber Posts
+      const postGeo = new THREE.CylinderGeometry(1.5, 1.5, 20, 6);
+      const halfW = w * 0.38;
+      const halfH = h * 0.38;
+
+      const p1 = new THREE.Mesh(postGeo, postMat); p1.position.set(-halfW, 10, -halfH); p1.castShadow = true; group.add(p1);
+      const p2 = new THREE.Mesh(postGeo, postMat); p2.position.set(halfW, 10, -halfH); p2.castShadow = true; group.add(p2);
+      const p3 = new THREE.Mesh(postGeo, postMat); p3.position.set(-halfW, 10, halfH); p3.castShadow = true; group.add(p3);
+      const p4 = new THREE.Mesh(postGeo, postMat); p4.position.set(halfW, 10, halfH); p4.castShadow = true; group.add(p4);
+
+      // Top Framework Crossbeams
+      const beamXGeo = new THREE.BoxGeometry(w * 0.8, 1.8, 1.8);
+      const beamZGeo = new THREE.BoxGeometry(1.8, 1.8, h * 0.8);
+
+      const b1 = new THREE.Mesh(beamXGeo, plankMat); b1.position.set(0, 18, -halfH); group.add(b1);
+      const b2 = new THREE.Mesh(beamXGeo, plankMat); b2.position.set(0, 18, halfH); group.add(b2);
+      const b3 = new THREE.Mesh(beamZGeo, plankMat); b3.position.set(-halfW, 18, 0); group.add(b3);
+      const b4 = new THREE.Mesh(beamZGeo, plankMat); b4.position.set(halfW, 18, 0); group.add(b4);
+
+      // Stacks of Lumber & Crates on site
+      const crateGeo = new THREE.BoxGeometry(4, 4, 4);
+      const crate = new THREE.Mesh(crateGeo, postMat);
+      crate.position.set(-w * 0.25, 4, h * 0.25);
+      group.add(crate);
 
       return group;
     }

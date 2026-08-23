@@ -25,10 +25,13 @@ export class MonsterAIManager {
       lair.spawnTimer -= delta;
       if (lair.spawnTimer <= 0) {
         lair.spawnTimer = lair.spawnInterval;
-        // Spawn a monster at the lair entrance
+
         const def = MONSTER_DEFINITIONS[lair.monsterType];
-        const spawnX = (lair.x + lair.width / 2) * this.gridManager.tileSize + (Math.random() * 20 - 10);
-        const spawnY = (lair.y + lair.height) * this.gridManager.tileSize + 10;
+        // Spawn with radial dispersion around lair
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * 24 + 18;
+        const spawnX = (lair.x + lair.width / 2) * this.gridManager.tileSize + Math.cos(angle) * radius;
+        const spawnY = (lair.y + lair.height / 2) * this.gridManager.tileSize + Math.sin(angle) * radius;
 
         const newMonster: Monster = {
           id: `monster_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -51,7 +54,8 @@ export class MonsterAIManager {
           direction: 'down',
           isAttackingAnimation: 0,
           isBoss: def.isBoss,
-          specialCooldown: 0
+          specialCooldown: 0,
+          wanderTimer: 0
         };
 
         onSpawnMonster(newMonster);
@@ -62,6 +66,7 @@ export class MonsterAIManager {
   public updateMonster(
     monster: Monster,
     delta: number,
+    allMonsters: Monster[],
     heroes: Hero[],
     buildings: Building[],
     taxCollectors: TaxCollector[],
@@ -90,10 +95,24 @@ export class MonsterAIManager {
       monster.specialCooldown -= delta;
     }
 
-    // Boss special mechanics
+    // 1. CROWD SEPARATION: Repulse from other nearby monsters so they NEVER stack!
+    for (const other of allMonsters) {
+      if (other.id === monster.id || other.hp <= 0) continue;
+      const dx = monster.x - other.x;
+      const dy = monster.y - other.y;
+      const dist = Math.hypot(dx, dy);
+      const minSeparation = monster.type === 'giant_rat' ? 16 : 22;
+
+      if (dist < minSeparation && dist > 0.1) {
+        const pushForce = ((minSeparation - dist) / minSeparation) * 40 * delta;
+        monster.x += (dx / dist) * pushForce;
+        monster.y += (dy / dist) * pushForce;
+      }
+    }
+
+    // 2. BOSS SPECIAL ABILITIES
     if (monster.type === 'necromancer' && (!monster.specialCooldown || monster.specialCooldown <= 0)) {
       monster.specialCooldown = 14;
-      // Summon 2 skeleton minions
       if (onSummonMinion) {
         for (let i = 0; i < 2; i++) {
           const skelDef = MONSTER_DEFINITIONS['skeleton'];
@@ -115,7 +134,8 @@ export class MonsterAIManager {
             goldBountyReward: skelDef.goldBountyReward,
             state: 'wandering',
             direction: 'down',
-            isAttackingAnimation: 0
+            isAttackingAnimation: 0,
+            wanderTimer: 0
           };
           onSummonMinion(minion);
         }
@@ -123,11 +143,11 @@ export class MonsterAIManager {
       }
     }
 
-    // Target Selection:
-    // 1. Look for nearby Tax Collector (Goblins & Rats love gold bags!)
+    // 3. TARGET SELECTION
     let closestTarget: { x: number; y: number; id: string; type: 'hero' | 'building' | 'tax_collector' } | null = null;
-    let closestDist = 180;
+    let closestDist = monster.type === 'giant_rat' ? 140 : 200;
 
+    // A. Check for Tax Collectors (Goblins & Rats love gold bags!)
     for (const tc of taxCollectors) {
       const dist = Math.hypot(tc.x - monster.x, tc.y - monster.y);
       if (dist < closestDist) {
@@ -136,7 +156,7 @@ export class MonsterAIManager {
       }
     }
 
-    // 2. Look for nearby Hero
+    // B. Check for Heroes
     for (const h of heroes) {
       if (h.isDead) continue;
       const dist = Math.hypot(h.x - monster.x, h.y - monster.y);
@@ -146,31 +166,35 @@ export class MonsterAIManager {
       }
     }
 
-    // 3. Look for nearby Building to raid (e.g. Palace, Market, Guard Tower)
+    // C. Check for Buildings / Cottages to raid
     if (!closestTarget) {
       for (const b of buildings) {
         if (b.hp <= 0) continue;
         const bx = (b.x + b.width / 2) * this.gridManager.tileSize;
         const by = (b.y + b.height / 2) * this.gridManager.tileSize;
         const dist = Math.hypot(bx - monster.x, by - monster.y);
-        if (dist < 140) {
+        const raidRange = b.type === 'peasant_cottage' ? 160 : 130;
+        if (dist < raidRange) {
           closestTarget = { x: bx, y: by, id: b.id, type: 'building' };
           break;
         }
       }
     }
 
+    // 4. COMBAT EXECUTION
     if (closestTarget) {
       monster.state = 'attacking';
       monster.targetEntityId = closestTarget.id;
       monster.targetEntityType = closestTarget.type;
+      monster.targetX = closestTarget.x;
+      monster.targetY = closestTarget.y;
 
       const dist = Math.hypot(closestTarget.x - monster.x, closestTarget.y - monster.y);
 
       if (dist > monster.attackRange) {
-        this.moveTowards(monster, closestTarget.x, closestTarget.y, delta);
+        this.moveTowards(monster, closestTarget.x, closestTarget.y, delta, buildings, 1.0, closestTarget.type === 'building' ? closestTarget.id : undefined);
       } else {
-        // Attack!
+        // In attack range!
         if (monster.currentCooldown <= 0) {
           monster.currentCooldown = monster.attackCooldown;
           monster.isAttackingAnimation = 0.25;
@@ -227,40 +251,70 @@ export class MonsterAIManager {
         }
       }
     } else {
-      // Monster wandering slowly towards town or near lair
-      if (Math.random() < 0.02) {
+      // 5. ACTIVE AUTONOMOUS WANDERING & FORAGING
+      monster.state = 'wandering';
+      if (!monster.wanderTimer) monster.wanderTimer = 0;
+      monster.wanderTimer -= delta;
+
+      if (monster.wanderTimer <= 0 || !monster.targetX || !monster.targetY) {
+        monster.wanderTimer = monster.type === 'giant_rat' ? Math.random() * 2 + 1.5 : Math.random() * 4 + 3;
+
         const palace = buildings.find(b => b.type === 'palace');
         const townX = palace ? (palace.x + palace.width / 2) * this.gridManager.tileSize : monster.x;
         const townY = palace ? (palace.y + palace.height / 2) * this.gridManager.tileSize : monster.y;
 
-        // Roam with bias toward town
-        const angle = Math.atan2(townY - monster.y, townX - monster.x) + (Math.random() - 0.5) * 1.5;
-        const dist = 50;
-        const tx = monster.x + Math.cos(angle) * dist;
-        const ty = monster.y + Math.sin(angle) * dist;
-        this.moveTowards(monster, tx, ty, delta * 0.4);
+        // Angle with bias towards town outskirts
+        const angleToTown = Math.atan2(townY - monster.y, townX - monster.x);
+        const roamAngle = angleToTown + (Math.random() - 0.5) * 1.8;
+        const roamDist = monster.type === 'giant_rat' ? Math.random() * 60 + 30 : Math.random() * 90 + 40;
+
+        monster.targetX = Math.max(32, Math.min((this.gridManager.width - 2) * 32, monster.x + Math.cos(roamAngle) * roamDist));
+        monster.targetY = Math.max(32, Math.min((this.gridManager.height - 2) * 32, monster.y + Math.sin(roamAngle) * roamDist));
+      }
+
+      if (monster.targetX !== undefined && monster.targetY !== undefined) {
+        this.moveTowards(monster, monster.targetX, monster.targetY, delta, buildings, 0.65);
       }
     }
   }
 
-  private moveTowards(monster: Monster, targetX: number, targetY: number, delta: number) {
+  private moveTowards(
+    monster: Monster,
+    targetX: number,
+    targetY: number,
+    delta: number,
+    buildings: Building[],
+    speedMult = 1.0,
+    targetBuildingId?: string
+  ) {
     const dx = targetX - monster.x;
     const dy = targetY - monster.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist < 4) return;
+    if (dist < 4) {
+      monster.targetX = undefined;
+      monster.targetY = undefined;
+      return;
+    }
 
-    const moveDist = monster.speed * delta;
+    const moveDist = monster.speed * speedMult * delta;
     const vx = (dx / dist) * moveDist;
     const vy = (dy / dist) * moveDist;
 
     const nextX = monster.x + vx;
     const nextY = monster.y + vy;
 
-    const tile = this.gridManager.pixelToTile(nextX, nextY);
-    if (this.gridManager.isWalkable(tile.x, tile.y)) {
+    // Check solid building collision (open buildings like marketplace are walkable)
+    if (this.gridManager.isWalkablePosition(nextX, nextY, buildings, [], targetBuildingId)) {
       monster.x = nextX;
       monster.y = nextY;
+    } else {
+      // Wall sliding around solid buildings
+      if (this.gridManager.isWalkablePosition(nextX, monster.y, buildings, [], targetBuildingId)) {
+        monster.x = nextX;
+      } else if (this.gridManager.isWalkablePosition(monster.x, nextY, buildings, [], targetBuildingId)) {
+        monster.y = nextY;
+      }
     }
 
     if (Math.abs(dx) > Math.abs(dy)) {

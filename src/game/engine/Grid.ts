@@ -131,7 +131,66 @@ export class GridManager {
   public isWalkable(tileX: number, tileY: number): boolean {
     if (!this.isValid(tileX, tileY)) return false;
     const tile = this.grid[tileY][tileX];
-    return tile !== 2 && tile !== 4; // water and rock block movement, trees slow down or can be walked around
+    return tile !== 2 && tile !== 4; // water and rock block movement
+  }
+
+  public isWalkablePosition(
+    px: number,
+    py: number,
+    buildings: Building[],
+    lairs: MonsterLair[],
+    excludeBuildingId?: string
+  ): boolean {
+    const tx = Math.floor(px / this.tileSize);
+    const ty = Math.floor(py / this.tileSize);
+
+    // 1. Terrain bounds & water/rock checks
+    if (!this.isValid(tx, ty)) return false;
+    const tile = this.grid[ty][tx];
+    if (tile === 2 || tile === 4) return false;
+
+    const ts = this.tileSize;
+    const unitRadius = 5;
+
+    // 2. Check solid buildings (Marketplace & Statue are open plazas heroes can walk through)
+    for (const b of buildings) {
+      if (b.id === excludeBuildingId || b.hp <= 0) continue;
+      if (b.type === 'marketplace' || b.type === 'statue_king') continue;
+
+      const bx = b.x * ts;
+      const by = b.y * ts;
+      const bw = b.width * ts;
+      const bh = b.height * ts;
+
+      if (
+        px + unitRadius > bx + 2 &&
+        px - unitRadius < bx + bw - 2 &&
+        py + unitRadius > by + 2 &&
+        py - unitRadius < by + bh - 2
+      ) {
+        return false;
+      }
+    }
+
+    // 3. Check monster lairs
+    for (const l of lairs) {
+      if (l.id === excludeBuildingId || l.hp <= 0) continue;
+      const lx = l.x * ts;
+      const ly = l.y * ts;
+      const lw = l.width * ts;
+      const lh = l.height * ts;
+
+      if (
+        px + unitRadius > lx + 2 &&
+        px - unitRadius < lx + lw - 2 &&
+        py + unitRadius > ly + 2 &&
+        py - unitRadius < ly + lh - 2
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   public canPlaceBuilding(

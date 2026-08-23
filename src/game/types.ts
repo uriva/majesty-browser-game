@@ -134,6 +134,9 @@ export interface Monster {
   isAttackingAnimation: number;
   isBoss?: boolean;
   specialCooldown?: number;
+  targetX?: number;
+  targetY?: number;
+  wanderTimer?: number;
 }
 
 export interface Building {

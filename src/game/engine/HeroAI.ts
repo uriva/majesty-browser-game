@@ -101,33 +101,33 @@ export class HeroAIManager {
     // 2. State Actions & Transitions
     switch (hero.state) {
       case 'fleeing':
-        this.handleFleeing(hero, delta, buildings, monsters);
+        this.handleFleeing(hero, delta, buildings, lairs, monsters);
         break;
 
       case 'resting_at_guild':
       case 'visiting_inn':
-        this.handleResting(hero, delta, buildings, onFloatingText);
+        this.handleResting(hero, delta, buildings, lairs, onFloatingText);
         break;
 
       case 'visiting_marketplace':
       case 'visiting_blacksmith':
-        this.handleShopping(hero, delta, buildings, onFloatingText);
+        this.handleShopping(hero, delta, buildings, lairs, onFloatingText);
         break;
 
       case 'healing_ally':
-        this.handleClericHealing(hero, delta, allHeroes, onFloatingText);
+        this.handleClericHealing(hero, delta, allHeroes, buildings, lairs, onFloatingText);
         break;
 
       case 'collecting_treasure':
-        this.handleCollectingTreasure(hero, delta, treasures, onFloatingText, onCollectTreasure);
+        this.handleCollectingTreasure(hero, delta, treasures, buildings, lairs, onFloatingText, onCollectTreasure);
         break;
 
       case 'attacking_target':
-        this.handleAttacking(hero, delta, monsters, lairs, onSpawnProjectile, onFloatingText);
+        this.handleAttacking(hero, delta, monsters, lairs, buildings, onSpawnProjectile, onFloatingText);
         break;
 
       case 'pursuing_flag':
-        this.handlePursuingFlag(hero, delta, flags, monsters, lairs);
+        this.handlePursuingFlag(hero, delta, flags, monsters, lairs, buildings);
         break;
 
       case 'wandering':
@@ -327,7 +327,7 @@ export class HeroAIManager {
 
     // Move toward target position
     if (hero.targetX !== undefined && hero.targetY !== undefined) {
-      this.moveTowards(hero, hero.targetX, hero.targetY, delta);
+      this.moveTowards(hero, hero.targetX, hero.targetY, delta, buildings, lairs);
     }
   }
 
@@ -335,6 +335,8 @@ export class HeroAIManager {
     hero: Hero,
     delta: number,
     treasures: Treasure[],
+    buildings: Building[],
+    lairs: MonsterLair[],
     onFloatingText?: (text: string, x: number, y: number, color: string) => void,
     onCollectTreasure?: (treasure: Treasure, hero: Hero) => void
   ) {
@@ -349,7 +351,7 @@ export class HeroAIManager {
     const dist = Math.hypot(treasure.x - hero.x, treasure.y - hero.y);
 
     if (dist > 18) {
-      this.moveTowards(hero, treasure.x, treasure.y, delta, 1.15);
+      this.moveTowards(hero, treasure.x, treasure.y, delta, buildings, lairs, 1.15);
     } else {
       // Pick up treasure!
       hero.gold += treasure.goldAmount;
@@ -370,13 +372,13 @@ export class HeroAIManager {
     }
   }
 
-  private handleFleeing(hero: Hero, delta: number, buildings: Building[], monsters: Monster[]) {
+  private handleFleeing(hero: Hero, delta: number, buildings: Building[], lairs: MonsterLair[], monsters: Monster[]) {
     // Run towards nearest friendly guild or palace
     const safeBuilding = buildings.find(b => (b.id === hero.homeGuildId || b.type === 'palace') && b.hp > 0);
     if (safeBuilding) {
       const bx = (safeBuilding.x + safeBuilding.width / 2) * this.gridManager.tileSize;
       const by = (safeBuilding.y + safeBuilding.height / 2) * this.gridManager.tileSize;
-      this.moveTowards(hero, bx, by, delta, 1.2); // sprint when fleeing
+      this.moveTowards(hero, bx, by, delta, buildings, lairs, 1.2, safeBuilding.id); // sprint when fleeing
 
       if (Math.hypot(bx - hero.x, by - hero.y) < 30 || hero.stateTimer <= 0) {
         hero.state = 'resting_at_guild';
@@ -393,6 +395,7 @@ export class HeroAIManager {
     hero: Hero,
     delta: number,
     buildings: Building[],
+    lairs: MonsterLair[],
     onFloatingText?: (text: string, x: number, y: number, color: string) => void
   ) {
     const building = buildings.find(b => b.id === hero.targetEntityId || b.id === hero.homeGuildId);
@@ -405,7 +408,7 @@ export class HeroAIManager {
     const by = (building.y + building.height / 2) * this.gridManager.tileSize;
 
     if (Math.hypot(bx - hero.x, by - hero.y) > 40) {
-      this.moveTowards(hero, bx, by, delta);
+      this.moveTowards(hero, bx, by, delta, buildings, lairs, 1.0, building.id);
     } else {
       // Resting inside/at building: rapid recovery
       const healSpeed = building.type === 'royal_inn' ? 35 : 20;
@@ -435,6 +438,7 @@ export class HeroAIManager {
     hero: Hero,
     delta: number,
     buildings: Building[],
+    lairs: MonsterLair[],
     onFloatingText?: (text: string, x: number, y: number, color: string) => void
   ) {
     const shop = buildings.find(b => b.id === hero.targetEntityId);
@@ -447,7 +451,7 @@ export class HeroAIManager {
     const sy = (shop.y + shop.height / 2) * this.gridManager.tileSize;
 
     if (Math.hypot(sx - hero.x, sy - hero.y) > 35) {
-      this.moveTowards(hero, sx, sy, delta);
+      this.moveTowards(hero, sx, sy, delta, buildings, lairs, 1.0, shop.id);
     } else {
       // At shop! Perform purchase with hero's gold -> transfers to shop.goldStored
       if (shop.type === 'marketplace') {
@@ -507,6 +511,8 @@ export class HeroAIManager {
     hero: Hero,
     delta: number,
     allHeroes: Hero[],
+    buildings: Building[],
+    lairs: MonsterLair[],
     onFloatingText?: (text: string, x: number, y: number, color: string) => void
   ) {
     const ally = allHeroes.find(h => h.id === hero.targetEntityId);
@@ -517,7 +523,7 @@ export class HeroAIManager {
 
     const dist = Math.hypot(ally.x - hero.x, ally.y - hero.y);
     if (dist > 70) {
-      this.moveTowards(hero, ally.x, ally.y, delta);
+      this.moveTowards(hero, ally.x, ally.y, delta, buildings, lairs);
     } else if (hero.currentCooldown <= 0 && hero.mp >= 20) {
       hero.mp -= 20;
       hero.currentCooldown = hero.attackCooldown;
@@ -538,7 +544,8 @@ export class HeroAIManager {
     delta: number,
     flags: Flag[],
     monsters: Monster[],
-    lairs: MonsterLair[]
+    lairs: MonsterLair[],
+    buildings: Building[]
   ) {
     const flag = flags.find(f => f.id === hero.targetFlagId);
     if (!flag) {
@@ -549,7 +556,7 @@ export class HeroAIManager {
     const dist = Math.hypot(flag.x - hero.x, flag.y - hero.y);
     if (dist > 30) {
       const speedMult = hero.traits.quirk === 'Gold Hungry' || hero.heroClass === 'rogue' ? 1.2 : 1.0;
-      this.moveTowards(hero, flag.x, flag.y, delta, speedMult);
+      this.moveTowards(hero, flag.x, flag.y, delta, buildings, lairs, speedMult);
     } else {
       // Hero reached the flag!
       if (flag.type === 'attack') {
@@ -574,6 +581,7 @@ export class HeroAIManager {
     delta: number,
     monsters: Monster[],
     lairs: MonsterLair[],
+    buildings: Building[],
     onSpawnProjectile?: (proj: {
       type: 'arrow' | 'fireball' | 'magic_missile' | 'holy_bolt';
       startX: number;
@@ -615,7 +623,7 @@ export class HeroAIManager {
     const dist = Math.hypot(targetX - hero.x, targetY - hero.y);
 
     if (dist > hero.attackRange) {
-      this.moveTowards(hero, targetX, targetY, delta);
+      this.moveTowards(hero, targetX, targetY, delta, buildings, lairs, 1.0, hero.targetEntityType === 'lair' ? hero.targetEntityId : undefined);
     } else {
       // In attack range!
       if (hero.currentCooldown <= 0) {
@@ -693,7 +701,16 @@ export class HeroAIManager {
     }
   }
 
-  private moveTowards(hero: Hero, targetX: number, targetY: number, delta: number, speedMultiplier = 1.0) {
+  private moveTowards(
+    hero: Hero,
+    targetX: number,
+    targetY: number,
+    delta: number,
+    buildings: Building[],
+    lairs: MonsterLair[],
+    speedMultiplier = 1.0,
+    targetBuildingId?: string
+  ) {
     const dx = targetX - hero.x;
     const dy = targetY - hero.y;
     const dist = Math.hypot(dx, dy);
@@ -712,22 +729,27 @@ export class HeroAIManager {
     const vx = (dx / dist) * moveDist;
     const vy = (dy / dist) * moveDist;
 
-    // Check collision / grid bounds
     const nextX = hero.x + vx;
     const nextY = hero.y + vy;
 
-    const tile = this.gridManager.pixelToTile(nextX, nextY);
-    if (this.gridManager.isWalkable(tile.x, tile.y)) {
+    // Check solid building collision (open buildings like marketplace and statue are walkable!)
+    if (this.gridManager.isWalkablePosition(nextX, nextY, buildings, lairs, targetBuildingId)) {
       hero.x = nextX;
       hero.y = nextY;
     } else {
-      // Try sliding on X or Y
-      const tileX = this.gridManager.pixelToTile(nextX, hero.y);
-      const tileY = this.gridManager.pixelToTile(hero.x, nextY);
-      if (this.gridManager.isWalkable(tileX.x, tileX.y)) {
+      // Wall sliding around solid buildings
+      if (this.gridManager.isWalkablePosition(nextX, hero.y, buildings, lairs, targetBuildingId)) {
         hero.x = nextX;
-      } else if (this.gridManager.isWalkable(tileY.x, tileY.y)) {
+      } else if (this.gridManager.isWalkablePosition(hero.x, nextY, buildings, lairs, targetBuildingId)) {
         hero.y = nextY;
+      } else {
+        // Try gentle angle deviation to navigate around corner
+        const perpX = -vy;
+        const perpY = vx;
+        if (this.gridManager.isWalkablePosition(hero.x + perpX, hero.y + perpY, buildings, lairs, targetBuildingId)) {
+          hero.x += perpX * 0.5;
+          hero.y += perpY * 0.5;
+        }
       }
     }
 

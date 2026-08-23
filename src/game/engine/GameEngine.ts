@@ -314,6 +314,7 @@ export class GameEngine {
       this.monsterAIManager.updateMonster(
         monster,
         delta,
+        this.state.monsters,
         this.state.heroes,
         this.state.buildings,
         this.state.taxCollectors,
