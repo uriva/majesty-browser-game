@@ -3063,7 +3063,10 @@ export class ThreeRenderer {
       colorHex = 0xf43f5e;
       if (m.type === 'red_dragon') radius = 18;
       else if (m.type === 'minotaur') radius = 8;
+      else if (m.type === 'vampire_lord') radius = 9;
+      else if (m.type === 'troll') radius = 8;
       else if (m.type === 'dire_wolf') radius = 5.5;
+      else if (m.type === 'werewolf') radius = 6.5;
       else if (m.type === 'giant_rat') radius = 3.2;
       else radius = 4.5;
     } else if (state.selectedEntity.type === 'tax_collector') {
@@ -5509,6 +5512,112 @@ export class ThreeRenderer {
       // Eternal Sulfurous Smoke Plume from the crater
       const craterSmoke = this.createSmokeEmitter(0, 34, 0, true, 4);
       group.add(craterSmoke);
+    } else if (lair.type === 'harpy_roost') {
+      // Gnarled Dead Tree with cliff-top nest
+      const barkMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 1.0 });
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 2.2, 26, 7), barkMat);
+      trunk.position.y = 13;
+      trunk.rotation.z = Math.sin(w) * 0.06;
+      trunk.castShadow = true;
+      group.add(trunk);
+
+      for (let br = 0; br < 5; br++) {
+        const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.6, 9 - (br % 3) * 1.8, 5), barkMat);
+        const bAng = (br / 5) * Math.PI * 2 + 0.4;
+        branch.position.set(Math.cos(bAng) * 3.4, 20 - (br % 3) * 3.2, Math.sin(bAng) * 3.4);
+        branch.rotation.z = Math.cos(bAng) * 0.85;
+        branch.rotation.x = -Math.sin(bAng) * 0.85;
+        branch.castShadow = true;
+        group.add(branch);
+      }
+
+      // Twiggy nest cradling the summit
+      const nestMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 1.0 });
+      const nest = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 3.4, 2.2, 8), nestMat);
+      nest.position.y = 26.4;
+      nest.castShadow = true;
+      group.add(nest);
+
+      // Scattered bone pickings from unfortunate travelers
+      const boneMat = new THREE.MeshStandardMaterial({ color: 0xfefce8, roughness: 0.5 });
+      for (const side of [-1, 1]) {
+        const bone = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 2.2, 4, 6), boneMat);
+        bone.position.set(side * 2.6, 27.8, side * 0.8);
+        bone.rotation.z = Math.PI / 2.15;
+        group.add(bone);
+      }
+    } else if (lair.type === 'troll_bridge') {
+      // Ancient Stone Arch Bridge — tolls extracted at club-point
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95 });
+      const mossStone = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 1.0 });
+
+      // Abutments
+      for (const side of [-1, 1]) {
+        const pier = new THREE.Mesh(new THREE.BoxGeometry(4.2, 10, w * 0.85), stoneMat);
+        pier.position.set(side * w * 0.38, 5, 0);
+        pier.castShadow = true;
+        group.add(pier);
+      }
+
+      // Arched deck segments
+      for (let s = -2; s <= 2; s++) {
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(w * 0.19, 2.2, w * 0.72), stoneMat);
+        seg.position.set(s * w * 0.185, 10.4 - Math.abs(s) * Math.abs(s) * 0.55, 0);
+        seg.rotation.z = -s * 0.22;
+        seg.castShadow = true;
+        group.add(seg);
+
+        if (Math.abs(s) < 2) {
+          const moss = new THREE.Mesh(new THREE.BoxGeometry(w * 0.14, 0.7, w * 0.5), mossStone);
+          moss.position.set(s * w * 0.185, 11.7 - Math.abs(s) * Math.abs(s) * 0.55, 0);
+          group.add(moss);
+        }
+      }
+
+      // Toll-keeper's campfire under the arch
+      const fireRing = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.35, 5, 9), stoneMat);
+      fireRing.rotation.x = Math.PI / 2;
+      fireRing.position.set(0, 0.6, h * 0.28);
+      group.add(fireRing);
+    } else if (lair.type === 'dark_castle') {
+      // Brooding Dark Castle — obsidian keep with blood-red windows
+      const castleMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.75, metalness: 0.25 });
+      const trimMat = new THREE.MeshStandardMaterial({ color: 0x0c0a09, roughness: 0.4, metalness: 0.5 });
+      const windowMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 1.6 });
+
+      // Central keep
+      const keep = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 30, h * 0.42), castleMat);
+      keep.position.y = 15;
+      keep.castShadow = true;
+      group.add(keep);
+
+      // Corner towers with spires
+      for (const [tx, tz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5.2, 36, 7), castleMat);
+        tower.position.set(tx * w * 0.36, 18, tz * h * 0.36);
+        tower.castShadow = true;
+        group.add(tower);
+
+        const spire = new THREE.Mesh(new THREE.ConeGeometry(4.8, 9, 7), trimMat);
+        spire.position.set(tx * w * 0.36, 40.5, tz * h * 0.36);
+        spire.castShadow = true;
+        group.add(spire);
+
+        const window = new THREE.Mesh(new THREE.BoxGeometry(1.1, 3.2, 0.5), windowMat);
+        window.position.set(tx * w * 0.30, 24, tz * h * 0.36 + (tz > 0 ? 5.25 : -5.25));
+        group.add(window);
+      }
+
+      // Keep battlements & gate glow
+      for (let c = -2; c <= 2; c++) {
+        const merlon = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.4, 2.0), trimMat);
+        merlon.position.set(c * (w * 0.09), 31.6, h * 0.21);
+        group.add(merlon);
+      }
+
+      const gate = new THREE.Mesh(new THREE.BoxGeometry(w * 0.18, 8.5, 0.8), windowMat);
+      gate.position.set(0, 4.2, h * 0.215);
+      group.add(gate);
     } else {
       const rockGeo = new THREE.DodecahedronGeometry(w * 0.35, 0);
       const rockMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
@@ -6722,9 +6831,10 @@ export class ThreeRenderer {
         this.monstersMap.set(m.id, mGroup);
       }
 
-      // Flight Altitude: dragons soar majestically high in the skies
+      // Flight Altitude: dragons soar majestically high, harpies swoop low
       const isFlying = m.type === 'red_dragon' || m.isFlying;
-      const flightAltitude = isFlying ? 24 + Math.sin(time * 0.35) * 4 : 0;
+      const flightBase = m.type === 'harpy' ? 11 : 24;
+      const flightAltitude = isFlying ? flightBase + Math.sin(time * 0.35) * 4 : 0;
       mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y) + flightAltitude, m.y);
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
@@ -6887,7 +6997,7 @@ export class ThreeRenderer {
             rightArm.rotation.x = -0.4;
           }
         }
-      } else if (m.type === 'dire_wolf') {
+      } else if (m.type === 'dire_wolf' || m.type === 'werewolf' || m.type === 'troll') {
         const wolfTail = mGroup.getObjectByName('wolfTail');
         const paw1 = mGroup.getObjectByName('paw1');
         const paw2 = mGroup.getObjectByName('paw2');
@@ -6924,7 +7034,7 @@ export class ThreeRenderer {
           }
         }
         if (leftArm) leftArm.rotation.x = isMoving ? walkStride * 0.6 : 0;
-      } else if (m.type === 'necromancer') {
+      } else if (m.type === 'necromancer' || m.type === 'vampire_lord') {
         const rightArm = mGroup.getObjectByName('rightArm');
         const leftArm = mGroup.getObjectByName('leftArm');
 
@@ -6949,6 +7059,15 @@ export class ThreeRenderer {
             leftArm.rotation.x = -0.3;
             leftArm.rotation.z = 0;
           }
+        }
+      } else if (m.type === 'harpy') {
+        const wingL = mGroup.getObjectByName('wingL');
+        const wingR = mGroup.getObjectByName('wingR');
+        const flap = Math.sin(time * (isMoving ? 9 : 5)) * 0.55;
+        if (wingL) wingL.rotation.z = flap;
+        if (wingR) wingR.rotation.z = -flap;
+        if (isAttacking) {
+          mGroup.position.y += attackFactor * 2.0;
         }
       }
     }
@@ -7536,9 +7655,11 @@ export class ThreeRenderer {
       }
 
       group.add(armGroup);
-    } else if (m.type === 'dire_wolf') {
-      // Muscular Quadruped Dire Wolf
-      const wolfMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.85 });
+    } else if (m.type === 'dire_wolf' || m.type === 'werewolf') {
+      // Muscular Quadruped Dire Wolf / Werewolf (larger, rust-furred, hunched)
+      const isWerewolf = m.type === 'werewolf';
+      if (isWerewolf) group.scale.setScalar(1.4);
+      const wolfMat = new THREE.MeshStandardMaterial({ color: isWerewolf ? 0x92400e : 0x52525b, roughness: 0.85 });
 
       const bodyGeo = new THREE.SphereGeometry(2.4, 8, 8);
       const body = new THREE.Mesh(bodyGeo, wolfMat);
@@ -7816,6 +7937,179 @@ export class ThreeRenderer {
       armGroup.add(scBlade);
 
       group.add(armGroup);
+    } else if (m.type === 'troll') {
+      // Hulking Moss-Covered Bridge Troll with uprooted club
+      const trollMat = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.95 });
+      const mossMat = new THREE.MeshStandardMaterial({ color: 0x3f6212, roughness: 1.0 });
+
+      const bodyGeo = new THREE.SphereGeometry(4.4, 10, 10);
+      const body = new THREE.Mesh(bodyGeo, trollMat);
+      body.position.y = 6.2;
+      body.scale.set(1.15, 1.25, 0.95);
+      body.castShadow = true;
+      body.name = 'wolfBody';
+      group.add(body);
+
+      // Moss Patches growing on shoulders & back
+      for (const [mx, my, mz, s] of [[-2.2, 9.2, 0.8, 1.6], [2.4, 8.8, -1.2, 1.3], [0, 7.4, -3.4, 1.8]]) {
+        const moss = new THREE.Mesh(new THREE.SphereGeometry(s, 6, 5), mossMat);
+        moss.position.set(mx, my, mz);
+        moss.scale.y = 0.45;
+        group.add(moss);
+      }
+
+      // Sloping Underbite Head with tusks
+      const head = new THREE.Mesh(new THREE.SphereGeometry(2.3, 8, 8), trollMat);
+      head.position.set(0, 12.4, 1.4);
+      head.scale.set(1.05, 0.9, 1.1);
+      head.name = 'wolfHead';
+      group.add(head);
+
+      const tuskMat = new THREE.MeshStandardMaterial({ color: 0xfefce8, roughness: 0.35 });
+      for (const side of [-1, 1]) {
+        const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.5, 5), tuskMat);
+        tusk.position.set(side * 0.95, 11.4, 2.9);
+        tusk.rotation.x = 0.5;
+        group.add(tusk);
+      }
+
+      // Sunken amber eyes
+      const eyeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xd97706, emissiveIntensity: 1.1 });
+      for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), eyeMat);
+        eye.position.set(side * 0.85, 12.9, 3.2);
+        group.add(eye);
+      }
+
+      // Knuckle-dragging arms + uprooted tree club (rightArm drives attack swing)
+      const armGroup = new THREE.Group();
+      armGroup.name = 'rightArm';
+      armGroup.position.set(3.6, 8.6, 0.6);
+      const rArm = new THREE.Mesh(new THREE.CapsuleGeometry(1.15, 4.6, 4, 6), trollMat);
+      rArm.position.y = -2.6;
+      rArm.rotation.x = 0.55;
+      rArm.castShadow = true;
+      armGroup.add(rArm);
+      const club = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 1.05, 6.2, 6), new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 1.0 }));
+      club.position.set(0.4, -6.4, 2.2);
+      club.rotation.x = 0.9;
+      armGroup.add(club);
+      group.add(armGroup);
+
+      const lArm = new THREE.Mesh(new THREE.CapsuleGeometry(1.15, 4.6, 4, 6), trollMat);
+      lArm.position.set(-3.6, 5.6, 1.2);
+      lArm.rotation.x = 0.75;
+      lArm.castShadow = true;
+      group.add(lArm);
+
+      // Stumpy legs
+      for (const side of [-1, 1]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 3.2, 6), trollMat);
+        leg.position.set(side * 2.1, 1.6, 0);
+        leg.castShadow = true;
+        group.add(leg);
+      }
+    } else if (m.type === 'harpy') {
+      // Screaming Winged Harpy — bird torso, humanoid face, broad wings
+      const harpyMat = new THREE.MeshStandardMaterial({ color: 0xe879f9, roughness: 0.8 });
+      const featherMat = new THREE.MeshStandardMaterial({ color: 0xa21caf, roughness: 0.85 });
+
+      const torso = new THREE.Mesh(new THREE.SphereGeometry(1.7, 8, 8), harpyMat);
+      torso.position.y = 2.2;
+      torso.scale.set(1.0, 1.3, 1.5);
+      torso.castShadow = true;
+      group.add(torso);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(1.0, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfbcfe8, roughness: 0.7 }));
+      head.position.set(0, 4.2, 0.9);
+      group.add(head);
+
+      // Wild crest feathers
+      for (let f = 0; f < 3; f++) {
+        const crest = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.3, 4), featherMat);
+        crest.position.set((f - 1) * 0.42, 5.3, 0.55);
+        crest.rotation.x = -0.5 - f * 0.12;
+        group.add(crest);
+      }
+
+      // Beak
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.1, 5), new THREE.MeshStandardMaterial({ color: 0xf59e0b }));
+      beak.rotation.x = Math.PI / 2;
+      beak.position.set(0, 4.1, 2.0);
+      group.add(beak);
+
+      // Broad flapping wings (animated via wingL / wingR)
+      for (const side of [-1, 1]) {
+        const wingGroup = new THREE.Group();
+        wingGroup.name = side < 0 ? 'wingL' : 'wingR';
+        wingGroup.position.set(side * 1.2, 3.2, 0);
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.22, 2.1), featherMat);
+        wing.position.x = side * 2.3;
+        wing.rotation.z = side * -0.16;
+        wing.castShadow = true;
+        wingGroup.add(wing);
+        const tip = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.18, 1.2), harpyMat);
+        tip.position.set(side * 4.6, 0, -0.3);
+        tip.rotation.z = side * -0.28;
+        wingGroup.add(tip);
+        group.add(wingGroup);
+      }
+
+      // Talons trailing behind flight
+      for (const side of [-1, 1]) {
+        const talon = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.6, 5), new THREE.MeshStandardMaterial({ color: 0xf59e0b }));
+        talon.position.set(side * 0.7, 0.7, -0.6);
+        talon.rotation.x = Math.PI * 0.62;
+        group.add(talon);
+      }
+    } else if (m.type === 'vampire_lord') {
+      // Vampire Lord Malachar — caped, floating aristocrat of the night
+      const capeMat = new THREE.MeshStandardMaterial({ color: 0x450a0a, roughness: 0.9, side: THREE.DoubleSide });
+      const suitMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.6 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xe7e5e4, roughness: 0.55 });
+
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(3.4, 4.6, 2.2), suitMat);
+      torso.position.y = 7.6;
+      torso.castShadow = true;
+      group.add(torso);
+
+      // High collar cape flowing behind
+      const cape = new THREE.Mesh(new THREE.ConeGeometry(3.1, 8.2, 4, 1, true), capeMat);
+      cape.position.set(0, 6.6, -1.6);
+      cape.scale.z = 0.55;
+      cape.rotation.x = 0.14;
+      cape.name = 'cape';
+      group.add(cape);
+
+      // Pale aristocratic head, slicked hair
+      const head = new THREE.Mesh(new THREE.SphereGeometry(1.35, 8, 8), skinMat);
+      head.position.y = 11.2;
+      head.name = 'wolfHead';
+      group.add(head);
+
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(1.42, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), new THREE.MeshStandardMaterial({ color: 0x0c0a09, roughness: 0.4 }));
+      hair.position.y = 11.45;
+      group.add(hair);
+
+      // Burning crimson gaze
+      const eyeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 1.8 });
+      for (const side of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), eyeMat);
+        eye.position.set(side * 0.48, 11.35, 1.15);
+        group.add(eye);
+      }
+
+      // Ceremonial arms with clawed hands
+      for (const side of [-1, 1]) {
+        const arm = new THREE.Group();
+        arm.name = side > 0 ? 'rightArm' : 'leftArm';
+        arm.position.set(side * 2.2, 9.4, 0);
+        const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.52, 3.4, 4, 6), suitMat);
+        limb.position.y = -2.1;
+        limb.rotation.z = side * 0.24;
+        arm.add(limb);
+        group.add(arm);
+      }
     } else {
       const bodyGeo = new THREE.BoxGeometry(3.0, 4.5, 2.0);
       const bodyMat = new THREE.MeshStandardMaterial({ color: colorNum, roughness: 0.8 });

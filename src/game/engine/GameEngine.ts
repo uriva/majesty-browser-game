@@ -1,5 +1,5 @@
-import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, MAP_CONFIG, SOVEREIGN_SPELLS } from '../constants';
-import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, NotificationItem, Peasant, Projectile, SaveData, Scenario, SovereignSpell, Treasure } from '../types';
+import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, LAIR_NAMES, MAP_CONFIG, MONSTER_DEFINITIONS, SOVEREIGN_SPELLS } from '../constants';
+import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, MonsterType, NotificationItem, Peasant, Projectile, SaveData, Scenario, SovereignSpell, Treasure } from '../types';
 import { SCENARIOS } from '../scenarios';
 import { audioManager } from './Audio';
 import { CombatManager } from './Combat';
@@ -19,6 +19,10 @@ export class GameEngine {
   public flagManager: FlagManager;
   private cottageSproutTimer: number = 18.0;
   private peasantReplenishTimer: number = 0;
+  // Event director timers
+  private warPartyTimer: number = 140.0;
+  private randomEventTimer: number = 80.0;
+  private treasureRespawnTimer: number = 45.0;
 
   private onStateChangeCallback?: (state: GameState) => void;
 
@@ -60,7 +64,10 @@ export class GameEngine {
       explored: this.gridManager.explored,
       timers: {
         cottageSproutTimer: this.cottageSproutTimer,
-        peasantReplenishTimer: this.peasantReplenishTimer
+        peasantReplenishTimer: this.peasantReplenishTimer,
+        warPartyTimer: this.warPartyTimer,
+        eventTimer: this.randomEventTimer,
+        treasureRespawnTimer: this.treasureRespawnTimer
       }
     };
     return JSON.stringify(data);
@@ -94,6 +101,9 @@ export class GameEngine {
       };
       this.cottageSproutTimer = data.timers.cottageSproutTimer;
       this.peasantReplenishTimer = data.timers.peasantReplenishTimer;
+      this.warPartyTimer = data.timers.warPartyTimer ?? 100.0;
+      this.randomEventTimer = data.timers.eventTimer ?? 60.0;
+      this.treasureRespawnTimer = data.timers.treasureRespawnTimer ?? 40.0;
       return true;
     } catch {
       return false;
@@ -263,7 +273,7 @@ export class GameEngine {
       const lair: MonsterLair = {
         id: `lair_${i}_${lairConf.type}`,
         type: lairConf.type,
-        name: lairConf.type.replace('_', ' ').toUpperCase(),
+        name: LAIR_NAMES[lairConf.type] || lairConf.type.replace('_', ' ').toUpperCase(),
         x: lairConf.x,
         y: lairConf.y,
         width: 3,
@@ -320,6 +330,9 @@ export class GameEngine {
     this.updateBuildings(delta);
     this.updatePeasants(delta);
     this.updateCottageSprouting(delta);
+
+    // 4.5 Event Director: war parties, ambushes, caravans & treasure respawns
+    this.updateEventsDirector(delta);
 
     // 5. Update Monster Lairs
     for (const lair of this.state.lairs) {
@@ -503,7 +516,8 @@ export class GameEngine {
           });
         },
         (text, x, y, color) => this.addFloatingText(text, x, y, color),
-        (minion) => this.state.monsters.push(minion)
+        (minion) => this.state.monsters.push(minion),
+        this.state.dayPhase
       );
     }
 
@@ -562,7 +576,7 @@ export class GameEngine {
       const lair = this.state.lairs[i];
       if (lair.hp <= 0) {
         this.state.stats.lairsDestroyed += 1;
-        const plunderGold = lair.type === 'dragon_cavern' ? 1000 : (lair.type === 'ancient_ruins' ? 450 : 250);
+        const plunderGold = lair.type === 'dragon_cavern' ? 1000 : lair.type === 'dark_castle' ? 600 : lair.type === 'ancient_ruins' ? 450 : lair.type === 'troll_bridge' ? 350 : 250;
         this.state.treasuryGold += plunderGold;
         this.state.stats.goldEarned += plunderGold;
 
@@ -614,6 +628,215 @@ export class GameEngine {
 
     if (this.onStateChangeCallback) {
       this.onStateChangeCallback(this.state);
+    }
+  }
+
+  // --- EVENT DIRECTOR: keeps the wilds dangerous & the kingdom's story moving ---
+  private updateEventsDirector(delta: number) {
+    const difficulty = this.state.scenario.difficulty;
+    const days = this.state.stats.daysPassed;
+    const paceMult = difficulty === 'Hard' ? 0.72 : (difficulty === 'Endless' ? Math.max(0.5, 1 - (days - 1) * 0.03) : 1.0);
+
+    // WAR PARTIES: monster warbands muster at a lair and march on royal structures
+    this.warPartyTimer -= delta;
+    if (this.warPartyTimer <= 0) {
+      this.warPartyTimer = (100 + Math.random() * 80) * paceMult;
+      this.launchWarParty();
+    }
+
+    // RANDOM KINGDOM EVENTS
+    this.randomEventTimer -= delta;
+    if (this.randomEventTimer <= 0) {
+      this.randomEventTimer = (65 + Math.random() * 55) * paceMult;
+      this.triggerRandomEvent();
+    }
+
+    // WILDS REFILL: hidden treasure respawns so exploration stays rewarding
+    this.treasureRespawnTimer -= delta;
+    if (this.treasureRespawnTimer <= 0) {
+      this.treasureRespawnTimer = 40 + Math.random() * 30;
+      const targetTreasures = Math.ceil((this.state.mapWidth * this.state.mapHeight) / 950);
+      if (this.state.treasures.length < targetTreasures) this.spawnWildTreasure();
+    }
+  }
+
+  private spawnRaidMonster(type: MonsterType, x: number, y: number, raidTargetId?: string): Monster {
+    const def = MONSTER_DEFINITIONS[type];
+    return {
+      id: `monster_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name: def.name,
+      type,
+      x,
+      y,
+      hp: def.hp,
+      maxHp: def.hp,
+      attackPower: def.attackPower,
+      defense: def.defense,
+      speed: def.speed,
+      attackRange: def.attackRange,
+      attackCooldown: def.attackCooldown,
+      currentCooldown: 0,
+      xpReward: def.xpReward,
+      goldBountyReward: def.goldBountyReward,
+      state: raidTargetId ? 'raiding' : 'wandering',
+      direction: 'down',
+      isAttackingAnimation: 0,
+      isBoss: def.isBoss,
+      isFlying: def.isFlying,
+      specialCooldown: 0,
+      wanderTimer: 0,
+      raidTargetId
+    };
+  }
+
+  private launchWarParty() {
+    const lairs = this.state.lairs.filter(l => l.hp > 0);
+    const palace = this.state.buildings.find(b => b.type === 'palace');
+    if (!lairs.length || !palace || this.state.isGameOver) return;
+
+    const lair = lairs[Math.floor(Math.random() * lairs.length)];
+    const economicTargets = this.state.buildings.filter(b => b.hp > 0 && b.type !== 'palace' && !(b.isConstructing && b.constructionProgress <= 0));
+    const raidTarget = Math.random() < 0.25 || economicTargets.length === 0
+      ? palace
+      : economicTargets[Math.floor(Math.random() * economicTargets.length)];
+
+    const packSize = Math.min(3 + Math.floor(this.state.stats.daysPassed / 4), lair.monsterType === 'troll' ? 3 : 7);
+    const ts = this.state.tileSize;
+    const lairX = (lair.x + lair.width / 2) * ts;
+    const lairY = (lair.y + lair.height / 2) * ts;
+
+    let spawned = 0;
+    for (let i = 0; i < packSize; i++) {
+      const angle = (Math.PI * 2 * i) / packSize + Math.random() * 0.8;
+      const rawX = lairX + Math.cos(angle) * 42;
+      const rawY = lairY + Math.sin(angle) * 42;
+      const pos = this.gridManager.findNearestWalkablePosition(rawX, rawY, this.state.buildings, this.state.lairs, lair.id);
+      this.state.monsters.push(this.spawnRaidMonster(lair.monsterType, pos.x, pos.y, raidTarget.id));
+      spawned++;
+    }
+
+    if (spawned > 0) {
+      audioManager.playAdvisorChime();
+      this.addNotification('WAR PARTY SIGHTED!', `A ${MONSTER_DEFINITIONS[lair.monsterType].name} warband (${spawned}) marches from the ${lair.name} toward your ${raidTarget.name}! Place Defend flags!`, 'danger', { x: lairX, y: lairY });
+    }
+  }
+
+  private triggerRandomEvent() {
+    const isDark = this.state.dayPhase === 'night' || this.state.dayPhase === 'dusk';
+    const events: { weight: number; run: () => void }[] = [
+      { weight: 3, run: () => this.eventRatInfestation() },
+      { weight: 2, run: () => this.eventPredatorMigration() },
+      { weight: 3, run: () => this.eventMerchantCaravan() }
+    ];
+    if (isDark && this.state.stats.daysPassed >= 2) {
+      events.push({ weight: 3, run: () => this.eventNightAmbush() });
+    }
+    const totalWeight = events.reduce((s, e) => s + e.weight, 0);
+    let roll = Math.random() * totalWeight;
+    for (const e of events) {
+      roll -= e.weight;
+      if (roll <= 0) {
+        e.run();
+        return;
+      }
+    }
+  }
+
+  private eventRatInfestation() {
+    const sewers = this.state.lairs.filter(l => l.type === 'sewer_grate' && l.hp > 0);
+    const ts = this.state.tileSize;
+    let originX: number;
+    let originY: number;
+    if (sewers.length > 0) {
+      const sewer = sewers[Math.floor(Math.random() * sewers.length)];
+      originX = (sewer.x + sewer.width / 2) * ts;
+      originY = (sewer.y + sewer.height / 2) * ts;
+    } else {
+      originX = Math.random() < 0.5 ? ts * 6 : (this.state.mapWidth - 6) * ts;
+      originY = Math.random() < 0.5 ? ts * 6 : (this.state.mapHeight - 6) * ts;
+    }
+
+    const cottages = this.state.buildings.filter(b => b.hp > 0 && (b.type === 'peasant_cottage' || b.type === 'marketplace'));
+    const raidTarget = cottages.length > 0 ? cottages[Math.floor(Math.random() * cottages.length)] : this.state.buildings.find(b => b.type === 'palace');
+    const count = 4 + Math.floor(this.state.stats.daysPassed / 4);
+
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count;
+      const pos = this.gridManager.findNearestWalkablePosition(originX + Math.cos(angle) * 30, originY + Math.sin(angle) * 30, this.state.buildings, this.state.lairs);
+      this.state.monsters.push(this.spawnRaidMonster('giant_rat', pos.x, pos.y, raidTarget?.id));
+    }
+    audioManager.playRatAttack(originX, originY);
+    this.addNotification('Rat Infestation!', `A swarm of ${count} giant rats boils up from the sewers, drawn to your grain stores!`, 'warning', { x: originX, y: originY });
+  }
+
+  private eventPredatorMigration() {
+    const isWolves = Math.random() < 0.5;
+    const type: MonsterType = isWolves ? 'dire_wolf' : 'harpy';
+    const ts = this.state.tileSize;
+    const originX = ts * (8 + Math.random() * (this.state.mapWidth - 16));
+    const originY = ts * (8 + Math.random() * (this.state.mapHeight - 16));
+
+    for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) {
+      const pos = this.gridManager.findNearestWalkablePosition(originX + (Math.random() * 60 - 30), originY + (Math.random() * 60 - 30), this.state.buildings, this.state.lairs);
+      this.state.monsters.push(this.spawnRaidMonster(type, pos.x, pos.y));
+    }
+    this.addNotification(
+      isWolves ? 'Wolves on the Prowl!' : 'Harpies overhead!',
+      isWolves ? 'A starving wolf pack has migrated into the province. Keep your peasants guarded.' : 'A shrieking harpy flock circles the realm. Travelers beware.',
+      'info',
+      { x: originX, y: originY }
+    );
+  }
+
+  private eventMerchantCaravan() {
+    const gold = 120 + Math.floor(Math.random() * 160);
+    this.state.treasuryGold += gold;
+    this.state.stats.goldEarned += gold;
+    audioManager.playCoinSound();
+    this.addNotification('Merchant Caravan Arrived!', `A trading caravan reached your marketplace safely, paying ${gold}g in tariffs.`, 'success');
+  }
+
+  private eventNightAmbush() {
+    const palace = this.state.buildings.find(b => b.type === 'palace');
+    if (!palace) return;
+    const ts = this.state.tileSize;
+    const palaceX = (palace.x + palace.width / 2) * ts;
+    const palaceY = (palace.y + palace.height / 2) * ts;
+
+    // Ambush heroes adventuring far from home
+    const farHeroes = this.state.heroes.filter(h => !h.isDead && Math.hypot(h.x - palaceX, h.y - palaceY) > 420);
+    if (farHeroes.length === 0) {
+      this.eventPredatorMigration();
+      return;
+    }
+    const victim = farHeroes[Math.floor(Math.random() * farHeroes.length)];
+    const attackers = Math.random() < 0.6 ? 'goblin_spearman' : 'dire_wolf';
+    for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) {
+      const pos = this.gridManager.findNearestWalkablePosition(victim.x + (Math.random() * 90 - 45), victim.y + (Math.random() * 90 - 45), this.state.buildings, this.state.lairs);
+      this.state.monsters.push(this.spawnRaidMonster(attackers, pos.x, pos.y));
+    }
+    audioManager.playSwordClash(victim.x, victim.y);
+    this.addNotification('Night Ambush!', `${victim.name} has been ambushed in the dark by monsters!`, 'danger', { x: victim.x, y: victim.y });
+  }
+
+  private spawnWildTreasure() {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const cx = Math.floor(Math.random() * (this.state.mapWidth - 14)) + 7;
+      const cy = Math.floor(Math.random() * (this.state.mapHeight - 14)) + 7;
+      const px = (cx + 0.5) * this.state.tileSize;
+      const py = (cy + 0.5) * this.state.tileSize;
+      // Prefer genuinely unexplored wilderness so chests reward scouting
+      if (attempt < 8 && !this.gridManager.isPixelExplored(px, py)) continue;
+      const dropPos = this.gridManager.findNearestWalkablePosition(px, py, this.state.buildings, this.state.lairs);
+      this.state.treasures.push({
+        id: `treasure_respawn_${Date.now()}`,
+        x: dropPos.x,
+        y: dropPos.y,
+        goldAmount: Math.floor(Math.random() * 70) + 40,
+        type: Math.random() < 0.75 ? 'chest' : 'gold_bag',
+        createdAt: Date.now()
+      });
+      return;
     }
   }
 

@@ -7,8 +7,12 @@ export type MonsterType =
   | 'goblin_spearman'
   | 'goblin_shaman'
   | 'dire_wolf'
+  | 'troll'
+  | 'harpy'
+  | 'werewolf'
   | 'minotaur'
   | 'necromancer'
+  | 'vampire_lord'
   | 'red_dragon';
 
 export type BuildingType = 
@@ -32,7 +36,10 @@ export type LairType =
   | 'goblin_hut'
   | 'wolf_den'
   | 'ancient_ruins'
-  | 'dragon_cavern';
+  | 'dragon_cavern'
+  | 'harpy_roost'
+  | 'troll_bridge'
+  | 'dark_castle';
 
 export type FlagType = 'attack' | 'explore' | 'defend';
 
@@ -136,14 +143,15 @@ export interface Monster {
   isAttackingAnimation: number;
   isBoss?: boolean;
   isFlying?: boolean;
-  specialCooldown?: number;
-  targetX?: number;
-  targetY?: number;
-  wanderTimer?: number;
-  targetHoldTimer?: number;
-  isEngaged?: boolean;
-  path?: Position[];
-  pathTargetKey?: string;
+   specialCooldown?: number;
+   targetX?: number;
+   targetY?: number;
+   wanderTimer?: number;
+   targetHoldTimer?: number;
+   isEngaged?: boolean;
+   raidTargetId?: string; // set for war-party raiders: march on this building deliberately
+   path?: Position[];
+   pathTargetKey?: string;
 }
 
 export interface ResearchItem {
@@ -382,7 +390,13 @@ export interface SaveData {
   state: Omit<GameState, 'scenario' | 'grid' | 'fogOfWar' | 'exploredMap'>;
   grid: number[][];
   explored: boolean[][];
-  timers: { cottageSproutTimer: number; peasantReplenishTimer: number };
+  timers: {
+    cottageSproutTimer: number;
+    peasantReplenishTimer: number;
+    warPartyTimer?: number;
+    eventTimer?: number;
+    treasureRespawnTimer?: number;
+  };
 }
 
 export interface GameState {

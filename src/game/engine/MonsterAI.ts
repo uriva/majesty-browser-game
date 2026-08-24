@@ -84,9 +84,21 @@ export class MonsterAIManager {
       isHeroProjectile?: boolean;
     }) => void,
     onFloatingText?: (text: string, x: number, y: number, color: string) => void,
-    onSummonMinion?: (minion: Monster) => void
+    onSummonMinion?: (minion: Monster) => void,
+    dayPhase?: 'day' | 'dusk' | 'night' | 'dawn'
   ) {
     if (monster.hp <= 0) return;
+
+    // WEREWOLF NIGHT FURY: recomputed idempotently each frame from base definition
+    if (monster.type === 'werewolf') {
+      const base = MONSTER_DEFINITIONS['werewolf'];
+      const furyMult = dayPhase === 'night' ? 1.35 : 1.0;
+      monster.speed = Math.round(base.speed * furyMult);
+      monster.attackPower = Math.round(base.attackPower * furyMult);
+      if (dayPhase === 'night' && Math.random() < delta * 0.06 && onFloatingText) {
+        onFloatingText('Howwwwl!', monster.x, monster.y - 22, '#fbbf24');
+      }
+    }
 
     if (monster.currentCooldown > 0) {
       monster.currentCooldown -= delta;
@@ -172,6 +184,32 @@ export class MonsterAIManager {
     let closestTarget: MonsterTarget | null = null;
     let closestDist = monster.type === 'giant_rat' ? 160 : 240;
 
+    // WAR PARTY OVERRIDE: Raiders march deliberately on their assigned royal building,
+    // only stopping to fight heroes that actively engage them en route.
+    let raidOverride: MonsterTarget | null = null;
+    if (monster.raidTargetId) {
+      const raidBuilding = buildings.find(b => b.id === monster.raidTargetId && b.hp > 0 && !(b.isConstructing && b.constructionProgress <= 0));
+      if (!raidBuilding) {
+        monster.raidTargetId = undefined; // Target razed — resume normal pillaging behavior
+      } else {
+        const raidPos = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, raidBuilding, buildings, lairs, 10);
+        let interceptor: Hero | null = null;
+        for (const h of heroes) {
+          if (h.isDead) continue;
+          const d = Math.hypot(h.x - monster.x, h.y - monster.y);
+          if ((h.targetEntityId === monster.id && d < 130) || d < 42) {
+            interceptor = h;
+            break;
+          }
+        }
+        if (interceptor) {
+          raidOverride = { x: interceptor.x, y: interceptor.y, id: interceptor.id, type: 'hero' };
+        } else {
+          raidOverride = { x: raidPos.x, y: raidPos.y, id: raidBuilding.id, type: 'building' };
+        }
+      }
+    }
+
     if (monster.targetHoldTimer === undefined) monster.targetHoldTimer = 0;
     if (monster.isEngaged === undefined) monster.isEngaged = false;
     monster.targetHoldTimer -= delta;
@@ -208,7 +246,9 @@ export class MonsterAIManager {
       }
     }
 
-    if (!stickyTarget) {
+    if (raidOverride) {
+      closestTarget = raidOverride;
+    } else if (!stickyTarget) {
       monster.isEngaged = false;
 
     // Check if monster's home lair is under attack by a hero
@@ -414,6 +454,42 @@ export class MonsterAIManager {
                 if (onFloatingText) onFloatingText(`-${splashDmg}`, h.x, h.y - 12, '#ef4444');
               }
             }
+          } else if (monster.type === 'vampire_lord') {
+            // VAMPIRE LIFE DRAIN: strikes and feeds, healing himself for most of the damage dealt
+            let drainedDamage = 0;
+            if (closestTarget.type === 'hero') {
+              const h = heroes.find(hero => hero.id === closestTarget!.id);
+              if (h) {
+                drainedDamage = Math.max(1, Math.round(monster.attackPower - h.defense));
+                h.hp -= drainedDamage;
+              }
+            } else if (closestTarget.type === 'building') {
+              const b = buildings.find(build => build.id === closestTarget!.id);
+              if (b && (!b.isConstructing || b.constructionProgress > 0)) {
+                drainedDamage = Math.max(1, Math.round(monster.attackPower * 1.1));
+                b.hp -= drainedDamage;
+              }
+            } else if (closestTarget.type === 'tax_collector') {
+              const tc = taxCollectors.find(collector => collector.id === closestTarget!.id);
+              if (tc) {
+                drainedDamage = Math.max(1, Math.round(monster.attackPower));
+                tc.hp -= drainedDamage;
+              }
+            } else if (closestTarget.type === 'peasant') {
+              const p = peasants.find(peasant => peasant.id === closestTarget!.id);
+              if (p && p.hp > 0) {
+                drainedDamage = Math.max(1, Math.round(monster.attackPower));
+                p.hp -= drainedDamage;
+              }
+            }
+            const healAmount = Math.round(drainedDamage * 0.65);
+            if (healAmount > 0 && monster.hp < monster.maxHp) {
+              monster.hp = Math.min(monster.maxHp, monster.hp + healAmount);
+            }
+            if (onFloatingText) {
+              onFloatingText(`-${drainedDamage}`, closestTarget.x, closestTarget.y - 12, '#ef4444');
+              if (healAmount > 0) onFloatingText(`Life Drain +${healAmount}`, monster.x, monster.y - 24, '#dc2626');
+            }
           } else {
             // Direct melee strike
             if (closestTarget.type === 'hero') {
@@ -451,6 +527,15 @@ export class MonsterAIManager {
     } else {
       // 5. ACTIVE AUTONOMOUS TERRITORIAL WANDERING & FORAGING (Near their lair)
       monster.state = 'wandering';
+
+      // TROLL BLOOD: Bridge Trolls slowly regenerate when left alone
+      if (monster.type === 'troll' && monster.hp < monster.maxHp) {
+        monster.hp = Math.min(monster.maxHp, monster.hp + 4.5 * delta);
+        if (Math.random() < delta * 0.5 && onFloatingText) {
+          onFloatingText('+Regen', monster.x, monster.y - 20, '#84cc16');
+        }
+      }
+
       if (!monster.wanderTimer) monster.wanderTimer = 0;
       monster.wanderTimer -= delta;
 
@@ -469,7 +554,9 @@ export class MonsterAIManager {
         else if (monster.type === 'dire_wolf') { maxRadius = 160; minRadius = 28; }
         else if (monster.type === 'goblin_spearman' || monster.type === 'goblin_shaman') { maxRadius = 140; minRadius = 26; }
         else if (monster.type === 'skeleton' || monster.type === 'zombie') { maxRadius = 110; minRadius = 24; }
-        else if (monster.type === 'red_dragon' || monster.isFlying) { maxRadius = 280; minRadius = 60; }
+        else if (monster.type === 'werewolf') { maxRadius = 240; minRadius = 40; }
+        else if (monster.type === 'troll') { maxRadius = 70; minRadius = 18; }
+        else if (monster.isFlying || monster.type === 'red_dragon') { maxRadius = 230; minRadius = 55; }
 
         if (monster.isFlying || monster.type === 'red_dragon') {
           // Flying dragon soars across the kingdom skies freely

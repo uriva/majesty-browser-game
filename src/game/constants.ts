@@ -61,7 +61,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
         id: 'palace_lvl2',
         name: 'Palace Fortress (Lvl 2)',
         cost: 1200,
-        description: 'Increases Palace HP and unlocks Tier 2 guilds, Wizard Tower & Blacksmith. Requires: 4+ Active Heroes & Marketplace.',
+        description: 'Increases Palace HP and unlocks Tier 2 buildings: Wizard Tower, Temple of Dauros & Statue. Requires: 4+ Active Heroes & Marketplace.',
         requiredHeroes: 4,
         requiredBuilding: 'marketplace',
         researchTime: 16.0,
@@ -71,7 +71,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
         id: 'palace_lvl3',
         name: 'Imperial Citadel (Lvl 3)',
         cost: 3000,
-        description: 'Max palace upgrades, unlocks Dwarven Settlement, Sovereign Statue & Grand Magic. Requires: 8+ Active Heroes & Blacksmith.',
+        description: 'Max palace upgrades, unlocks Dwarven Settlement & Grand Magic. Requires: 8+ Active Heroes & Blacksmith.',
         requiredHeroes: 8,
         requiredBuilding: 'blacksmith',
         researchTime: 24.0,
@@ -173,12 +173,12 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 1300,
     width: 3,
     height: 3,
-    description: 'Recruits tough Dwarves with high siege damage and building repair prowess. Requires Palace Level 3 & Blacksmith.',
+    description: 'Recruits tough Dwarves with high siege damage and building repair prowess. Requires Palace Level 2 & Blacksmith.',
     constructionTime: 28.0,
     recruits: ['dwarf'],
     heroRecruitCost: { dwarf: 200 },
     maxHeroSlots: 3,
-    requiresPalaceLevel: 3,
+    requiresPalaceLevel: 2,
     requiresBuilding: 'blacksmith',
     upgrades: [
       { id: 'dwarf_stonecraft', name: 'Stonecraft Reinforcement', cost: 350, researchTime: 12.0, description: 'All kingdom buildings gain +25% Max HP.', icon: 'Hammer' }
@@ -206,10 +206,8 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 850,
     width: 3,
     height: 3,
-    description: 'Forges upgraded weapons and armor. Heroes spend their bounty earnings here. Requires Palace Level 2 & Marketplace.',
+    description: 'Forges upgraded weapons and armor. Heroes spend their bounty earnings here. Available from the start.',
     constructionTime: 24.0,
-    requiresPalaceLevel: 2,
-    requiresBuilding: 'marketplace',
     upgrades: [
       { id: 'iron_weapons', name: 'Iron Weapons (Tier 1)', cost: 150, researchTime: 8.0, description: 'Heroes can purchase Iron weapons (+5 ATK).', icon: 'Sword' },
       { id: 'steel_armor', name: 'Steel Armor (Tier 1)', cost: 200, researchTime: 9.0, description: 'Heroes can purchase Steel armor (+4 DEF).', icon: 'Shield' },
@@ -241,10 +239,8 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 700,
     width: 3,
     height: 3,
-    description: 'Heroes rest, party, and recover health/mana. Generates continuous tavern revenue. Requires Palace Level 2 & Marketplace.',
+    description: 'Heroes rest, party, and recover health/mana. Generates continuous tavern revenue. Available from the start.',
     constructionTime: 20.0,
-    requiresPalaceLevel: 2,
-    requiresBuilding: 'marketplace',
     upgrades: [
       { id: 'fine_ales', name: 'Dwarven Stout & Spirits', cost: 180, researchTime: 8.0, description: 'Resting heroes recover HP 50% faster and gain temporary Morale Boost.', icon: 'Beer' }
     ]
@@ -256,9 +252,9 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHp: 1200,
     width: 2,
     height: 2,
-    description: 'Inspires your subjects. Heroes within vicinity gain +15% Bravery and +10% Attack. Requires Palace Level 3.',
+    description: 'Inspires your subjects. Heroes within vicinity gain +15% Bravery and +10% Attack. Requires Palace Level 2.',
     constructionTime: 25.0,
-    requiresPalaceLevel: 3,
+    requiresPalaceLevel: 2,
     upgrades: []
   },
   peasant_cottage: {
@@ -544,6 +540,43 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     goldBountyReward: 6,
     color: '#52525b'
   },
+  troll: {
+    name: 'Bridge Troll',
+    hp: 340,
+    attackPower: 34,
+    defense: 10,
+    speed: 22,
+    attackRange: 30,
+    attackCooldown: 2.0,
+    xpReward: 190,
+    goldBountyReward: 28,
+    color: '#65a30d'
+  },
+  harpy: {
+    name: 'Harpy',
+    hp: 85,
+    attackPower: 16,
+    defense: 2,
+    speed: 46,
+    attackRange: 26,
+    attackCooldown: 1.1,
+    xpReward: 60,
+    goldBountyReward: 9,
+    isFlying: true,
+    color: '#e879f9'
+  },
+  werewolf: {
+    name: 'Werewolf',
+    hp: 200,
+    attackPower: 30,
+    defense: 5,
+    speed: 50,
+    attackRange: 26,
+    attackCooldown: 1.0,
+    xpReward: 140,
+    goldBountyReward: 16,
+    color: '#92400e'
+  },
   minotaur: {
     name: 'Labyrinth Minotaur',
     hp: 480,
@@ -569,6 +602,19 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     xpReward: 550,
     goldBountyReward: 80,
     color: '#4c1d95'
+  },
+  vampire_lord: {
+    name: 'Vampire Lord Malachar',
+    hp: 1500,
+    attackPower: 58,
+    defense: 14,
+    speed: 42,
+    attackRange: 30,
+    attackCooldown: 1.4,
+    isBoss: true,
+    xpReward: 1000,
+    goldBountyReward: 140,
+    color: '#7f1d1d'
   },
   red_dragon: {
     name: 'Red Dragon Fryre',
@@ -644,6 +690,18 @@ export const SOVEREIGN_SPELLS: SovereignSpell[] = [
     icon: 'Coins'
   }
 ];
+
+export const LAIR_NAMES: Record<string, string> = {
+  sewer_grate: 'Sewer Nest',
+  graveyard: 'Cursed Graveyard',
+  goblin_hut: 'Goblin Encampment',
+  wolf_den: 'Wolf Den',
+  ancient_ruins: 'Ancient Ruins',
+  dragon_cavern: "Dragon's Cavern",
+  harpy_roost: 'Harpy Roost',
+  troll_bridge: 'Troll Bridge',
+  dark_castle: 'Dark Castle'
+};
 
 export const HERO_QUIRKS = [
   'Fearless Vanguard',
