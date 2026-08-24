@@ -20,14 +20,20 @@ export class ModelRegistry {
     this.onChangeCallbacks.push(callback);
   }
 
+  private notifyTimeout: ReturnType<typeof setTimeout> | null = null;
+
   private notify() {
-    for (const cb of this.onChangeCallbacks) {
-      try {
-        cb();
-      } catch (err) {
-        console.warn('ModelRegistry onChange callback error:', err);
+    if (this.notifyTimeout) clearTimeout(this.notifyTimeout);
+    this.notifyTimeout = setTimeout(() => {
+      this.notifyTimeout = null;
+      for (const cb of this.onChangeCallbacks) {
+        try {
+          cb();
+        } catch (err) {
+          console.warn('ModelRegistry onChange callback error:', err);
+        }
       }
-    }
+    }, 100);
   }
 
   public preloadAll() {

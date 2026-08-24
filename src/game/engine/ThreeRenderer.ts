@@ -3317,8 +3317,8 @@ export class ThreeRenderer {
       this.updateFogOfWar(state);
     }
 
-    // Update curved terrain under buildings whenever structures change
-    const structHash = state.buildings.map(b => `${b.id}_${b.x}_${b.y}_${b.hp}`).join('|') + ';' + state.lairs.map(l => `${l.id}_${l.x}_${l.y}_${l.hp}`).join('|');
+    // Update curved terrain under buildings whenever structures change (only when added/removed)
+    const structHash = state.buildings.map(b => `${b.id}_${b.x}_${b.y}_${b.width}_${b.height}_${b.hp > 0}`).join('|') + ';' + state.lairs.map(l => `${l.id}_${l.x}_${l.y}_${l.width}_${l.height}_${l.hp > 0}`).join('|');
     if (structHash !== this.lastStructureHash) {
       this.lastStructureHash = structHash;
       this.lastKnownStructures = [
@@ -6259,7 +6259,6 @@ export class ThreeRenderer {
         this.peasantsMap.set(p.id, pGroup);
       }
 
-      pGroup.position.set(p.x, this.getTerrainHeight(p.x, p.y), p.y);
       pGroup.visible = this.gridManager.isPixelVisible(p.x, p.y);
 
       // Night Torch illumination
@@ -6287,9 +6286,15 @@ export class ThreeRenderer {
       }
       this.smoothRotate(pGroup, targetAngle, delta, 16);
 
-      // Walk Stride
+      // Walk Stride & Step Bobbing Animation
       const isMoving = p.state === 'walking_to_site' || p.state === 'fleeing';
-      const legStride = isMoving ? Math.sin(time * 2.0) * 0.45 : 0;
+      const animSpeed = p.state === 'fleeing' ? 5.0 : 3.5;
+      const stepBob = isMoving ? Math.abs(Math.sin(time * animSpeed)) * 0.9 : Math.sin(time * 0.5) * 0.08;
+      const bodySway = isMoving ? Math.sin(time * animSpeed) * 0.08 : 0;
+      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.6 : 0;
+
+      pGroup.position.set(p.x, this.getTerrainHeight(p.x, p.y) + stepBob, p.y);
+      pGroup.rotation.z = bodySway;
 
       const leftLeg = pGroup.getObjectByName('leftLeg');
       const rightLeg = pGroup.getObjectByName('rightLeg');
@@ -6300,11 +6305,11 @@ export class ThreeRenderer {
       const rightArm = pGroup.getObjectByName('rightArm');
       if (rightArm) {
         if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
-          const hammerPhase = (Date.now() * 0.004) % (Math.PI * 2);
+          const hammerPhase = (Date.now() * 0.005) % (Math.PI * 2);
           const swing = Math.sin(hammerPhase);
-          rightArm.rotation.x = -0.3 - Math.max(0, swing) * 1.3;
+          rightArm.rotation.x = -0.4 - Math.max(0, swing) * 1.5;
         } else {
-          rightArm.rotation.x = isMoving ? -legStride * 0.8 : 0;
+          rightArm.rotation.x = isMoving ? -legStride * 0.75 : 0;
         }
       }
     }
@@ -6533,8 +6538,14 @@ export class ThreeRenderer {
       }
       this.smoothRotate(heroGroup, targetAngle, delta, 16);
 
-      const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 6;
-      const legStride = isMoving ? Math.sin(time * 2.0) * 0.45 : 0;
+      const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 3;
+      const animSpeed = h.state === 'fleeing' ? 5.0 : (h.state === 'pursuing_flag' ? 4.2 : 3.5);
+      const stepBob = isMoving ? Math.abs(Math.sin(time * animSpeed)) * 1.0 : Math.sin(time * 0.5) * 0.08;
+      const bodySway = isMoving ? Math.sin(time * animSpeed) * 0.09 : 0;
+      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.65 : 0;
+
+      heroGroup.position.set(h.x, this.getTerrainHeight(h.x, h.y) + stepBob, h.y);
+      heroGroup.rotation.z = bodySway;
 
       const leftLeg = heroGroup.getObjectByName('leftLeg');
       const rightLeg = heroGroup.getObjectByName('rightLeg');
@@ -6590,8 +6601,8 @@ export class ThreeRenderer {
       depthWrite: false
     });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(44, 11.0, 1);
-    const headY = hero.heroClass === 'dwarf' ? 11.5 : 13.5;
+    sprite.scale.set(38, 9.5, 1);
+    const headY = hero.heroClass === 'dwarf' ? 18.0 : 21.0;
     sprite.position.set(0, headY, 0);
     sprite.name = 'nameLabel';
     sprite.renderOrder = 1000;
@@ -7291,7 +7302,17 @@ export class ThreeRenderer {
       const isFlying = m.type === 'red_dragon' || m.isFlying;
       const flightBase = m.type === 'harpy' ? 11 : 24;
       const flightAltitude = isFlying ? flightBase + Math.sin(time * 0.35) * 4 : 0;
-      mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y) + flightAltitude, m.y);
+
+      const isAttacking = m.isAttackingAnimation > 0;
+      const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
+      const isMoving = (m.state === 'wandering' || m.state === 'raiding' || m.state === 'returning_to_lair' || (m.state === 'attacking' && !isAttacking)) && m.targetX !== undefined;
+      const walkStride = isMoving ? Math.sin(time * 3.5) * 0.55 : 0;
+      const stepBob = !isFlying && isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : 0;
+
+      mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y) + flightAltitude + stepBob, m.y);
+      if (!isFlying) {
+        mGroup.rotation.z = isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
+      }
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
       // Keep ground shadow projected on terrain beneath flying dragon
@@ -7316,11 +7337,6 @@ export class ThreeRenderer {
         else if (m.direction === 'down') targetAngle = 0;
       }
       this.smoothRotate(mGroup, targetAngle, delta, 14);
-
-      const isAttacking = m.isAttackingAnimation > 0;
-      const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
-      const isMoving = (m.state === 'wandering' || m.state === 'raiding' || m.state === 'returning_to_lair' || (m.state === 'attacking' && !isAttacking)) && m.targetX !== undefined;
-      const walkStride = isMoving ? Math.sin(time * 2.2) * 0.45 : 0;
 
       // Type-specific Attack & Locomotion Animations
       if (m.type === 'red_dragon') {
@@ -8654,8 +8670,15 @@ export class ThreeRenderer {
       }
       this.smoothRotate(tcGroup, targetAngle, delta, 16);
 
-      // Waddling gait
-      const legStride = Math.sin(time * 2.0) * 0.45;
+      // Step Bobbing & Leg Stride
+      const isMoving = tc.state === 'seeking_building' || tc.state === 'returning_to_palace' || tc.state === 'fleeing';
+      const stepBob = isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : Math.sin(time * 0.5) * 0.08;
+      const bodySway = isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
+      const legStride = isMoving ? Math.sin(time * 3.5) * 0.55 : 0;
+
+      tcGroup.position.set(tc.x, this.getTerrainHeight(tc.x, tc.y) + stepBob, tc.y);
+      tcGroup.rotation.z = bodySway;
+
       const leftLeg = tcGroup.getObjectByName('leftLeg');
       const rightLeg = tcGroup.getObjectByName('rightLeg');
       if (leftLeg) leftLeg.rotation.x = legStride;
