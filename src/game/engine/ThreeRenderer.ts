@@ -6294,15 +6294,8 @@ export class ThreeRenderer {
       }
       this.smoothRotate(pGroup, targetAngle, delta, 16);
 
-      // Walk Stride & Step Bobbing Animation
       const isMoving = p.state === 'walking_to_site' || p.state === 'fleeing';
       const animSpeed = p.state === 'fleeing' ? 5.0 : 3.5;
-      const stepBob = isMoving ? Math.abs(Math.sin(time * animSpeed)) * 0.9 : Math.sin(time * 0.5) * 0.08;
-      const bodySway = isMoving ? Math.sin(time * animSpeed) * 0.08 : 0;
-      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.6 : 0;
-
-      pGroup.position.set(p.x, this.getTerrainHeight(p.x, p.y) + stepBob, p.y);
-      pGroup.rotation.z = bodySway;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(p.id);
@@ -6318,20 +6311,30 @@ export class ThreeRenderer {
         }
       }
 
-      const leftLeg = pGroup.getObjectByName('leftLeg');
-      const rightLeg = pGroup.getObjectByName('rightLeg');
-      if (leftLeg) leftLeg.rotation.x = legStride;
-      if (rightLeg) rightLeg.rotation.x = -legStride;
+      // If no skeletal controller, use procedural step bob and limb animation
+      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * animSpeed)) * 0.9 : 0;
+      const bodySway = !controller && isMoving ? Math.sin(time * animSpeed) * 0.08 : 0;
+      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.6 : 0;
 
-      // Smooth Realistic Hammering Swing (no high frequency jitter)
-      const rightArm = pGroup.getObjectByName('rightArm');
-      if (rightArm) {
-        if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
-          const hammerPhase = (Date.now() * 0.005) % (Math.PI * 2);
-          const swing = Math.sin(hammerPhase);
-          rightArm.rotation.x = -0.4 - Math.max(0, swing) * 1.5;
-        } else {
-          rightArm.rotation.x = isMoving ? -legStride * 0.75 : 0;
+      pGroup.position.set(p.x, this.getTerrainHeight(p.x, p.y) + stepBob, p.y);
+      pGroup.rotation.z = bodySway;
+
+      if (!controller) {
+        const leftLeg = pGroup.getObjectByName('leftLeg');
+        const rightLeg = pGroup.getObjectByName('rightLeg');
+        if (leftLeg) leftLeg.rotation.x = legStride;
+        if (rightLeg) rightLeg.rotation.x = -legStride;
+
+        // Smooth Realistic Hammering Swing (no high frequency jitter)
+        const rightArm = pGroup.getObjectByName('rightArm');
+        if (rightArm) {
+          if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
+            const hammerPhase = (Date.now() * 0.005) % (Math.PI * 2);
+            const swing = Math.sin(hammerPhase);
+            rightArm.rotation.x = -0.4 - Math.max(0, swing) * 1.5;
+          } else {
+            rightArm.rotation.x = isMoving ? -legStride * 0.75 : 0;
+          }
         }
       }
     }
@@ -6569,12 +6572,6 @@ export class ThreeRenderer {
 
       const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 3;
       const animSpeed = h.state === 'fleeing' ? 5.0 : (h.state === 'pursuing_flag' ? 4.2 : 3.5);
-      const stepBob = isMoving ? Math.abs(Math.sin(time * animSpeed)) * 1.0 : Math.sin(time * 0.5) * 0.08;
-      const bodySway = isMoving ? Math.sin(time * animSpeed) * 0.09 : 0;
-      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.65 : 0;
-
-      heroGroup.position.set(h.x, this.getTerrainHeight(h.x, h.y) + stepBob, h.y);
-      heroGroup.rotation.z = bodySway;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(h.id);
@@ -6590,25 +6587,35 @@ export class ThreeRenderer {
         }
       }
 
-      const leftLeg = heroGroup.getObjectByName('leftLeg');
-      const rightLeg = heroGroup.getObjectByName('rightLeg');
-      if (leftLeg) leftLeg.rotation.x = legStride;
-      if (rightLeg) rightLeg.rotation.x = -legStride;
+      // If no skeletal controller, use procedural step bob and limb animation
+      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * animSpeed)) * 1.0 : 0;
+      const bodySway = !controller && isMoving ? Math.sin(time * animSpeed) * 0.09 : 0;
+      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.65 : 0;
 
-      const rightArm = heroGroup.getObjectByName('rightArm');
-      const leftArm = heroGroup.getObjectByName('leftArm');
+      heroGroup.position.set(h.x, this.getTerrainHeight(h.x, h.y) + stepBob, h.y);
+      heroGroup.rotation.z = bodySway;
 
-      if (rightArm) {
-        if (h.isAttackingAnimation > 0) {
-          const attackFactor = Math.sin((1 - Math.max(0, h.isAttackingAnimation) / 0.3) * Math.PI);
-          rightArm.rotation.x = -attackFactor * 1.6;
-        } else {
-          rightArm.rotation.x = isMoving ? -legStride * 0.8 : 0;
+      if (!controller) {
+        const leftLeg = heroGroup.getObjectByName('leftLeg');
+        const rightLeg = heroGroup.getObjectByName('rightLeg');
+        if (leftLeg) leftLeg.rotation.x = legStride;
+        if (rightLeg) rightLeg.rotation.x = -legStride;
+
+        const rightArm = heroGroup.getObjectByName('rightArm');
+        const leftArm = heroGroup.getObjectByName('leftArm');
+
+        if (rightArm) {
+          if (h.isAttackingAnimation > 0) {
+            const attackFactor = Math.sin((1 - Math.max(0, h.isAttackingAnimation) / 0.3) * Math.PI);
+            rightArm.rotation.x = -attackFactor * 1.6;
+          } else {
+            rightArm.rotation.x = isMoving ? -legStride * 0.8 : 0;
+          }
         }
-      }
 
-      if (leftArm) {
-        leftArm.rotation.x = isMoving ? legStride * 0.8 : 0;
+        if (leftArm) {
+          leftArm.rotation.x = isMoving ? legStride * 0.8 : 0;
+        }
       }
     }
 
@@ -7357,13 +7364,6 @@ export class ThreeRenderer {
       const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
       const isMoving = (m.state === 'wandering' || m.state === 'raiding' || m.state === 'returning_to_lair' || (m.state === 'attacking' && !isAttacking)) && m.targetX !== undefined;
       const walkStride = isMoving ? Math.sin(time * 3.5) * 0.55 : 0;
-      const stepBob = !isFlying && isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : 0;
-
-      mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y) + flightAltitude + stepBob, m.y);
-      if (!isFlying) {
-        mGroup.rotation.z = isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
-      }
-      mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(m.id);
@@ -7378,6 +7378,13 @@ export class ThreeRenderer {
           controller.play('idle', 0.22);
         }
       }
+
+      const stepBob = !controller && !isFlying && isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : 0;
+      mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y) + flightAltitude + stepBob, m.y);
+      if (!isFlying) {
+        mGroup.rotation.z = !controller && isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
+      }
+      mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
       // Keep ground shadow projected on terrain beneath flying dragon
       const groundShadow = mGroup.getObjectByName('dragonShadow');
@@ -8741,14 +8748,7 @@ export class ThreeRenderer {
       }
       this.smoothRotate(tcGroup, targetAngle, delta, 16);
 
-      // Step Bobbing & Leg Stride
       const isMoving = tc.state === 'seeking_building' || tc.state === 'returning_to_palace' || tc.state === 'fleeing';
-      const stepBob = isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : Math.sin(time * 0.5) * 0.08;
-      const bodySway = isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
-      const legStride = isMoving ? Math.sin(time * 3.5) * 0.55 : 0;
-
-      tcGroup.position.set(tc.x, this.getTerrainHeight(tc.x, tc.y) + stepBob, tc.y);
-      tcGroup.rotation.z = bodySway;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(tc.id);
@@ -8762,10 +8762,20 @@ export class ThreeRenderer {
         }
       }
 
-      const leftLeg = tcGroup.getObjectByName('leftLeg');
-      const rightLeg = tcGroup.getObjectByName('rightLeg');
-      if (leftLeg) leftLeg.rotation.x = legStride;
-      if (rightLeg) rightLeg.rotation.x = -legStride;
+      // If no skeletal controller, use procedural step bob and limb animation
+      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : 0;
+      const bodySway = !controller && isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
+      const legStride = isMoving ? Math.sin(time * 3.5) * 0.55 : 0;
+
+      tcGroup.position.set(tc.x, this.getTerrainHeight(tc.x, tc.y) + stepBob, tc.y);
+      tcGroup.rotation.z = bodySway;
+
+      if (!controller) {
+        const leftLeg = tcGroup.getObjectByName('leftLeg');
+        const rightLeg = tcGroup.getObjectByName('rightLeg');
+        if (leftLeg) leftLeg.rotation.x = legStride;
+        if (rightLeg) rightLeg.rotation.x = -legStride;
+      }
 
       // Dynamic Gold Sack Expansion
       const sack = tcGroup.getObjectByName('taxSack');
