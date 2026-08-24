@@ -73,18 +73,20 @@ export const GameView: React.FC = () => {
       const engine = engineRef.current;
       const renderer = threeRendererRef.current;
 
-      if (engine && !engine.state.isGameOver) {
-        const delta = Math.min(rawDelta, 0.1);
-        engine.update(delta);
+      if (engine) {
+        if (!engine.state.isGameOver) {
+          const delta = Math.min(rawDelta, 0.1);
+          engine.update(delta);
 
-        // Follow hero in 3D if active
-        if (trackingHeroIdRef.current) {
-          const hero = engine.state.heroes.find(h => h.id === trackingHeroIdRef.current);
-          if (hero && !hero.isDead) {
-            engine.state.camera.x = hero.x;
-            engine.state.camera.y = hero.y;
-          } else {
-            trackingHeroIdRef.current = null;
+          // Follow hero in 3D if active
+          if (trackingHeroIdRef.current) {
+            const hero = engine.state.heroes.find(h => h.id === trackingHeroIdRef.current);
+            if (hero && !hero.isDead) {
+              engine.state.camera.x = hero.x;
+              engine.state.camera.y = hero.y;
+            } else {
+              trackingHeroIdRef.current = null;
+            }
           }
         }
 
@@ -93,7 +95,8 @@ export const GameView: React.FC = () => {
           renderer.render(engine.state, mouseWorldPosRef.current);
         }
 
-        // Sync React HUD state at 8Hz (NOT every frame — full state cloning is expensive)
+        // Sync React HUD state at 8Hz (NOT every frame — full state cloning is expensive).
+        // Must keep syncing after game over, otherwise the defeat/victory modal never learns.
         const now = performance.now();
         if (now - lastHudSyncRef.current > 125) {
           lastHudSyncRef.current = now;
@@ -111,8 +114,6 @@ export const GameView: React.FC = () => {
             taxCollectors: [...engine.state.taxCollectors]
           });
         }
-      } else if (engine && engine.state.isGameOver && renderer) {
-        renderer.render(engine.state, mouseWorldPosRef.current);
       }
 
       requestRef.current = requestAnimationFrame(loop);
