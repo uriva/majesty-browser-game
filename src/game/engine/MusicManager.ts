@@ -50,20 +50,24 @@ class MusicManager {
   private audioCtx: AudioContext | null = null;
   public currentTrackIndex: number = 0;
   public isPlaying: boolean = true;
+  public isShuffle: boolean = true;
   public volume: number = 0.45;
   public muted: boolean = false;
   private hasUserInteracted: boolean = false;
   private preMasterMuteState: boolean | null = null;
-  private listeners: ((state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean }) => void)[] = [];
+  private listeners: ((state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean; isShuffle: boolean }) => void)[] = [];
 
   constructor() {
+    // Pick a random track on start
+    this.currentTrackIndex = Math.floor(Math.random() * MUSIC_TRACKS.length);
+
     if (typeof window !== 'undefined') {
       this.audioElement = new Audio();
       this.audioElement.loop = false;
       this.audioElement.volume = this.volume;
 
       this.audioElement.addEventListener('ended', () => {
-        this.nextTrack();
+        this.nextTrack(true);
       });
 
       this.audioElement.addEventListener('error', (e) => {
@@ -103,7 +107,7 @@ class MusicManager {
     }
   }
 
-  public subscribe(cb: (state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean }) => void) {
+  public subscribe(cb: (state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean; isShuffle: boolean }) => void) {
     this.listeners.push(cb);
     this.notify();
     return () => {
@@ -118,13 +122,19 @@ class MusicManager {
         isPlaying: this.isPlaying,
         currentTrack,
         volume: this.volume,
-        muted: this.muted
+        muted: this.muted,
+        isShuffle: this.isShuffle
       });
     }
   }
 
   public getCurrentTrack(): MusicTrack {
     return MUSIC_TRACKS[this.currentTrackIndex];
+  }
+
+  public toggleShuffle() {
+    this.isShuffle = !this.isShuffle;
+    this.notify();
   }
 
   public play() {
@@ -166,8 +176,16 @@ class MusicManager {
     }
   }
 
-  public nextTrack() {
-    this.currentTrackIndex = (this.currentTrackIndex + 1) % MUSIC_TRACKS.length;
+  public nextTrack(forceRandom?: boolean) {
+    if (this.isShuffle || forceRandom) {
+      let nextIdx = Math.floor(Math.random() * MUSIC_TRACKS.length);
+      if (MUSIC_TRACKS.length > 1 && nextIdx === this.currentTrackIndex) {
+        nextIdx = (nextIdx + 1) % MUSIC_TRACKS.length;
+      }
+      this.currentTrackIndex = nextIdx;
+    } else {
+      this.currentTrackIndex = (this.currentTrackIndex + 1) % MUSIC_TRACKS.length;
+    }
     if (this.isPlaying) {
       this.play();
     } else {
@@ -176,6 +194,10 @@ class MusicManager {
   }
 
   public prevTrack() {
+    if (this.isShuffle) {
+      this.nextTrack(true);
+      return;
+    }
     this.currentTrackIndex = (this.currentTrackIndex - 1 + MUSIC_TRACKS.length) % MUSIC_TRACKS.length;
     if (this.isPlaying) {
       this.play();

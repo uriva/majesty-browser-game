@@ -9,6 +9,7 @@ export interface CharacterAnimationController {
   actions: Map<AnimState, THREE.AnimationAction>;
   currentState: AnimState;
   play: (state: AnimState, fadeDuration?: number) => void;
+  setTimeScale: (scale: number) => void;
   update: (delta: number) => void;
   dispose: () => void;
 }
@@ -62,15 +63,24 @@ export class ModelRegistry {
       'palace': '/models/building_castle_blue.gltf',
       'warrior_guild': '/models/building_barracks_blue.gltf',
       'ranger_guild': '/models/building_archeryrange_blue.gltf',
-      'rogue_guild': '/models/building_tavern_blue.gltf',
+      'rogue_guild': '/models/building_windmill_blue.gltf',
+      'wizard_tower': '/models/building_tower_B_blue.gltf',
+      'cleric_temple': '/models/building_church_blue.gltf',
       'blacksmith': '/models/building_blacksmith_blue.gltf',
       'marketplace': '/models/building_market_blue.gltf',
       'royal_inn': '/models/building_tavern_blue.gltf',
-      'cleric_temple': '/models/building_church_blue.gltf',
+      'guard_tower': '/models/building_tower_A_blue.gltf',
+      'statue_king': '/models/building_well_blue.gltf',
+      'dwarf_settlement': '/models/building_mine_blue.gltf',
       'peasant_cottage': '/models/building_home_A_blue.gltf',
       'peasant_cottage_b': '/models/building_home_B_blue.gltf',
-      'dwarf_settlement': '/models/building_mine_blue.gltf',
-      'lumbermill': '/models/building_lumbermill_blue.gltf'
+      'lumbermill': '/models/building_lumbermill_blue.gltf',
+      'fairgrounds': '/models/building_stage_A.gltf',
+      'elven_lounge': '/models/building_watermill_blue.gltf',
+      'temple_fervus': '/models/building_church_green.gltf',
+      'temple_krypta': '/models/building_church_red.gltf',
+      'temple_helia': '/models/building_church_yellow.gltf',
+      'ruins': '/models/building_destroyed.gltf'
     };
 
     const natureModels: Record<string, string> = {
@@ -327,6 +337,12 @@ export class ModelRegistry {
           nextAction.reset().play();
         }
         controller.currentState = state;
+      },
+      setTimeScale: (scale: number) => {
+        const currentAction = actions.get(controller.currentState);
+        if (currentAction) {
+          currentAction.timeScale = Math.max(0.25, Math.min(3.0, scale));
+        }
       },
       update: (delta: number) => {
         mixer.update(delta);

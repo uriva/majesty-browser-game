@@ -42,6 +42,9 @@ export class HeroAIManager {
     if (hero.isAttackingAnimation > 0) {
       hero.isAttackingAnimation -= delta;
     }
+    if (hero.fearCooldown && hero.fearCooldown > 0) {
+      hero.fearCooldown -= delta;
+    }
 
     // Health / Mana passive regeneration if not fleeing or in combat
     if (hero.state !== 'attacking_target' && hero.state !== 'fleeing') {
@@ -100,15 +103,17 @@ export class HeroAIManager {
       audioManager.playVoice(`${hero.heroClass}_flee`, hero.x, hero.y);
     }
 
-    // FEAR ON SIGHT: An overwhelming monster nearby spooks the hero into a panicked rout
-    if (hero.state !== 'fleeing' && hero.state !== 'attacking_target') {
+    // FEAR ON SIGHT: An overwhelming monster nearby spooks the hero into a panicked rout (with cooldown and delta rate scaling)
+    if ((hero.fearCooldown ?? 0) <= 0 && hero.state !== 'fleeing' && hero.state !== 'attacking_target' && hero.state !== 'resting_at_guild' && hero.state !== 'visiting_inn') {
       const terrorRadius = 85;
       const terror = monsters.find(
         m => m.hp > 0 && this.isOverwhelming(hero, m, allHeroes) && Math.hypot(m.x - hero.x, m.y - hero.y) < terrorRadius
       );
-      if (terror && Math.random() < 0.35 + (100 - hero.traits.bravery) / 250) {
+      const fearChancePerSec = 0.25 * Math.max(0.08, (100 - hero.traits.bravery) / 100);
+      if (terror && Math.random() < fearChancePerSec * delta) {
         hero.state = 'fleeing';
-        hero.stateTimer = 3.5;
+        hero.stateTimer = 4.0;
+        hero.fearCooldown = 12.0; // 12 second cooldown prevents fear spam loops
         hero.targetEntityId = undefined;
         hero.targetFlagId = undefined;
         hero.currentThought = `The ${terror.name} terrifies me! Run!`;

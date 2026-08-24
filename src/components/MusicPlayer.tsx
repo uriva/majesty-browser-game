@@ -11,12 +11,14 @@ import {
   Volume2, 
   VolumeX, 
   ListMusic, 
-  Disc3 
+  Disc3,
+  Shuffle
 } from 'lucide-react';
 
 export const MusicPlayer: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [currentTrack, setCurrentTrack] = useState<MusicTrack>(MUSIC_TRACKS[0]);
+  const [isShuffle, setIsShuffle] = useState<boolean>(true);
   const [volume, setVolume] = useState<number>(0.45);
   const [muted, setMuted] = useState<boolean>(false);
   const [showTrackList, setShowTrackList] = useState<boolean>(false);
@@ -25,6 +27,7 @@ export const MusicPlayer: React.FC = () => {
     const unsubscribe = musicManager.subscribe((state) => {
       setIsPlaying(state.isPlaying);
       setCurrentTrack(state.currentTrack);
+      setIsShuffle(state.isShuffle);
       setVolume(state.volume);
       setMuted(state.muted);
     });
@@ -80,10 +83,21 @@ export const MusicPlayer: React.FC = () => {
           </button>
           <button
             onClick={() => musicManager.nextTrack()}
-            title="Next Track"
+            title="Next Track (Random)"
             className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200"
           >
             <SkipForward className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => musicManager.toggleShuffle()}
+            title={isShuffle ? 'Random Shuffle: ON' : 'Random Shuffle: OFF'}
+            className={`p-1 rounded transition-colors ${
+              isShuffle
+                ? 'text-amber-400 bg-amber-950/60 border border-amber-500/40'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <Shuffle className="w-3.5 h-3.5" />
           </button>
         </div>
 

@@ -95,6 +95,7 @@ export class ThreeRenderer {
   private groundMesh: THREE.Mesh | null = null;
   private lastStructureHash: string = '';
   private lastKnownStructures: { x: number; y: number; width: number; height: number }[] = [];
+  private floatingTextTextureCache: Map<string, THREE.CanvasTexture> = new Map();
 
   // Raycaster for 3D mouse interaction
   public raycaster: THREE.Raycaster = new THREE.Raycaster();
@@ -143,10 +144,10 @@ export class ThreeRenderer {
     this.roadCanvas.height = rcSize;
     this.roadCtx = this.roadCanvas.getContext('2d')!;
     this.roadTexture = new THREE.CanvasTexture(this.roadCanvas);
-    this.roadTexture.anisotropy = 16;
-    this.roadTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    this.roadTexture.anisotropy = 4;
+    this.roadTexture.minFilter = THREE.LinearFilter;
     this.roadTexture.magFilter = THREE.LinearFilter;
-    this.roadTexture.generateMipmaps = true;
+    this.roadTexture.generateMipmaps = false;
 
     // Pattern for road fill
     const patternCanvas = this.createCobblePatternCanvas();
@@ -169,19 +170,19 @@ export class ThreeRenderer {
     // 2. Camera Setup
     this.camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
 
-    // 3. WebGL Renderer with Shadows & Antialiasing
+    // 3. WebGL Renderer with Fast Optimized Shadows & Antialiasing
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
 
     container.appendChild(this.renderer.domElement);
 
-    // Apply Maximum Hardware Anisotropic Filtering for Razor-Sharp Isometric Terrain & Roads
-    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+    // Apply Anisotropic Filtering for Razor-Sharp Isometric Terrain & Roads
+    const maxAniso = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
     this.roadTexture.anisotropy = maxAniso;
     this.grassTexture.anisotropy = maxAniso;
     this.grassBumpTexture.anisotropy = maxAniso;
@@ -197,8 +198,8 @@ export class ThreeRenderer {
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.4);
     this.dirLight.position.set(250, 400, 200);
     this.dirLight.castShadow = true;
-    this.dirLight.shadow.mapSize.width = 2048;
-    this.dirLight.shadow.mapSize.height = 2048;
+    this.dirLight.shadow.mapSize.width = 1024;
+    this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 10;
     this.dirLight.shadow.camera.far = 1500;
     const shadowD = 600;
@@ -3019,9 +3020,12 @@ export class ThreeRenderer {
   }
 
   private updateCamera(state: GameState, delta: number = 0.016) {
-    // Smooth spring damping for camera zoom
-    const zoomLerpSpeed = Math.min(1.0, 14.0 * delta);
+    // Smooth responsive spring damping for camera zoom
+    const zoomLerpSpeed = Math.min(1.0, 20.0 * delta);
     this.cameraDistance += (this.targetCameraDistance - this.cameraDistance) * zoomLerpSpeed;
+    if (Math.abs(this.targetCameraDistance - this.cameraDistance) < 0.1) {
+      this.cameraDistance = this.targetCameraDistance;
+    }
 
     if (this.cameraMode === 'follow' && state.selectedEntity?.type === 'hero') {
       const hero = state.heroes.find(h => h.id === state.selectedEntity?.id);
@@ -3873,21 +3877,7 @@ export class ThreeRenderer {
     const ts = this.gridManager.tileSize;
     const w = b.width * ts;
     const h = b.height * ts;
-
-    // Subtle beveled stone foundation curb trimming the base of the building
     const isCottage = b.type === 'peasant_cottage';
-    const plinthDepth = 3.2;
-    const plinthGeo = new THREE.BoxGeometry(isCottage ? w * 0.72 : w * 0.96, plinthDepth, isCottage ? h * 0.72 : h * 0.96);
-    const plinthMat = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      map: this.royalCastleWallTexture,
-      roughness: 0.9
-    });
-    const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-    plinth.position.y = -plinthDepth / 2 + 0.2;
-    plinth.castShadow = true;
-    plinth.receiveShadow = true;
-    group.add(plinth);
 
     if (b.isConstructing) {
       if (b.constructionProgress <= 0) {
@@ -4817,15 +4807,9 @@ export class ThreeRenderer {
       const goldDomeMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.9, roughness: 0.15 });
       const roofSlateMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, map: this.royalRoofSlateTexture, roughness: 0.6 });
 
-      // 1. Grand Stepped Marble Plinth
-      const plinth = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, 3, h * 0.88), darkMarbleMat);
-      plinth.position.y = 1.5;
-      plinth.receiveShadow = true;
-      group.add(plinth);
-
       // 2. Central Sanctuary Basilica Nave
       const cathedral = new THREE.Mesh(new THREE.BoxGeometry(w * 0.54, 24, h * 0.68), marbleMat);
-      cathedral.position.set(0, 13.5, -h * 0.04);
+      cathedral.position.set(0, 12, -h * 0.04);
       cathedral.castShadow = true;
       group.add(cathedral);
 
@@ -5622,14 +5606,6 @@ export class ThreeRenderer {
       return group;
     }
 
-    // Subterranean Earth Base Mound for large 3D lairs
-    const plinthDepth = 3.2;
-    const plinthGeo = new THREE.BoxGeometry(w * 0.94, plinthDepth, h * 0.94);
-    const plinthMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.95 });
-    const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-    plinth.position.y = -plinthDepth / 2 + 0.2;
-    group.add(plinth);
-
     if (lair.type === 'graveyard') {
       // 3D Cursed Graveyard with Mausoleum & Headstones
       const cryptGeo = new THREE.BoxGeometry(16, 14, 20);
@@ -6295,7 +6271,8 @@ export class ThreeRenderer {
       this.smoothRotate(pGroup, targetAngle, delta, 16);
 
       const isMoving = p.state === 'walking_to_site' || p.state === 'fleeing';
-      const animSpeed = p.state === 'fleeing' ? 5.0 : 3.5;
+      const peasantSpeed = p.state === 'fleeing' ? 60 : (p.speed || 35);
+      const strideFreq = (peasantSpeed / 35) * 3.5;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(p.id);
@@ -6304,17 +6281,21 @@ export class ThreeRenderer {
           controller.play('death', 0.15);
         } else if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
           controller.play('hammer', 0.15);
+          controller.setTimeScale(1.0);
         } else if (isMoving) {
-          controller.play(p.state === 'fleeing' ? 'run' : 'walk', 0.18);
+          const isRun = p.state === 'fleeing';
+          controller.play(isRun ? 'run' : 'walk', 0.18);
+          controller.setTimeScale(isRun ? peasantSpeed / 65 : peasantSpeed / 38);
         } else {
           controller.play('idle', 0.22);
+          controller.setTimeScale(1.0);
         }
       }
 
-      // If no skeletal controller, use procedural step bob and limb animation
-      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * animSpeed)) * 0.9 : 0;
-      const bodySway = !controller && isMoving ? Math.sin(time * animSpeed) * 0.08 : 0;
-      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.6 : 0;
+      // If no skeletal controller, use procedural step bob and limb animation synced to ground speed
+      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.9 : 0;
+      const bodySway = !controller && isMoving ? Math.sin(time * strideFreq) * 0.08 : 0;
+      const legStride = isMoving ? Math.sin(time * strideFreq) * 0.6 : 0;
 
       pGroup.position.set(p.x, this.getTerrainHeight(p.x, p.y) + stepBob, p.y);
       pGroup.rotation.z = bodySway;
@@ -6571,7 +6552,9 @@ export class ThreeRenderer {
       this.smoothRotate(heroGroup, targetAngle, delta, 16);
 
       const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 3;
-      const animSpeed = h.state === 'fleeing' ? 5.0 : (h.state === 'pursuing_flag' ? 4.2 : 3.5);
+      const heroBaseSpeed = h.speed || 45;
+      const heroActualSpeed = heroBaseSpeed * (h.state === 'fleeing' ? 1.25 : (h.state === 'pursuing_flag' ? 1.1 : 1.0));
+      const strideFreq = (heroActualSpeed / 40) * 3.5;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(h.id);
@@ -6580,17 +6563,22 @@ export class ThreeRenderer {
           controller.play('death', 0.15);
         } else if (h.isAttackingAnimation > 0) {
           controller.play('attack', 0.12);
+          controller.setTimeScale(1.0);
         } else if (isMoving) {
-          controller.play(h.state === 'fleeing' ? 'run' : 'walk', 0.18);
+          const isRunning = h.state === 'fleeing' || heroActualSpeed > 62;
+          controller.play(isRunning ? 'run' : 'walk', 0.18);
+          // Scale leg animation speed exactly to match world translation speed
+          controller.setTimeScale(isRunning ? heroActualSpeed / 70 : heroActualSpeed / 42);
         } else {
           controller.play('idle', 0.22);
+          controller.setTimeScale(1.0);
         }
       }
 
-      // If no skeletal controller, use procedural step bob and limb animation
-      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * animSpeed)) * 1.0 : 0;
-      const bodySway = !controller && isMoving ? Math.sin(time * animSpeed) * 0.09 : 0;
-      const legStride = isMoving ? Math.sin(time * animSpeed) * 0.65 : 0;
+      // If no skeletal controller, use procedural step bob and limb animation synced to stride
+      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * strideFreq)) * 1.0 : 0;
+      const bodySway = !controller && isMoving ? Math.sin(time * strideFreq) * 0.09 : 0;
+      const legStride = isMoving ? Math.sin(time * strideFreq) * 0.65 : 0;
 
       heroGroup.position.set(h.x, this.getTerrainHeight(h.x, h.y) + stepBob, h.y);
       heroGroup.rotation.z = bodySway;
@@ -7363,7 +7351,9 @@ export class ThreeRenderer {
       const isAttacking = m.isAttackingAnimation > 0;
       const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
       const isMoving = (m.state === 'wandering' || m.state === 'raiding' || m.state === 'returning_to_lair' || (m.state === 'attacking' && !isAttacking)) && m.targetX !== undefined;
-      const walkStride = isMoving ? Math.sin(time * 3.5) * 0.55 : 0;
+      const monsterSpeed = m.speed || 40;
+      const strideFreq = (monsterSpeed / 40) * 3.5;
+      const walkStride = isMoving ? Math.sin(time * strideFreq) * 0.55 : 0;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(m.id);
@@ -7372,17 +7362,21 @@ export class ThreeRenderer {
           controller.play('death', 0.15);
         } else if (isAttacking) {
           controller.play('attack', 0.12);
+          controller.setTimeScale(1.0);
         } else if (isMoving) {
-          controller.play('walk', 0.18);
+          const isRun = monsterSpeed > 58;
+          controller.play(isRun ? 'run' : 'walk', 0.18);
+          controller.setTimeScale(isRun ? monsterSpeed / 65 : monsterSpeed / 38);
         } else {
           controller.play('idle', 0.22);
+          controller.setTimeScale(1.0);
         }
       }
 
-      const stepBob = !controller && !isFlying && isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : 0;
+      const stepBob = !controller && !isFlying && isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.9 : 0;
       mGroup.position.set(m.x, this.getTerrainHeight(m.x, m.y) + flightAltitude + stepBob, m.y);
       if (!isFlying) {
-        mGroup.rotation.z = !controller && isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
+        mGroup.rotation.z = !controller && isMoving ? Math.sin(time * strideFreq) * 0.08 : 0;
       }
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
@@ -8749,6 +8743,8 @@ export class ThreeRenderer {
       this.smoothRotate(tcGroup, targetAngle, delta, 16);
 
       const isMoving = tc.state === 'seeking_building' || tc.state === 'returning_to_palace' || tc.state === 'fleeing';
+      const tcSpeed = tc.state === 'fleeing' ? 68 : (tc.speed || 42);
+      const strideFreq = (tcSpeed / 40) * 3.5;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(tc.id);
@@ -8756,16 +8752,19 @@ export class ThreeRenderer {
         if (tc.hp <= 0) {
           controller.play('death', 0.15);
         } else if (isMoving) {
-          controller.play(tc.state === 'fleeing' ? 'run' : 'walk', 0.18);
+          const isRun = tc.state === 'fleeing';
+          controller.play(isRun ? 'run' : 'walk', 0.18);
+          controller.setTimeScale(isRun ? tcSpeed / 68 : tcSpeed / 40);
         } else {
           controller.play('idle', 0.22);
+          controller.setTimeScale(1.0);
         }
       }
 
       // If no skeletal controller, use procedural step bob and limb animation
-      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * 3.5)) * 0.9 : 0;
-      const bodySway = !controller && isMoving ? Math.sin(time * 3.5) * 0.08 : 0;
-      const legStride = isMoving ? Math.sin(time * 3.5) * 0.55 : 0;
+      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.9 : 0;
+      const bodySway = !controller && isMoving ? Math.sin(time * strideFreq) * 0.08 : 0;
+      const legStride = isMoving ? Math.sin(time * strideFreq) * 0.55 : 0;
 
       tcGroup.position.set(tc.x, this.getTerrainHeight(tc.x, tc.y) + stepBob, tc.y);
       tcGroup.rotation.z = bodySway;
@@ -9250,7 +9249,6 @@ export class ThreeRenderer {
     for (const [id, sprite] of this.floatingTextsMap.entries()) {
       if (!activeIds.has(id)) {
         this.scene.remove(sprite);
-        if (sprite.material.map) sprite.material.map.dispose();
         sprite.material.dispose();
         this.floatingTextsMap.delete(id);
       }
@@ -9258,74 +9256,79 @@ export class ThreeRenderer {
   }
 
   private createFloatingTextSprite(ft: FloatingText): THREE.Sprite {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 160;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return new THREE.Sprite();
-
     // Sanitize any raw floating point fractions into clean integers (e.g. 4.000000003 -> 4)
     const displayText = ft.text.replace(/(\d+)\.\d+/g, (match) => Math.round(parseFloat(match)).toString());
-
     const isGold = displayText.includes('g') || displayText.includes('Tax') || displayText.includes('Treasury') || displayText.includes('Bounty') || displayText.includes('Loot') || displayText.includes('Ale');
+    const cacheKey = `${displayText}_${ft.color || '#ffffff'}_${isGold}`;
 
-    if (isGold) {
-      // 1. Draw Large 3D Shaded Metallic Sovereign Gold Coin
-      const cx = 72;
-      const cy = 80;
-      const r = 52;
+    let texture = this.floatingTextTextureCache.get(cacheKey);
+    if (!texture) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 80;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return new THREE.Sprite();
 
-      const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-      grad.addColorStop(0, '#fef08a');
-      grad.addColorStop(0.5, '#eab308');
-      grad.addColorStop(1, '#b45309');
+      if (isGold) {
+        // 1. Draw Large 3D Shaded Metallic Sovereign Gold Coin
+        const cx = 36;
+        const cy = 40;
+        const r = 26;
 
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
+        const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+        grad.addColorStop(0, '#fef08a');
+        grad.addColorStop(0.5, '#eab308');
+        grad.addColorStop(1, '#b45309');
 
-      // Outer gold rim
-      ctx.strokeStyle = '#fef08a';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r - 5, 0, Math.PI * 2);
-      ctx.stroke();
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Crown sovereign symbol
-      ctx.fillStyle = '#78350f';
-      ctx.font = 'bold 50px serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('👑', cx, cy - 2);
+        // Outer gold rim
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r - 2, 0, Math.PI * 2);
+        ctx.stroke();
 
-      // 2. Draw Transaction Sum in Large Crisp Typography with heavy outline
-      ctx.font = 'bold 64px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
+        // Crown sovereign symbol
+        ctx.fillStyle = '#78350f';
+        ctx.font = 'bold 24px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('👑', cx, cy - 1);
 
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 12;
-      ctx.strokeText(displayText, 144, cy);
+        // 2. Draw Transaction Sum in Large Crisp Typography with outline
+        ctx.font = 'bold 32px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
 
-      ctx.fillStyle = '#fef08a';
-      ctx.fillText(displayText, 144, cy);
-    } else {
-      // Large Combat damage, healing, or level up banner
-      ctx.font = 'bold 58px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 6;
+        ctx.strokeText(displayText, 72, cy);
 
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 12;
-      ctx.strokeText(displayText, 256, 80);
+        ctx.fillStyle = '#fef08a';
+        ctx.fillText(displayText, 72, cy);
+      } else {
+        // Combat damage, healing, or level up banner
+        ctx.font = 'bold 30px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
 
-      ctx.fillStyle = ft.color || '#ffffff';
-      ctx.fillText(displayText, 256, 80);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 6;
+        ctx.strokeText(displayText, 128, 40);
+
+        ctx.fillStyle = ft.color || '#ffffff';
+        ctx.fillText(displayText, 128, 40);
+      }
+
+      texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      this.floatingTextTextureCache.set(cacheKey, texture);
     }
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.minFilter = THREE.LinearFilter;
     const spriteMat = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,

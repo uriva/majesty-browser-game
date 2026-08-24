@@ -19,7 +19,9 @@ import { PeasantInspector } from './PeasantInspector';
 import { FlagInspector } from './FlagInspector';
 import { HeroRosterBar } from './HeroRosterBar';
 import { ScenarioModal } from './ScenarioModal';
-import { Hammer, Coins, Zap, Eye, RotateCw, Video, Crown } from 'lucide-react';
+import { SaveLoadModal } from './SaveLoadModal';
+import { Hammer, Coins, Zap, Eye, RotateCw, Video, Crown, Sparkles, CheckCircle2 } from 'lucide-react';
+import { audioManager } from '../game/engine/Audio';
 import { ModelRegistry } from '../game/engine/ModelRegistry';
 
 export const GameView: React.FC = () => {
@@ -38,6 +40,8 @@ export const GameView: React.FC = () => {
   const [activeSpellId, setActiveSpellId] = useState<string | null>(null);
 
   const [isScenarioModalOpen, setIsScenarioModalOpen] = useState<boolean>(false);
+  const [isSaveLoadModalOpen, setIsSaveLoadModalOpen] = useState<boolean>(false);
+  const [archiveBanner, setArchiveBanner] = useState<{ title: string; message: string; type: 'save' | 'load' | 'delete' } | null>(null);
   const [saveMeta, setSaveMeta] = useState<SaveMeta | null>(() =>
     typeof window !== 'undefined' ? readSaveMeta() : null
   );
@@ -65,6 +69,17 @@ export const GameView: React.FC = () => {
     reg.onChange(check);
   }, []);
 
+  // Show rich banner feedback
+  const triggerArchiveBanner = useCallback((title: string, message: string, type: 'save' | 'load' | 'delete') => {
+    setArchiveBanner({ title, message, type });
+    try {
+      audioManager.playAdvisorChime();
+    } catch {}
+    setTimeout(() => {
+      setArchiveBanner(prev => (prev?.title === title ? null : prev));
+    }, 4500);
+  }, []);
+
   // Initialize Game Engine & 3D Three.js Renderer
   const attachEngine = useCallback((engine: GameEngine) => {
     engineRef.current = engine;
@@ -88,10 +103,11 @@ export const GameView: React.FC = () => {
     const engine = engineRef.current;
     if (!engine || engine.state.isGameOver) return;
     const meta = saveGameToLocalStorage(engine);
+    triggerArchiveBanner('👑 Kingdom Archived', `${meta.scenarioName} — Day ${meta.day} recorded in royal archives.`, 'save');
     engine.addNotification('Kingdom Saved', `${meta.scenarioName} — Day ${meta.day} recorded in the royal archives.`, 'success');
     setSaveMeta(meta);
     lastHudSyncRef.current = 0;
-  }, []);
+  }, [triggerArchiveBanner]);
 
   const handleLoadGame = useCallback(() => {
     const raw = getRawSave();
@@ -106,10 +122,28 @@ export const GameView: React.FC = () => {
     setActiveFlagType(null);
     setActiveSpellId(null);
     attachEngine(engine);
+    const meta = readSaveMeta();
+    triggerArchiveBanner('📜 Kingdom Restored', `${meta?.scenarioName || 'Realm'} — Day ${meta?.day || 1} restored. Resuming reign!`, 'load');
     engine.addNotification('Kingdom Restored', 'Your reign continues from the royal archives.', 'success');
-    setSaveMeta(readSaveMeta());
+    setSaveMeta(meta);
     lastHudSyncRef.current = 0;
-  }, [attachEngine]);
+  }, [attachEngine, triggerArchiveBanner]);
+
+  const handleLoadCustomSave = useCallback((raw: string, meta: SaveMeta) => {
+    const engine = new GameEngine(engineRef.current?.state.scenario ?? SCENARIOS[0]);
+    if (!engine.applySaveData(raw)) {
+      engine.addNotification('Load Failed', 'The royal archives are corrupted.', 'danger');
+      setGameState({ ...engine.state });
+      return;
+    }
+    setActiveBuildingType(null);
+    setActiveFlagType(null);
+    setActiveSpellId(null);
+    attachEngine(engine);
+    triggerArchiveBanner('📜 Kingdom Restored', `${meta.scenarioName} — Day ${meta.day} restored. Resuming reign!`, 'load');
+    setSaveMeta(meta);
+    lastHudSyncRef.current = 0;
+  }, [attachEngine, triggerArchiveBanner]);
 
   // Ctrl+S / Ctrl+L shortcuts
   useEffect(() => {
@@ -400,9 +434,8 @@ export const GameView: React.FC = () => {
     const engine = engineRef.current;
     if (!renderer || !engine) return;
 
-    const normalizedDelta = Math.max(-60, Math.min(60, e.deltaY));
-    const zoomMultiplier = 1 + normalizedDelta * 0.0016;
-    const newDist = Math.max(100, Math.min(850, renderer.targetCameraDistance * zoomMultiplier));
+    const zoomFactor = Math.pow(1.0016, e.deltaY);
+    const newDist = Math.max(90, Math.min(850, renderer.targetCameraDistance * zoomFactor));
     renderer.targetCameraDistance = newDist;
     engine.state.camera.zoom = 380 / newDist;
   };
@@ -539,8 +572,27 @@ export const GameView: React.FC = () => {
               onShowAdvisorModal={() => {}}
               onSaveGame={handleSaveGame}
               onLoadGame={handleLoadGame}
+              onOpenSaveLoadModal={() => setIsSaveLoadModalOpen(true)}
               saveMeta={saveMeta}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Royal Archive Banner Notification */}
+      {archiveBanner && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-fadeIn">
+          <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-400/80 shadow-2xl shadow-amber-900/50 text-slate-100">
+            <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300">
+              <Crown className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold font-serif text-sm text-amber-300">{archiveBanner.title}</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              </div>
+              <p className="text-xs text-slate-300 font-sans mt-0.5">{archiveBanner.message}</p>
+            </div>
           </div>
         </div>
       )}
@@ -780,6 +832,15 @@ export const GameView: React.FC = () => {
           />
         )}
       </div>
+
+      {/* Royal Archives Save/Load Modal */}
+      <SaveLoadModal
+        isOpen={isSaveLoadModalOpen}
+        engine={engineRef.current}
+        onClose={() => setIsSaveLoadModalOpen(false)}
+        onLoadSave={handleLoadCustomSave}
+        onActionFeedback={triggerArchiveBanner}
+      />
 
       {/* Scenario / Victory / Defeat Modal */}
       <ScenarioModal

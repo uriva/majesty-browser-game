@@ -115,6 +115,7 @@ export interface Hero {
   isAttackingAnimation: number; // timer for attack frame
   isDead?: boolean;
   restingProgress?: number;
+  fearCooldown?: number;
   path?: Position[];
   pathTargetKey?: string;
 }
@@ -379,6 +380,10 @@ export interface SaveMeta {
   scenarioName: string;
   day: number;
   treasuryGold: number;
+  slotId?: string;
+  heroCount?: number;
+  buildingCount?: number;
+  label?: string;
 }
 
 export interface SaveData {
