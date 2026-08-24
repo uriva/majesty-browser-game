@@ -19,7 +19,8 @@ import { PeasantInspector } from './PeasantInspector';
 import { FlagInspector } from './FlagInspector';
 import { HeroRosterBar } from './HeroRosterBar';
 import { ScenarioModal } from './ScenarioModal';
-import { Hammer, Coins, Zap, Eye, RotateCw, Video } from 'lucide-react';
+import { Hammer, Coins, Zap, Eye, RotateCw, Video, Crown } from 'lucide-react';
+import { ModelRegistry } from '../game/engine/ModelRegistry';
 
 export const GameView: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -28,6 +29,7 @@ export const GameView: React.FC = () => {
   const requestRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
 
+  const [assetsReady, setAssetsReady] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeTab, setActiveTab] = useState<'none' | 'build' | 'flags' | 'spells'>('build');
   const [activeBuildingType, setActiveBuildingType] = useState<BuildingType | null>(null);
@@ -47,6 +49,21 @@ export const GameView: React.FC = () => {
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const trackingHeroIdRef = useRef<string | null>(null);
   const lastHudSyncRef = useRef<number>(0);
+
+  // Track asset readiness
+  useEffect(() => {
+    const reg = ModelRegistry.getInstance();
+    if (reg.isReady) {
+      setAssetsReady(true);
+      return;
+    }
+    const check = () => {
+      if (reg.isReady) {
+        setAssetsReady(true);
+      }
+    };
+    reg.onChange(check);
+  }, []);
 
   // Initialize Game Engine & 3D Three.js Renderer
   const attachEngine = useCallback((engine: GameEngine) => {
@@ -474,6 +491,26 @@ export const GameView: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none">
+      {/* Royal Sovereign Loading Screen while 3D Models & Animations Preload */}
+      {!assetsReady && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md pointer-events-auto">
+          <div className="flex flex-col items-center gap-4 text-center max-w-sm px-6">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 flex items-center justify-center shadow-lg shadow-amber-500/20 animate-pulse">
+              <Crown className="w-9 h-9 text-amber-400" />
+            </div>
+            <h2 className="font-serif text-2xl font-bold tracking-wider text-amber-200">
+              Summoning Sovereign Realm
+            </h2>
+            <p className="text-xs text-slate-400 font-sans tracking-wide">
+              Rigging battle banners, marshaling guild champions & preparing kingdom...
+            </p>
+            <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-amber-500/20 mt-2">
+              <div className="h-full bg-gradient-to-r from-amber-500 to-amber-300 animate-pulse w-full rounded-full" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3D WebGL Three.js Container */}
       <div
         ref={containerRef}

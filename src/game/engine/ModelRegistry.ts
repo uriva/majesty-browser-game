@@ -1,13 +1,29 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+
+export type AnimState = 'idle' | 'walk' | 'run' | 'attack' | 'hammer' | 'death';
+
+export interface CharacterAnimationController {
+  mixer: THREE.AnimationMixer;
+  actions: Map<AnimState, THREE.AnimationAction>;
+  currentState: AnimState;
+  play: (state: AnimState, fadeDuration?: number) => void;
+  update: (delta: number) => void;
+  dispose: () => void;
+}
 
 export class ModelRegistry {
   private static instance: ModelRegistry;
   private loader: GLTFLoader = new GLTFLoader();
-  private templates: Map<string, THREE.Group> = new Map();
+  private staticTemplates: Map<string, THREE.Group> = new Map();
+  private characterTemplates: Map<string, THREE.Group> = new Map();
+  private sharedClips: Map<string, THREE.AnimationClip> = new Map();
   private loading: Set<string> = new Set();
   private onChangeCallbacks: (() => void)[] = [];
   public isReady: boolean = false;
+  private totalExpected: number = 0;
+  private totalLoaded: number = 0;
 
   public static getInstance(): ModelRegistry {
     if (!ModelRegistry.instance) {
@@ -18,6 +34,9 @@ export class ModelRegistry {
 
   public onChange(callback: () => void) {
     this.onChangeCallbacks.push(callback);
+    if (this.isReady) {
+      try { callback(); } catch {}
+    }
   }
 
   private notifyTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -33,7 +52,7 @@ export class ModelRegistry {
           console.warn('ModelRegistry onChange callback error:', err);
         }
       }
-    }, 100);
+    }, 60);
   }
 
   public preloadAll() {
@@ -52,21 +71,6 @@ export class ModelRegistry {
       'peasant_cottage_b': '/models/building_home_B_blue.gltf',
       'dwarf_settlement': '/models/building_mine_blue.gltf',
       'lumbermill': '/models/building_lumbermill_blue.gltf'
-    };
-
-    const characterModels: Record<string, string> = {
-      'knight': '/models/Knight.glb',
-      'ranger': '/models/Ranger.glb',
-      'rogue': '/models/Rogue.glb',
-      'mage': '/models/Mage.glb',
-      'barbarian': '/models/Barbarian.glb',
-      'engineer': '/models/Engineer.glb',
-      'skeleton_warrior': '/models/Skeleton_Warrior.glb',
-      'skeleton_mage': '/models/Skeleton_Mage.glb',
-      'necromancer': '/models/Necromancer.glb',
-      'orc_raider': '/models/OrcRaider.glb',
-      'werewolf': '/models/Werewolf_Wolf.glb',
-      'vampire': '/models/Vampire.glb'
     };
 
     const natureModels: Record<string, string> = {
@@ -88,93 +92,141 @@ export class ModelRegistry {
       'rock_small_b': '/models/nature/rock_smallB.glb'
     };
 
-    const all = { ...buildingModels, ...characterModels, ...natureModels };
-    let remaining = Object.keys(all).length;
+    const characterModels: Record<string, string> = {
+      'knight': '/models/Knight.glb',
+      'ranger': '/models/Ranger.glb',
+      'rogue': '/models/Rogue.glb',
+      'mage': '/models/Mage.glb',
+      'barbarian': '/models/Barbarian.glb',
+      'engineer': '/models/Engineer.glb',
+      'skeleton_warrior': '/models/Skeleton_Warrior.glb',
+      'skeleton_mage': '/models/Skeleton_Mage.glb',
+      'necromancer': '/models/Necromancer.glb',
+      'orc_raider': '/models/OrcRaider.glb',
+      'werewolf': '/models/Werewolf_Wolf.glb',
+      'vampire': '/models/Vampire.glb'
+    };
 
-    for (const [key, url] of Object.entries(all)) {
-      this.loadModel(key, url, () => {
-        remaining--;
-        if (remaining <= 0) {
-          this.isReady = true;
-        }
-        this.notify();
-      });
+    const animationPacks: Record<string, string> = {
+      'anim_movement': '/models/animations/Rig_Medium_MovementBasic.glb',
+      'anim_general': '/models/animations/Rig_Medium_General.glb',
+      'anim_combat': '/models/animations/Rig_Medium_CombatMelee.glb',
+      'anim_tools': '/models/animations/Rig_Medium_Tools.glb'
+    };
+
+    const allStatic = { ...buildingModels, ...natureModels };
+    this.totalExpected = Object.keys(allStatic).length + Object.keys(characterModels).length + Object.keys(animationPacks).length;
+    this.totalLoaded = 0;
+
+    const checkComplete = () => {
+      this.totalLoaded++;
+      if (this.totalLoaded >= this.totalExpected) {
+        this.isReady = true;
+      }
+      this.notify();
+    };
+
+    // 1. Load Animation Packs
+    for (const [, url] of Object.entries(animationPacks)) {
+      this.loader.load(
+        url,
+        (gltf) => {
+          if (gltf.animations) {
+            for (const clip of gltf.animations) {
+              this.sharedClips.set(clip.name, clip);
+            }
+          }
+          checkComplete();
+        },
+        undefined,
+        () => checkComplete()
+      );
+    }
+
+    // 2. Load Static Models (Buildings, Trees, Rocks)
+    for (const [key, url] of Object.entries(allStatic)) {
+      this.loadStaticModel(key, url, checkComplete);
+    }
+
+    // 3. Load Skinned Character Models (Rigged with Skeleton)
+    for (const [key, url] of Object.entries(characterModels)) {
+      this.loadCharacterModel(key, url, checkComplete);
     }
   }
 
-  private loadModel(key: string, url: string, onDone?: () => void) {
-    if (this.templates.has(key) || this.loading.has(key)) return;
+  private loadStaticModel(key: string, url: string, onDone: () => void) {
+    if (this.staticTemplates.has(key) || this.loading.has(key)) return;
     this.loading.add(key);
 
     this.loader.load(
       url,
       (gltf) => {
         const root = gltf.scene;
-        const cleanGroup = new THREE.Group();
-
-        root.updateMatrixWorld(true);
-
         root.traverse((child) => {
           if (child instanceof THREE.Mesh) {
-            const geo = child.geometry.clone();
-
-            // Convert SkinnedMesh to clean static Mesh by stripping skin attributes
-            // This eliminates CPU bone skinning calculations in software WebGL
-            if ('isSkinnedMesh' in child && (child as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) {
-              geo.deleteAttribute('skinIndex');
-              geo.deleteAttribute('skinWeight');
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach((m) => { m.side = THREE.DoubleSide; });
+              } else {
+                child.material.side = THREE.DoubleSide;
+              }
             }
-
-            const mat = Array.isArray(child.material)
-              ? child.material.map((m) => m.clone())
-              : child.material ? child.material.clone() : new THREE.MeshStandardMaterial();
-
-            if (Array.isArray(mat)) {
-              mat.forEach((m) => {
-                m.side = THREE.DoubleSide;
-                if ('roughness' in m) (m as THREE.MeshStandardMaterial).roughness = 0.85;
-                m.depthWrite = true;
-                m.depthTest = true;
-              });
-            } else if (mat) {
-              mat.side = THREE.DoubleSide;
-              if ('roughness' in mat) (mat as THREE.MeshStandardMaterial).roughness = 0.85;
-              mat.depthWrite = true;
-              mat.depthTest = true;
-            }
-
-            const staticMesh = new THREE.Mesh(geo, mat);
-            staticMesh.name = child.name;
-            staticMesh.castShadow = true;
-            staticMesh.receiveShadow = true;
-
-            staticMesh.position.copy(child.position);
-            staticMesh.rotation.copy(child.rotation);
-            staticMesh.scale.copy(child.scale);
-
-            cleanGroup.add(staticMesh);
           }
         });
 
-        this.templates.set(key, cleanGroup);
+        this.staticTemplates.set(key, root);
         this.loading.delete(key);
-        if (onDone) onDone();
+        onDone();
       },
       undefined,
       (err) => {
-        console.warn(`Failed to load 3D model ${key} from ${url}:`, err);
+        console.warn(`Failed to load static 3D model ${key} from ${url}:`, err);
         this.loading.delete(key);
-        if (onDone) onDone();
+        onDone();
       }
     );
   }
 
-  public hasModel(key: string): boolean {
-    return this.templates.has(key);
+  private loadCharacterModel(key: string, url: string, onDone: () => void) {
+    if (this.characterTemplates.has(key) || this.loading.has(key)) return;
+    this.loading.add(key);
+
+    this.loader.load(
+      url,
+      (gltf) => {
+        const root = gltf.scene;
+        root.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            child.frustumCulled = false;
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach((m) => { m.side = THREE.DoubleSide; });
+              } else {
+                child.material.side = THREE.DoubleSide;
+              }
+            }
+          }
+        });
+
+        this.characterTemplates.set(key, root);
+        this.loading.delete(key);
+        onDone();
+      },
+      undefined,
+      (err) => {
+        console.warn(`Failed to load character model ${key} from ${url}:`, err);
+        this.loading.delete(key);
+        onDone();
+      }
+    );
   }
 
   public cloneModel(key: string): THREE.Group | null {
-    const template = this.templates.get(key);
+    const template = this.staticTemplates.get(key);
     if (!template) return null;
     return template.clone(true);
   }
@@ -185,57 +237,6 @@ export class ModelRegistry {
       return this.cloneModel(variant) || this.cloneModel('peasant_cottage');
     }
     return this.cloneModel(type);
-  }
-
-  public getHeroModel(heroClass: string): THREE.Group | null {
-    switch (heroClass) {
-      case 'warrior':
-      case 'paladin':
-        return this.cloneModel('knight');
-      case 'ranger':
-      case 'elf':
-        return this.cloneModel('ranger');
-      case 'rogue':
-        return this.cloneModel('rogue');
-      case 'wizard':
-      case 'healer':
-      case 'cleric':
-        return this.cloneModel('mage');
-      case 'barbarian':
-      case 'dwarf':
-      case 'monk':
-        return this.cloneModel('barbarian');
-      default:
-        return this.cloneModel('knight');
-    }
-  }
-
-  public getCitizenModel(type: 'peasant' | 'tax_collector'): THREE.Group | null {
-    return this.cloneModel('engineer');
-  }
-
-  public getMonsterModel(monsterType: string): THREE.Group | null {
-    switch (monsterType) {
-      case 'skeleton':
-        return this.cloneModel('skeleton_warrior');
-      case 'skeleton_mage':
-        return this.cloneModel('skeleton_mage');
-      case 'necromancer':
-      case 'cultist':
-        return this.cloneModel('necromancer');
-      case 'goblin_spearman':
-      case 'goblin_archer':
-      case 'goblin_shaman':
-      case 'orc':
-        return this.cloneModel('orc_raider');
-      case 'werewolf':
-      case 'dire_wolf':
-        return this.cloneModel('werewolf');
-      case 'vampire_lord':
-        return this.cloneModel('vampire');
-      default:
-        return null;
-    }
   }
 
   public getTreeModel(variant: number): THREE.Group | null {
@@ -259,5 +260,150 @@ export class ModelRegistry {
   public getRockModel(variant: number): THREE.Group | null {
     const list = ['rock_large_a', 'rock_large_b', 'rock_small_a', 'rock_small_b'];
     return this.cloneModel(list[variant % list.length]);
+  }
+
+  /**
+   * Instantiate an animated rigged character with independent skeleton and animation mixer
+   */
+  public createAnimatedCharacter(characterKey: string): { group: THREE.Group; controller: CharacterAnimationController } | null {
+    const template = this.characterTemplates.get(characterKey);
+    if (!template) return null;
+
+    // Use SkeletonUtils.clone to properly duplicate the SkinnedMesh and bones
+    const cloned = SkeletonUtils.clone(template) as THREE.Group;
+    cloned.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.frustumCulled = false;
+      }
+    });
+
+    const mixer = new THREE.AnimationMixer(cloned);
+    const actions = new Map<AnimState, THREE.AnimationAction>();
+
+    const getClip = (preferredNames: string[]): THREE.AnimationClip | null => {
+      for (const name of preferredNames) {
+        const c = this.sharedClips.get(name);
+        if (c) return c;
+      }
+      return null;
+    };
+
+    const idleClip = getClip(['Idle_A', 'Idle_B', 'T-Pose']);
+    const walkClip = getClip(['Walking_A', 'Walking_B', 'Walking_C']);
+    const runClip = getClip(['Running_A', 'Running_B', 'Walking_A']);
+    const attackClip = getClip(['Melee_1H_Attack_Chop', 'Melee_2H_Attack_Chop', 'Melee_1H_Attack_Slice_Horizontal']);
+    const hammerClip = getClip(['Hammering', 'Hammer', 'Work_A', 'Working_A']);
+    const deathClip = getClip(['Death_A', 'Death_B']);
+
+    if (idleClip) actions.set('idle', mixer.clipAction(idleClip));
+    if (walkClip) actions.set('walk', mixer.clipAction(walkClip));
+    if (runClip) actions.set('run', mixer.clipAction(runClip));
+    if (attackClip) actions.set('attack', mixer.clipAction(attackClip));
+    if (hammerClip) actions.set('hammer', mixer.clipAction(hammerClip));
+    if (deathClip) actions.set('death', mixer.clipAction(deathClip));
+
+    // Start with Idle action
+    let currentState: AnimState = 'idle';
+    const idleAction = actions.get('idle');
+    if (idleAction) {
+      idleAction.play();
+    }
+
+    const controller: CharacterAnimationController = {
+      mixer,
+      actions,
+      currentState,
+      play: (state: AnimState, fadeDuration = 0.18) => {
+        if (controller.currentState === state) return;
+        const prevAction = actions.get(controller.currentState);
+        const nextAction = actions.get(state);
+
+        if (prevAction && nextAction) {
+          prevAction.fadeOut(fadeDuration);
+          nextAction.reset().fadeIn(fadeDuration).play();
+        } else if (nextAction) {
+          nextAction.reset().play();
+        }
+        controller.currentState = state;
+      },
+      update: (delta: number) => {
+        mixer.update(delta);
+      },
+      dispose: () => {
+        mixer.stopAllAction();
+        mixer.uncacheRoot(cloned);
+      }
+    };
+
+    return { group: cloned, controller };
+  }
+
+  public createAnimatedHero(heroClass: string): { group: THREE.Group; controller: CharacterAnimationController } | null {
+    let key = 'knight';
+    switch (heroClass) {
+      case 'warrior':
+      case 'paladin':
+        key = 'knight';
+        break;
+      case 'ranger':
+      case 'elf':
+        key = 'ranger';
+        break;
+      case 'rogue':
+        key = 'rogue';
+        break;
+      case 'wizard':
+      case 'healer':
+      case 'cleric':
+        key = 'mage';
+        break;
+      case 'barbarian':
+      case 'dwarf':
+      case 'monk':
+        key = 'barbarian';
+        break;
+      default:
+        key = 'knight';
+    }
+    return this.createAnimatedCharacter(key);
+  }
+
+  public createAnimatedCitizen(type: 'peasant' | 'tax_collector'): { group: THREE.Group; controller: CharacterAnimationController } | null {
+    return this.createAnimatedCharacter('engineer');
+  }
+
+  public createAnimatedMonster(monsterType: string): { group: THREE.Group; controller: CharacterAnimationController } | null {
+    let key: string | null = null;
+    switch (monsterType) {
+      case 'skeleton':
+        key = 'skeleton_warrior';
+        break;
+      case 'skeleton_mage':
+        key = 'skeleton_mage';
+        break;
+      case 'necromancer':
+      case 'cultist':
+        key = 'necromancer';
+        break;
+      case 'goblin_spearman':
+      case 'goblin_archer':
+      case 'goblin_shaman':
+      case 'orc':
+        key = 'orc_raider';
+        break;
+      case 'werewolf':
+      case 'dire_wolf':
+        key = 'werewolf';
+        break;
+      case 'vampire_lord':
+        key = 'vampire';
+        break;
+      default:
+        key = null;
+    }
+    if (!key) return null;
+    return this.createAnimatedCharacter(key);
   }
 }

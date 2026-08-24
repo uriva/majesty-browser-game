@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
 import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
-import { ModelRegistry } from './ModelRegistry';
+import { CharacterAnimationController, ModelRegistry } from './ModelRegistry';
 
 export class ThreeRenderer {
   private container: HTMLDivElement;
@@ -11,6 +11,9 @@ export class ThreeRenderer {
   public camera: THREE.PerspectiveCamera;
   public renderer: THREE.WebGLRenderer;
   private gridManager: GridManager;
+
+  // Character Skeletal Animation Controllers
+  private animControllers: Map<string, CharacterAnimationController> = new Map();
 
   // Lighting
   private ambientLight: THREE.AmbientLight;
@@ -3379,6 +3382,11 @@ export class ThreeRenderer {
     // Update Placement Preview Hover Hologram
     this.updatePlacementPreview(state, mouseWorldPos);
 
+    // Update active skeletal character animation mixers
+    for (const ctrl of this.animControllers.values()) {
+      ctrl.update(delta);
+    }
+
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -6296,6 +6304,20 @@ export class ThreeRenderer {
       pGroup.position.set(p.x, this.getTerrainHeight(p.x, p.y) + stepBob, p.y);
       pGroup.rotation.z = bodySway;
 
+      // Update Skeletal Animation Controller if present
+      const controller = this.animControllers.get(p.id);
+      if (controller) {
+        if (p.hp <= 0) {
+          controller.play('death', 0.15);
+        } else if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
+          controller.play('hammer', 0.15);
+        } else if (isMoving) {
+          controller.play(p.state === 'fleeing' ? 'run' : 'walk', 0.18);
+        } else {
+          controller.play('idle', 0.22);
+        }
+      }
+
       const leftLeg = pGroup.getObjectByName('leftLeg');
       const rightLeg = pGroup.getObjectByName('rightLeg');
       if (leftLeg) leftLeg.rotation.x = legStride;
@@ -6318,6 +6340,11 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.peasantsMap.delete(id);
+        const ctrl = this.animControllers.get(id);
+        if (ctrl) {
+          ctrl.dispose();
+          this.animControllers.delete(id);
+        }
       }
     }
   }
@@ -6325,9 +6352,11 @@ export class ThreeRenderer {
   private create3DPeasantMesh(p: Peasant): THREE.Group {
     const group = new THREE.Group();
 
-    // Try loading high quality 3D citizen model
-    const gltfPeasant = ModelRegistry.getInstance().getCitizenModel('peasant');
-    if (gltfPeasant) {
+    // Try loading animated 3D citizen model
+    const animated = ModelRegistry.getInstance().createAnimatedCitizen('peasant');
+    if (animated) {
+      this.animControllers.set(p.id, animated.controller);
+      const { group: gltfPeasant } = animated;
       const box = new THREE.Box3().setFromObject(gltfPeasant);
       const size = new THREE.Vector3();
       box.getSize(size);
@@ -6547,6 +6576,20 @@ export class ThreeRenderer {
       heroGroup.position.set(h.x, this.getTerrainHeight(h.x, h.y) + stepBob, h.y);
       heroGroup.rotation.z = bodySway;
 
+      // Update Skeletal Animation Controller if present
+      const controller = this.animControllers.get(h.id);
+      if (controller) {
+        if (h.isDead) {
+          controller.play('death', 0.15);
+        } else if (h.isAttackingAnimation > 0) {
+          controller.play('attack', 0.12);
+        } else if (isMoving) {
+          controller.play(h.state === 'fleeing' ? 'run' : 'walk', 0.18);
+        } else {
+          controller.play('idle', 0.22);
+        }
+      }
+
       const leftLeg = heroGroup.getObjectByName('leftLeg');
       const rightLeg = heroGroup.getObjectByName('rightLeg');
       if (leftLeg) leftLeg.rotation.x = legStride;
@@ -6573,6 +6616,11 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.heroesMap.delete(id);
+        const ctrl = this.animControllers.get(id);
+        if (ctrl) {
+          ctrl.dispose();
+          this.animControllers.delete(id);
+        }
         const labelEntry = this.heroLabelsMap.get(id);
         if (labelEntry) {
           labelEntry.texture.dispose();
@@ -6681,9 +6729,11 @@ export class ThreeRenderer {
   private create3DHeroMesh(h: Hero): THREE.Group {
     const group = new THREE.Group();
 
-    // Try loading the high-quality KayKit 3D GLTF hero character model
-    const gltfHero = ModelRegistry.getInstance().getHeroModel(h.heroClass);
-    if (gltfHero) {
+    // Try loading the high-quality KayKit 3D GLTF animated hero character model
+    const animated = ModelRegistry.getInstance().createAnimatedHero(h.heroClass);
+    if (animated) {
+      this.animControllers.set(h.id, animated.controller);
+      const { group: gltfHero } = animated;
       const box = new THREE.Box3().setFromObject(gltfHero);
       const size = new THREE.Vector3();
       box.getSize(size);
@@ -7315,6 +7365,20 @@ export class ThreeRenderer {
       }
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
+      // Update Skeletal Animation Controller if present
+      const controller = this.animControllers.get(m.id);
+      if (controller) {
+        if (m.hp <= 0) {
+          controller.play('death', 0.15);
+        } else if (isAttacking) {
+          controller.play('attack', 0.12);
+        } else if (isMoving) {
+          controller.play('walk', 0.18);
+        } else {
+          controller.play('idle', 0.22);
+        }
+      }
+
       // Keep ground shadow projected on terrain beneath flying dragon
       const groundShadow = mGroup.getObjectByName('dragonShadow');
       if (groundShadow) {
@@ -7548,6 +7612,11 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.monstersMap.delete(id);
+        const ctrl = this.animControllers.get(id);
+        if (ctrl) {
+          ctrl.dispose();
+          this.animControllers.delete(id);
+        }
       }
     }
   }
@@ -7555,10 +7624,12 @@ export class ThreeRenderer {
   private create3DMonsterMesh(m: Monster): THREE.Group {
     const group = new THREE.Group();
 
-    // Check if high-quality 3D model exists for this monster
+    // Check if high-quality 3D animated model exists for this monster
     if (m.type !== 'red_dragon') {
-      const gltfMonster = ModelRegistry.getInstance().getMonsterModel(m.type);
-      if (gltfMonster) {
+      const animated = ModelRegistry.getInstance().createAnimatedMonster(m.type);
+      if (animated) {
+        this.animControllers.set(m.id, animated.controller);
+        const { group: gltfMonster } = animated;
         const box = new THREE.Box3().setFromObject(gltfMonster);
         const size = new THREE.Vector3();
         box.getSize(size);
@@ -8679,6 +8750,18 @@ export class ThreeRenderer {
       tcGroup.position.set(tc.x, this.getTerrainHeight(tc.x, tc.y) + stepBob, tc.y);
       tcGroup.rotation.z = bodySway;
 
+      // Update Skeletal Animation Controller if present
+      const controller = this.animControllers.get(tc.id);
+      if (controller) {
+        if (tc.hp <= 0) {
+          controller.play('death', 0.15);
+        } else if (isMoving) {
+          controller.play(tc.state === 'fleeing' ? 'run' : 'walk', 0.18);
+        } else {
+          controller.play('idle', 0.22);
+        }
+      }
+
       const leftLeg = tcGroup.getObjectByName('leftLeg');
       const rightLeg = tcGroup.getObjectByName('rightLeg');
       if (leftLeg) leftLeg.rotation.x = legStride;
@@ -8696,6 +8779,11 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.taxCollectorsMap.delete(id);
+        const ctrl = this.animControllers.get(id);
+        if (ctrl) {
+          ctrl.dispose();
+          this.animControllers.delete(id);
+        }
       }
     }
   }
@@ -8703,9 +8791,11 @@ export class ThreeRenderer {
   private create3DTaxCollectorMesh(tc: TaxCollector): THREE.Group {
     const group = new THREE.Group();
 
-    // Try loading high quality 3D citizen model
-    const gltfTC = ModelRegistry.getInstance().getCitizenModel('tax_collector');
-    if (gltfTC) {
+    // Try loading animated 3D citizen model
+    const animated = ModelRegistry.getInstance().createAnimatedCitizen('tax_collector');
+    if (animated) {
+      this.animControllers.set(tc.id, animated.controller);
+      const { group: gltfTC } = animated;
       const box = new THREE.Box3().setFromObject(gltfTC);
       const size = new THREE.Vector3();
       box.getSize(size);
