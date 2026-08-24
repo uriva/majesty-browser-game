@@ -1,5 +1,6 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, MAP_CONFIG, SOVEREIGN_SPELLS } from '../constants';
-import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, NotificationItem, Peasant, Projectile, Scenario, SovereignSpell, Treasure } from '../types';
+import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, NotificationItem, Peasant, Projectile, SaveData, Scenario, SovereignSpell, Treasure } from '../types';
+import { SCENARIOS } from '../scenarios';
 import { audioManager } from './Audio';
 import { CombatManager } from './Combat';
 import { EconomyManager } from './Economy';
@@ -35,6 +36,68 @@ export class GameEngine {
 
   public setOnStateChange(cb: (state: GameState) => void) {
     this.onStateChangeCallback = cb;
+  }
+
+  // --- SAVE / LOAD (localStorage persistence handled by SaveLoad.ts) ---
+  public serializeGame(): string {
+    const { scenario, grid: _grid, fogOfWar: _fog, exploredMap: _explored, ...rest } = this.state;
+    const data: SaveData = {
+      version: 1,
+      savedAt: Date.now(),
+      scenarioId: scenario.id,
+      scenarioName: scenario.name,
+      day: this.state.stats.daysPassed,
+      state: {
+        ...rest,
+        // Volatile effects are not worth persisting
+        projectiles: [],
+        particles: [],
+        floatingTexts: [],
+        selectedEntity: null,
+        activePlacement: null
+      },
+      grid: this.gridManager.grid,
+      explored: this.gridManager.explored,
+      timers: {
+        cottageSproutTimer: this.cottageSproutTimer,
+        peasantReplenishTimer: this.peasantReplenishTimer
+      }
+    };
+    return JSON.stringify(data);
+  }
+
+  public applySaveData(raw: string): boolean {
+    try {
+      const data = JSON.parse(raw) as SaveData;
+      if (data.version !== 1 || !data.state || !Array.isArray(data.grid)) return false;
+      const scenario = SCENARIOS.find(s => s.id === data.scenarioId);
+      if (!scenario) return false;
+
+      this.gridManager.grid = data.grid;
+      this.gridManager.explored = data.explored;
+      this.gridManager.resetVisibility();
+      this.gridManager.roadVersion++;
+
+      // Strip stale pathfinding paths so entities re-path against restored terrain
+      const stripPaths = (entities: { path?: unknown }[]) => entities.forEach(e => { e.path = []; });
+      stripPaths(data.state.heroes);
+      stripPaths(data.state.monsters);
+      stripPaths(data.state.peasants);
+      stripPaths(data.state.taxCollectors);
+
+      this.state = {
+        ...data.state,
+        scenario,
+        grid: this.gridManager.grid,
+        fogOfWar: this.gridManager.visible,
+        exploredMap: this.gridManager.explored
+      };
+      this.cottageSproutTimer = data.timers.cottageSproutTimer;
+      this.peasantReplenishTimer = data.timers.peasantReplenishTimer;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private createInitialState(scenario: Scenario): GameState {

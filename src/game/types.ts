@@ -365,6 +365,26 @@ export interface GameStats {
   daysPassed: number;
 }
 
+export interface SaveMeta {
+  savedAt: number;
+  scenarioId: string;
+  scenarioName: string;
+  day: number;
+  treasuryGold: number;
+}
+
+export interface SaveData {
+  version: 1;
+  savedAt: number;
+  scenarioId: string;
+  scenarioName: string;
+  day: number;
+  state: Omit<GameState, 'scenario' | 'grid' | 'fogOfWar' | 'exploredMap'>;
+  grid: number[][];
+  explored: boolean[][];
+  timers: { cottageSproutTimer: number; peasantReplenishTimer: number };
+}
+
 export interface GameState {
   scenario: Scenario;
   isPaused: boolean;

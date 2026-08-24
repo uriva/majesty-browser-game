@@ -3,8 +3,9 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GameEngine } from '../game/engine/GameEngine';
 import { ThreeRenderer } from '../game/engine/ThreeRenderer';
+import { getRawSave, readSaveMeta, saveGameToLocalStorage } from '../game/engine/SaveLoad';
 import { SCENARIOS } from '../game/scenarios';
-import { BuildingType, FlagType, GameState, Hero, HeroClass, Scenario } from '../game/types';
+import { BuildingType, FlagType, GameState, Hero, HeroClass, SaveMeta, Scenario } from '../game/types';
 import { GameHUD } from './GameHUD';
 import { Minimap } from './Minimap';
 import { BuildMenu } from './BuildMenu';
@@ -35,6 +36,9 @@ export const GameView: React.FC = () => {
   const [activeSpellId, setActiveSpellId] = useState<string | null>(null);
 
   const [isScenarioModalOpen, setIsScenarioModalOpen] = useState<boolean>(false);
+  const [saveMeta, setSaveMeta] = useState<SaveMeta | null>(() =>
+    typeof window !== 'undefined' ? readSaveMeta() : null
+  );
   const mouseWorldPosRef = useRef<{ x: number; y: number } | null>(null);
   const [cameraMode, setCameraMode] = useState<'isometric' | 'free' | 'top_down' | 'follow'>('isometric');
 
@@ -45,10 +49,8 @@ export const GameView: React.FC = () => {
   const lastHudSyncRef = useRef<number>(0);
 
   // Initialize Game Engine & 3D Three.js Renderer
-  const initEngine = useCallback((scenario: Scenario) => {
-    const engine = new GameEngine(scenario);
+  const attachEngine = useCallback((engine: GameEngine) => {
     engineRef.current = engine;
-    setGameState({ ...engine.state });
 
     if (containerRef.current) {
       if (threeRendererRef.current) {
@@ -57,7 +59,51 @@ export const GameView: React.FC = () => {
       }
       threeRendererRef.current = new ThreeRenderer(containerRef.current, engine.gridManager);
     }
+    setGameState({ ...engine.state });
   }, []);
+
+  const initEngine = useCallback((scenario: Scenario) => {
+    attachEngine(new GameEngine(scenario));
+  }, [attachEngine]);
+
+  // Save / Load via localStorage
+  const handleSaveGame = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine || engine.state.isGameOver) return;
+    const meta = saveGameToLocalStorage(engine);
+    engine.addNotification('Kingdom Saved', `${meta.scenarioName} — Day ${meta.day} recorded in the royal archives.`, 'success');
+    setSaveMeta(meta);
+    lastHudSyncRef.current = 0;
+  }, []);
+
+  const handleLoadGame = useCallback(() => {
+    const raw = getRawSave();
+    if (!raw) return;
+    const engine = new GameEngine(engineRef.current?.state.scenario ?? SCENARIOS[0]);
+    if (!engine.applySaveData(raw)) {
+      engine.addNotification('Load Failed', 'The royal archives are corrupted.', 'danger');
+      setGameState({ ...engine.state });
+      return;
+    }
+    setActiveBuildingType(null);
+    setActiveFlagType(null);
+    setActiveSpellId(null);
+    attachEngine(engine);
+    engine.addNotification('Kingdom Restored', 'Your reign continues from the royal archives.', 'success');
+    setSaveMeta(readSaveMeta());
+    lastHudSyncRef.current = 0;
+  }, [attachEngine]);
+
+  // Ctrl+S / Ctrl+L shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === 's' || e.key === 'S') { e.preventDefault(); handleSaveGame(); }
+      if (e.key === 'l' || e.key === 'L') { e.preventDefault(); handleLoadGame(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleSaveGame, handleLoadGame]);
 
   useEffect(() => {
     initEngine(SCENARIOS[0]);
@@ -454,6 +500,9 @@ export const GameView: React.FC = () => {
               }}
               onSelectScenarioModal={() => setIsScenarioModalOpen(true)}
               onShowAdvisorModal={() => {}}
+              onSaveGame={handleSaveGame}
+              onLoadGame={handleLoadGame}
+              saveMeta={saveMeta}
             />
           </div>
         </div>

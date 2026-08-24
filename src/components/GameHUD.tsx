@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { GameState, NotificationItem } from '../game/types';
+import { GameState, NotificationItem, SaveMeta } from '../game/types';
 import { audioManager } from '../game/engine/Audio';
 import { musicManager } from '../game/engine/MusicManager';
 import { MusicPlayer } from './MusicPlayer';
@@ -22,7 +22,9 @@ import {
   HelpCircle,
   ShieldAlert,
   Scroll,
-  Info
+  Info,
+  Save,
+  FolderOpen
 } from 'lucide-react';
 
 interface GameHUDProps {
@@ -31,6 +33,9 @@ interface GameHUDProps {
   onTogglePause: () => void;
   onSelectScenarioModal: () => void;
   onShowAdvisorModal: () => void;
+  onSaveGame: () => void;
+  onLoadGame: () => void;
+  saveMeta: SaveMeta | null;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -38,7 +43,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onSetGameSpeed,
   onTogglePause,
   onSelectScenarioModal,
-  onShowAdvisorModal
+  onShowAdvisorModal,
+  onSaveGame,
+  onLoadGame,
+  saveMeta
 }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLog, setShowLog] = useState(false);
@@ -164,6 +172,28 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           {/* Music Player */}
           <MusicPlayer />
+
+          {/* Save / Load */}
+          <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-800">
+            <button
+              onClick={onSaveGame}
+              disabled={state.isGameOver}
+              title="Save Kingdom (Ctrl+S)"
+              className="p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 text-slate-300"
+            >
+              <Save className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onLoadGame}
+              disabled={!saveMeta}
+              title={saveMeta
+                ? `Load Kingdom (Ctrl+L) — ${saveMeta.scenarioName}, Day ${saveMeta.day}, ${Math.round(saveMeta.treasuryGold)}g — saved ${new Date(saveMeta.savedAt).toLocaleTimeString()}`
+                : 'No saved kingdom found'}
+              className="p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 text-slate-300"
+            >
+              <FolderOpen className="w-4 h-4" />
+            </button>
+          </div>
 
           {/* Sound & Notifications */}
           <button
