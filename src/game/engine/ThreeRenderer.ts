@@ -46,7 +46,6 @@ export class ThreeRenderer {
   private fogCtx: CanvasRenderingContext2D;
   private fogTexture: THREE.CanvasTexture;
   private lastFogUpdate: number = 0;
-  private shadowFrameToggle: boolean = true;
   private fogMesh: THREE.Mesh | null = null;
 
   // Object pools / mappings
@@ -2808,10 +2807,6 @@ export class ThreeRenderer {
     }
 
     this.updateTerrainRoads(state);
-
-    // Re-render shadow maps every other frame (sun drifts slowly, characters barely move in 16ms)
-    this.shadowFrameToggle = !this.shadowFrameToggle;
-    this.renderer.shadowMap.autoUpdate = this.shadowFrameToggle;
 
     // Real-Time Flowing Water & Cascading Waterfall Animation
     if (this.riverTexture) {
