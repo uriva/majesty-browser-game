@@ -53,6 +53,7 @@ class MusicManager {
   public volume: number = 0.45;
   public muted: boolean = false;
   private hasUserInteracted: boolean = false;
+  private preMasterMuteState: boolean | null = null;
   private listeners: ((state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean }) => void)[] = [];
 
   constructor() {
@@ -203,11 +204,30 @@ class MusicManager {
   }
 
   public toggleMute() {
-    this.muted = !this.muted;
+    this.setMuted(!this.muted);
+  }
+
+  public setMuted(m: boolean) {
+    this.muted = m;
     if (this.audioElement) {
       this.audioElement.volume = this.muted ? 0 : this.volume;
     }
     this.notify();
+  }
+
+  // Master mute (HUD speaker): silences music but remembers whether the user
+  // had muted it independently, restoring that choice on master unmute.
+  public setMasterMuted(m: boolean) {
+    if (m) {
+      if (this.preMasterMuteState === null) {
+        this.preMasterMuteState = this.muted;
+      }
+      this.setMuted(true);
+    } else if (this.preMasterMuteState !== null) {
+      const restore = this.preMasterMuteState;
+      this.preMasterMuteState = null;
+      this.setMuted(restore);
+    }
   }
 
   // --- Procedural Synth Bard (Renaissance Lute & Woodwind Generator) ---

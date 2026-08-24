@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { GameState, NotificationItem } from '../game/types';
 import { audioManager } from '../game/engine/Audio';
+import { musicManager } from '../game/engine/MusicManager';
 import { MusicPlayer } from './MusicPlayer';
 import { 
   Crown, 
@@ -46,6 +47,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     const next = !soundEnabled;
     setSoundEnabled(next);
     audioManager.enabled = next;
+    musicManager.setMasterMuted(!next);
   };
 
   const dayIcons = {

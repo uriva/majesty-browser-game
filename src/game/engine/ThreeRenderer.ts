@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
 import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
@@ -1440,6 +1441,156 @@ export class ThreeRenderer {
         }
       }
     }
+
+    // PERF: collapse thousands of static decor meshes (trees, rocks, flora) into a
+    // handful of merged geometries per material. Fog-of-war per-object hiding is
+    // replaced by a shader fade sampling the shroud texture.
+    this.mergeStaticTerrainDecor();
+  }
+
+  private mergeStaticTerrainDecor(): void {
+    const candidates = this.terrainFeaturesList.filter(f => f.name !== 'bridgeMesh');
+    if (candidates.length === 0 || typeof document === 'undefined') return;
+
+    this.terrainGroup.updateMatrixWorld(true);
+
+    const ts = this.gridManager.tileSize;
+    const chunkTiles = 8;
+    const chunkWorld = chunkTiles * ts;
+
+    interface DecorBucket {
+      geos: THREE.BufferGeometry[];
+      material: THREE.Material;
+      castShadow: boolean;
+    }
+    const buckets = new Map<string, DecorBucket>();
+    const protoMaterials = new Map<string, THREE.Material>();
+
+    for (const feat of candidates) {
+      const ud = feat.userData as { tx?: number; ty?: number };
+      const cx = Math.floor((ud.tx ?? 0) / chunkTiles);
+      const cy = Math.floor((ud.ty ?? 0) / chunkTiles);
+      const chunkKey = `${cx}_${cy}`;
+
+      feat.traverse(obj => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const srcMat = mesh.material as THREE.MeshStandardMaterial;
+        if (!srcMat) return;
+
+        // Bake material color into vertex colors so each chunk needs only ONE
+        // shared material (map/transparent materials get their own bucket).
+        const bucketVariant = srcMat.map ? `map_${srcMat.map.uuid}` : (srcMat.transparent ? 'transparent' : 'plain');
+        const key = `${chunkKey}|${bucketVariant}`;
+
+        let mat = protoMaterials.get(key);
+        if (!mat) {
+          mat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            vertexColors: bucketVariant === 'plain',
+            roughness: 0.85,
+            metalness: 0.0,
+            map: srcMat.map ?? null,
+            transparent: srcMat.transparent,
+            alphaTest: srcMat.transparent ? 0.35 : 0.0,
+            side: THREE.FrontSide
+          });
+          this.injectShroudFadeShader(mat);
+          protoMaterials.set(key, mat);
+        }
+
+        let geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+        geo.applyMatrix4(mesh.matrixWorld);
+
+        if (bucketVariant === 'plain') {
+          const col = srcMat.color ?? new THREE.Color(1, 1, 1);
+          const count = geo.attributes.position.count;
+          const colors = new Float32Array(count * 3);
+          for (let i = 0; i < count; i++) {
+            colors[i * 3] = col.r;
+            colors[i * 3 + 1] = col.g;
+            colors[i * 3 + 2] = col.b;
+          }
+          geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        }
+
+        let bucket = buckets.get(key);
+        if (!bucket) {
+          bucket = { geos: [], material: mat, castShadow: true };
+          buckets.set(key, bucket);
+        }
+        bucket.geos.push(geo);
+      });
+    }
+
+    for (const [key, bucket] of buckets) {
+      if (bucket.geos.length === 0) continue;
+      let merged: THREE.BufferGeometry | null = null;
+      try {
+        merged = mergeGeometries(bucket.geos, false);
+      } catch {
+        merged = null;
+      }
+      bucket.geos.forEach(g => g.dispose());
+      if (!merged) continue;
+
+      // Re-center geometry on its chunk so frustum culling stays effective
+      const keyParts = key.split('|')[0].split('_');
+      const cx = parseInt(keyParts[0], 10);
+      const cy = parseInt(keyParts[1], 10);
+      const originX = cx * chunkWorld + chunkWorld / 2;
+      const originZ = cy * chunkWorld + chunkWorld / 2;
+      merged.translate(-originX, 0, -originZ);
+
+      const mesh = new THREE.Mesh(merged, bucket.material);
+      mesh.name = `mergedDecor_${key}`;
+      mesh.castShadow = bucket.castShadow;
+      mesh.receiveShadow = true;
+      mesh.position.set(originX, 0, originZ);
+      mesh.updateMatrix();
+      mesh.matrixAutoUpdate = false;
+      this.terrainGroup.add(mesh);
+    }
+
+    for (const feat of candidates) {
+      this.terrainGroup.remove(feat);
+      feat.traverse(obj => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh) mesh.geometry.dispose();
+      });
+    }
+    this.terrainFeaturesList = this.terrainFeaturesList.filter(f => f.name === 'bridgeMesh');
+  }
+
+  // Fades merged static decor under the fog-of-war shroud by sampling the live
+  // shroud canvas texture in the VERTEX shader (per-fragment discard/texture
+  // fetches are catastrophically slow on software rasterizers).
+  private injectShroudFadeShader(mat: THREE.Material): void {
+    const fogTexture = this.fogTexture;
+    const worldW = this.gridManager.width * this.gridManager.tileSize;
+    const worldH = this.gridManager.height * this.gridManager.tileSize;
+
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.shroudTex = { value: fogTexture };
+      shader.uniforms.shroudWorldSize = { value: new THREE.Vector2(worldW, worldH) };
+
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vShroudVis;\nuniform vec2 shroudWorldSize;\nuniform sampler2D shroudTex;')
+        .replace('#include <begin_vertex>', [
+          '#include <begin_vertex>',
+          'vec4 shroudWorldPos = modelMatrix * vec4(transformed, 1.0);',
+          'vec2 shroudUv = shroudWorldPos.xz / shroudWorldSize;',
+          'float shroudA = texture2D(shroudTex, shroudUv).a;',
+          'vShroudVis = clamp(1.0 - shroudA * 1.6, 0.0, 1.0);'
+        ].join('\n'));
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vShroudVis;')
+        .replace('#include <dithering_fragment>', [
+          '#include <dithering_fragment>',
+          'gl_FragColor.rgb *= vShroudVis;'
+        ].join('\n'));
+    };
   }
 
   private createContinuousRiverRibbon(points: THREE.Vector3[], riverWidth: number, mat: THREE.Material, riverType: 'west' | 'east'): THREE.Mesh {
@@ -2382,7 +2533,7 @@ export class ThreeRenderer {
       ];
 
       cloudClusters.forEach(c => {
-        const leafGeo = new THREE.DodecahedronGeometry(c.r, 1);
+        const leafGeo = new THREE.DodecahedronGeometry(c.r, 0);
         const leafMat = new THREE.MeshStandardMaterial({ color: c.col, roughness: 0.8 });
         const cloud = new THREE.Mesh(leafGeo, leafMat);
         cloud.position.set(c.x, c.y, c.z);
@@ -2434,7 +2585,7 @@ export class ThreeRenderer {
       ];
 
       clusters.forEach(c => {
-        const leafGeo = new THREE.DodecahedronGeometry(c.r, 1);
+        const leafGeo = new THREE.DodecahedronGeometry(c.r, 0);
         const leafMat = new THREE.MeshStandardMaterial({ color: c.col, roughness: 0.8 });
         const cloud = new THREE.Mesh(leafGeo, leafMat);
         cloud.position.set(c.x, c.y, c.z);

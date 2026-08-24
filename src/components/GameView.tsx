@@ -38,9 +38,9 @@ export const GameView: React.FC = () => {
   const mouseWorldPosRef = useRef<{ x: number; y: number } | null>(null);
   const [cameraMode, setCameraMode] = useState<'isometric' | 'free' | 'top_down' | 'follow'>('isometric');
 
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [isRotating, setIsRotating] = useState<boolean>(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingRef = useRef<boolean>(false);
+  const isRotatingRef = useRef<boolean>(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const trackingHeroIdRef = useRef<string | null>(null);
   const lastHudSyncRef = useRef<number>(0);
 
@@ -144,15 +144,16 @@ export const GameView: React.FC = () => {
   }, []);
 
   // Mouse Controls for 3D Panning, Rotating & Zooming
+  // (drag state lives in refs — per-mousemove setState re-renders the whole tree and stutters the camera)
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button === 2 || (e.button === 0 && e.altKey)) {
       // Right Click / Alt+Click -> 3D Orbit Rotate
-      setIsRotating(true);
-      setDragStart({ x: e.clientX, y: e.clientY });
+      isRotatingRef.current = true;
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
     } else if (e.button === 0 || e.button === 1) {
       // Left Click / Middle Click -> 3D Terrain Pan
-      setIsDragging(true);
-      setDragStart({ x: e.clientX, y: e.clientY });
+      isDraggingRef.current = true;
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
     }
   };
 
@@ -165,16 +166,16 @@ export const GameView: React.FC = () => {
     const renderer = threeRendererRef.current;
     const engine = engineRef.current;
 
-    if (isRotating && renderer) {
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
+    if (isRotatingRef.current && renderer) {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
 
       renderer.cameraYaw -= dx * 0.008;
       renderer.cameraPitch = Math.max(0.2, Math.min(1.45, renderer.cameraPitch + dy * 0.008));
-      setDragStart({ x: e.clientX, y: e.clientY });
-    } else if (isDragging && engine && renderer) {
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
+    } else if (isDraggingRef.current && engine && renderer) {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
 
       const panSpeed = (renderer.cameraDistance / 400) * 0.7;
       const sinYaw = Math.sin(renderer.cameraYaw);
@@ -186,14 +187,14 @@ export const GameView: React.FC = () => {
       engine.state.camera.x += moveX;
       engine.state.camera.y += moveZ;
 
-      setDragStart({ x: e.clientX, y: e.clientY });
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
       trackingHeroIdRef.current = null;
     }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
-    setIsRotating(false);
+    isDraggingRef.current = false;
+    isRotatingRef.current = false;
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
