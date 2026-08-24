@@ -391,6 +391,7 @@ export class GridManager {
     for (const b of buildings) {
       if (b.hp <= 0) continue;
       if (b.type === 'marketplace' || b.type === 'statue_king') continue;
+      if (excludeBuildingId && b.id === excludeBuildingId) continue;
 
       const bx = b.x * ts;
       const by = b.y * ts;
@@ -410,6 +411,7 @@ export class GridManager {
     // 3. Check monster lairs
     for (const l of lairs) {
       if (l.hp <= 0) continue;
+      if (excludeBuildingId && l.id === excludeBuildingId) continue;
       const lx = l.x * ts;
       const ly = l.y * ts;
       const lw = l.width * ts;
@@ -439,6 +441,7 @@ export class GridManager {
     for (const b of buildings) {
       if (b.hp <= 0) continue;
       if (b.type === 'marketplace' || b.type === 'statue_king') continue;
+      if (excludeBuildingId && b.id === excludeBuildingId) continue;
 
       const bx = b.x * ts;
       const by = b.y * ts;
@@ -451,22 +454,23 @@ export class GridManager {
         entity.y + unitRadius > by &&
         entity.y - unitRadius < by + bh
       ) {
-        // Overlapping building! Push out along shortest penetration axis
+        // Overlapping building! Push out along shortest penetration axis with clean 1px clearance
         const leftDist = entity.x - (bx - unitRadius);
         const rightDist = (bx + bw + unitRadius) - entity.x;
         const topDist = entity.y - (by - unitRadius);
         const bottomDist = (by + bh + unitRadius) - entity.y;
 
         const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
-        if (minDist === leftDist) entity.x = bx - unitRadius - 0.5;
-        else if (minDist === rightDist) entity.x = bx + bw + unitRadius + 0.5;
-        else if (minDist === topDist) entity.y = by - unitRadius - 0.5;
-        else if (minDist === bottomDist) entity.y = by + bh + unitRadius + 0.5;
+        if (minDist === leftDist) entity.x = bx - unitRadius - 1.0;
+        else if (minDist === rightDist) entity.x = bx + bw + unitRadius + 1.0;
+        else if (minDist === topDist) entity.y = by - unitRadius - 1.0;
+        else if (minDist === bottomDist) entity.y = by + bh + unitRadius + 1.0;
       }
     }
 
     for (const l of lairs) {
       if (l.hp <= 0) continue;
+      if (excludeBuildingId && l.id === excludeBuildingId) continue;
       const lx = l.x * ts;
       const ly = l.y * ts;
       const lw = l.width * ts;
@@ -484,10 +488,10 @@ export class GridManager {
         const bottomDist = (ly + lh + unitRadius) - entity.y;
 
         const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
-        if (minDist === leftDist) entity.x = lx - unitRadius - 0.5;
-        else if (minDist === rightDist) entity.x = lx + lw + unitRadius + 0.5;
-        else if (minDist === topDist) entity.y = ly - unitRadius - 0.5;
-        else if (minDist === bottomDist) entity.y = ly + lh + unitRadius + 0.5;
+        if (minDist === leftDist) entity.x = lx - unitRadius - 1.0;
+        else if (minDist === rightDist) entity.x = lx + lw + unitRadius + 1.0;
+        else if (minDist === topDist) entity.y = ly - unitRadius - 1.0;
+        else if (minDist === bottomDist) entity.y = ly + lh + unitRadius + 1.0;
       }
     }
   }
@@ -532,15 +536,15 @@ export class GridManager {
     unitRadius: number = 7
   ): boolean {
     const dist = Math.hypot(endX - startX, endY - startY);
-    if (dist < 4) return true;
+    if (dist < 3) return true;
 
     // High resolution sampling to prevent corner clipping
-    const step = 4;
+    const step = 2.5;
     const steps = Math.ceil(dist / step);
     const dx = (endX - startX) / steps;
     const dy = (endY - startY) / steps;
 
-    for (let i = 1; i < steps; i++) {
+    for (let i = 0; i <= steps; i++) {
       const cx = startX + dx * i;
       const cy = startY + dy * i;
       if (!this.isWalkablePosition(cx, cy, buildings, lairs, excludeBuildingId, unitRadius)) {
@@ -593,8 +597,8 @@ export class GridManager {
     lairs: MonsterLair[],
     excludeBuildingId?: string
   ): Position[] {
-    // 1. Direct line-of-sight shortcut
-    if (this.hasLineOfSight(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId, 7)) {
+    // 1. Direct line-of-sight shortcut with generous corner clearance
+    if (this.hasLineOfSight(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId, 9.5)) {
       return [{ x: endPx, y: endPy }];
     }
 
@@ -781,13 +785,13 @@ export class GridManager {
     // Convert tile path to pixel centers
     const rawWaypoints: Position[] = tilePath.map(tp => this.tileToPixel(tp.x, tp.y));
 
-    // String pulling / Line-of-Sight Path Smoothing
+    // String pulling / Line-of-Sight Path Smoothing with generous corner safety cushion
     const smoothPath: Position[] = [rawWaypoints[0]];
     let curIndex = 0;
     while (curIndex < rawWaypoints.length - 1) {
       let furthest = curIndex + 1;
       for (let j = rawWaypoints.length - 1; j > curIndex + 1; j--) {
-        if (this.hasLineOfSight(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId, 7)) {
+        if (this.hasLineOfSight(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId, 10.5)) {
           furthest = j;
           break;
         }
@@ -797,7 +801,7 @@ export class GridManager {
     }
 
     // Replace final destination with exact destination coordinate if line of sight is clear
-    if (this.hasLineOfSight(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId, 7)) {
+    if (this.hasLineOfSight(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId, 8.5)) {
       smoothPath[smoothPath.length - 1] = { x: endPx, y: endPy };
     } else {
       smoothPath.push({ x: endPx, y: endPy });
@@ -836,8 +840,11 @@ export class GridManager {
       return true;
     }
 
-    // 1. Direct line of sight optimization: if path is clear with full 7px buffer, move directly
-    if (this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId, 7)) {
+    // 1. Direct line-of-sight shortcut: only switch if target is close or clear of any corners
+    const hasActiveMultiPath = !!(entity.path && entity.path.length > 1);
+    const canDirectMove = distToTarget < 30 || (!hasActiveMultiPath && this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId, 10.5));
+
+    if (canDirectMove) {
       entity.path = undefined;
       entity.pathTargetKey = undefined;
 
@@ -891,7 +898,7 @@ export class GridManager {
       const dy = wp.y - entity.y;
       const dist = Math.hypot(dx, dy);
 
-      if (dist <= Math.max(6, moveBudget)) {
+      if (dist <= Math.max(7, moveBudget)) {
         // Reached this waypoint, pop and continue to next
         entity.x = wp.x;
         entity.y = wp.y;
@@ -916,14 +923,14 @@ export class GridManager {
         } else if (this.isWalkablePosition(entity.x, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
           entity.y += vy;
         } else {
-          // Angular deflection checks (rotate move vector by ±35° and ±55°) to glide around corners
-          const angles = [0.6, -0.6, 0.95, -0.95];
+          // Multi-angle deflection checks (rotate move vector by ±30°, ±50°, ±70°) to smoothly glide around corners
+          const angles = [0.52, -0.52, 0.87, -0.87, 1.22, -1.22];
           let deflected = false;
           for (const ang of angles) {
             const cosA = Math.cos(ang);
             const sinA = Math.sin(ang);
-            const rvx = (vx * cosA - vy * sinA) * 0.85;
-            const rvy = (vx * sinA + vy * cosA) * 0.85;
+            const rvx = (vx * cosA - vy * sinA) * 0.88;
+            const rvy = (vx * sinA + vy * cosA) * 0.88;
             if (this.isWalkablePosition(entity.x + rvx, entity.y + rvy, buildings, lairs, targetBuildingId, 7)) {
               entity.x += rvx;
               entity.y += rvy;

@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
 import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
+import { ModelRegistry } from './ModelRegistry';
 
 export class ThreeRenderer {
   private container: HTMLDivElement;
@@ -76,6 +77,22 @@ export class ThreeRenderer {
   private selectionGroup: THREE.Group;
   private placementPreviewGroup: THREE.Group;
 
+  // Celestial Sky System (Sun, Moon, Stars)
+  private celestialGroup: THREE.Group;
+  private sunObject: THREE.Group | null = null;
+  private sunMesh: THREE.Mesh | null = null;
+  private sunCorona: THREE.Sprite | null = null;
+  private moonObject: THREE.Group | null = null;
+  private moonMesh: THREE.Mesh | null = null;
+  private moonGlow: THREE.Sprite | null = null;
+  private starsPoints: THREE.Points | null = null;
+  private starTwinklePhases: Float32Array | null = null;
+
+  // Dynamic Structure Footprint Flattening
+  private groundMesh: THREE.Mesh | null = null;
+  private lastStructureHash: string = '';
+  private lastKnownStructures: { x: number; y: number; width: number; height: number }[] = [];
+
   // Raycaster for 3D mouse interaction
   public raycaster: THREE.Raycaster = new THREE.Raycaster();
   public groundPlane: THREE.Plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -143,8 +160,8 @@ export class ThreeRenderer {
 
     // 1. Scene Setup
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#090d16');
-    this.scene.fog = new THREE.FogExp2('#090d16', 0.0012);
+    this.scene.background = new THREE.Color('#0284c7');
+    this.scene.fog = new THREE.FogExp2('#38bdf8', 0.00035);
 
     // 2. Camera Setup
     this.camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
@@ -199,6 +216,7 @@ export class ThreeRenderer {
     this.fogGroup = new THREE.Group();
     this.selectionGroup = new THREE.Group();
     this.placementPreviewGroup = new THREE.Group();
+    this.celestialGroup = new THREE.Group();
 
     this.scene.add(this.terrainGroup);
     this.scene.add(this.waterfallsGroup);
@@ -207,10 +225,29 @@ export class ThreeRenderer {
     this.scene.add(this.fogGroup);
     this.scene.add(this.selectionGroup);
     this.scene.add(this.placementPreviewGroup);
+    this.scene.add(this.celestialGroup);
 
     this.buildTerrain();
     this.buildFogOfWar();
     this.buildSelectionMeshes();
+    this.buildCelestialSystem();
+
+    // Preload KayKit 3D Model Asset Library
+    const registry = ModelRegistry.getInstance();
+    registry.preloadAll();
+    registry.onChange(() => {
+      // Clear instantiated maps so active entities re-instantiate with high quality GLTF models
+      this.buildingsMap.forEach((grp) => this.scene.remove(grp));
+      this.buildingsMap.clear();
+      this.heroesMap.forEach((grp) => this.scene.remove(grp));
+      this.heroesMap.clear();
+      this.monstersMap.forEach((grp) => this.scene.remove(grp));
+      this.monstersMap.clear();
+      this.peasantsMap.forEach((grp) => this.scene.remove(grp));
+      this.peasantsMap.clear();
+      this.taxCollectorsMap.forEach((grp) => this.scene.remove(grp));
+      this.taxCollectorsMap.clear();
+    });
   }
 
   // --- PROCEDURAL TEXTURE GENERATORS ---
@@ -1147,7 +1184,75 @@ export class ThreeRenderer {
       elev -= 3.6 * (t * t);
     }
 
+    // Smooth terrain leveling directly under building footprints with curved ease apron
+    const ts = this.gridManager.tileSize;
+    const blendMargin = 12.0; // ~0.75 tile smooth transition
+
+    for (let i = 0; i < this.lastKnownStructures.length; i++) {
+      const s = this.lastKnownStructures[i];
+      const minX = s.x * ts;
+      const maxX = (s.x + s.width) * ts;
+      const minZ = s.y * ts;
+      const maxZ = (s.y + s.height) * ts;
+      const cx = (minX + maxX) / 2;
+      const cz = (minZ + maxZ) / 2;
+
+      const dx = Math.max(0, Math.abs(x - cx) - (maxX - minX) / 2);
+      const dz = Math.max(0, Math.abs(z - cz) - (maxZ - minZ) / 2);
+      const dist = Math.hypot(dx, dz);
+
+      if (dist < blendMargin) {
+        const targetElev = this.getTerrainBaseElevation(cx, cz);
+        if (dist <= 0.001) {
+          elev = targetElev;
+        } else {
+          const t = dist / blendMargin;
+          const w = t * t * (3 - 2 * t); // smooth hermite curve
+          elev = THREE.MathUtils.lerp(targetElev, elev, w);
+        }
+        break;
+      }
+    }
+
     return elev;
+  }
+
+  public updateTerrainMeshHeights() {
+    if (!this.groundMesh) return;
+    const posAttr = this.groundMesh.geometry.attributes.position;
+    const w = this.gridManager.width;
+    const h = this.gridManager.height;
+    const ts = this.gridManager.tileSize;
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const vx = posAttr.getX(i) + (w * ts) / 2;
+      const vz = posAttr.getZ(i) + (h * ts) / 2;
+      posAttr.setY(i, this.getTerrainHeight(vx, vz));
+    }
+    posAttr.needsUpdate = true;
+    this.groundMesh.geometry.computeVertexNormals();
+
+    if (this.roadsMesh) {
+      const roadPos = this.roadsMesh.geometry.attributes.position;
+      for (let i = 0; i < roadPos.count; i++) {
+        const vx = roadPos.getX(i) + (w * ts) / 2;
+        const vz = roadPos.getZ(i) + (h * ts) / 2;
+        roadPos.setY(i, this.getTerrainHeight(vx, vz) + 0.06);
+      }
+      roadPos.needsUpdate = true;
+      this.roadsMesh.geometry.computeVertexNormals();
+    }
+
+    if (this.fogMesh) {
+      const fogPos = this.fogMesh.geometry.attributes.position;
+      for (let i = 0; i < fogPos.count; i++) {
+        const vx = fogPos.getX(i) + (w * ts) / 2;
+        const vz = fogPos.getZ(i) + (h * ts) / 2;
+        fogPos.setY(i, this.getTerrainHeight(vx, vz) + 1.2);
+      }
+      fogPos.needsUpdate = true;
+      this.fogMesh.geometry.computeVertexNormals();
+    }
   }
 
   public getRiverWaterHeight(z: number, riverType: 'west' | 'east' = 'west'): number {
@@ -1235,6 +1340,7 @@ export class ThreeRenderer {
     const groundMesh = new THREE.Mesh(groundGeo, groundMat);
     groundMesh.position.set((w * ts) / 2, 0, (h * ts) / 2);
     groundMesh.receiveShadow = true;
+    this.groundMesh = groundMesh;
     this.terrainGroup.add(groundMesh);
 
     // 2. Unified Ground Road Decal Mesh (Follows rolling hills contour)
@@ -2364,20 +2470,14 @@ export class ThreeRenderer {
     const w = this.gridManager.width;
     const h = this.gridManager.height;
 
-    // Collect all building entrance coordinates and target platform heights
+    // Collect all building entrance coordinates and target floor heights
     const entranceElevations: { x: number; z: number; targetY: number; radius: number }[] = [];
 
     for (const b of state.buildings) {
       const px = (b.x + b.width / 2) * ts;
       const pz = (b.y + b.height / 2) * ts;
-      const yNW = this.getTerrainHeight(b.x * ts, b.y * ts);
-      const yNE = this.getTerrainHeight((b.x + b.width) * ts, b.y * ts);
-      const ySW = this.getTerrainHeight(b.x * ts, (b.y + b.height) * ts);
-      const ySE = this.getTerrainHeight((b.x + b.width) * ts, (b.y + b.height) * ts);
-      const yCenter = this.getTerrainHeight(px, pz);
-      const maxGroundY = Math.max(yNW, yNE, ySW, ySE, yCenter);
-
-      const platformTop = maxGroundY + (b.type === 'palace' ? 1.25 : 0.6);
+      const groundY = this.getTerrainHeight(px, pz);
+      const platformTop = groundY + 0.1;
       const halfW = (b.width * ts) / 2;
       const halfH = (b.height * ts) / 2;
 
@@ -2392,7 +2492,7 @@ export class ThreeRenderer {
         x: entranceX,
         z: entranceZ,
         targetY: platformTop,
-        radius: 26.0
+        radius: 20.0
       });
     }
 
@@ -2404,8 +2504,8 @@ export class ThreeRenderer {
       for (const ent of entranceElevations) {
         const dist = Math.hypot(vx - ent.x, vz - ent.z);
         if (dist < ent.radius) {
-          // Smooth cosine curve from ambient road height up to the building platform floor
-          const factor = (1 + Math.cos((dist / ent.radius) * Math.PI)) / 2; // 1 at doorstep, 0 at radius
+          // Smooth cosine curve from ambient road height up to the building doorstep
+          const factor = (1 + Math.cos((dist / ent.radius) * Math.PI)) / 2;
           baseVy = THREE.MathUtils.lerp(baseVy, ent.targetY, factor);
         }
       }
@@ -2604,6 +2704,148 @@ export class ThreeRenderer {
     this.selectionGroup.visible = false;
   }
 
+  // --- PROCEDURAL CELESTIAL TEXTURES ---
+  private createSunCoronaTexture(): THREE.CanvasTexture {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const center = size / 2;
+
+    const grad = ctx.createRadialGradient(center, center, 0, center, center, center);
+    grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+    grad.addColorStop(0.2, 'rgba(254, 240, 138, 0.85)');
+    grad.addColorStop(0.5, 'rgba(245, 158, 11, 0.45)');
+    grad.addColorStop(0.8, 'rgba(234, 88, 12, 0.12)');
+    grad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }
+
+  private createMoonGlowTexture(): THREE.CanvasTexture {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const center = size / 2;
+
+    const grad = ctx.createRadialGradient(center, center, 0, center, center, center);
+    grad.addColorStop(0.0, 'rgba(240, 246, 255, 1.0)');
+    grad.addColorStop(0.25, 'rgba(199, 210, 254, 0.75)');
+    grad.addColorStop(0.55, 'rgba(129, 140, 248, 0.35)');
+    grad.addColorStop(0.85, 'rgba(99, 102, 241, 0.08)');
+    grad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }
+
+  // --- BUILD CELESTIAL SYSTEM (Sun, Moon, Twinkling Starfield) ---
+  private buildCelestialSystem() {
+    this.celestialGroup.clear();
+
+    // 1. Radiant Glowing Sun
+    this.sunObject = new THREE.Group();
+    const sunGeo = new THREE.SphereGeometry(38, 24, 24);
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffbeb, fog: false });
+    this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    this.sunObject.add(this.sunMesh);
+
+    const sunCoronaTex = this.createSunCoronaTexture();
+    const sunCoronaMat = new THREE.SpriteMaterial({
+      map: sunCoronaTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false
+    });
+    this.sunCorona = new THREE.Sprite(sunCoronaMat);
+    this.sunCorona.scale.set(220, 220, 1);
+    this.sunObject.add(this.sunCorona);
+    this.celestialGroup.add(this.sunObject);
+
+    // 2. Luminous Silver Moon
+    this.moonObject = new THREE.Group();
+    const moonGeo = new THREE.SphereGeometry(30, 24, 24);
+    const moonMat = new THREE.MeshBasicMaterial({ color: 0xe0e7ff, fog: false });
+    this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
+    this.moonObject.add(this.moonMesh);
+
+    const moonGlowTex = this.createMoonGlowTexture();
+    const moonGlowMat = new THREE.SpriteMaterial({
+      map: moonGlowTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false
+    });
+    this.moonGlow = new THREE.Sprite(moonGlowMat);
+    this.moonGlow.scale.set(170, 170, 1);
+    this.moonObject.add(this.moonGlow);
+    this.celestialGroup.add(this.moonObject);
+
+    // 3. Glittering Night Starfield Dome (800 Stars)
+    const starCount = 800;
+    const starPositions = new Float32Array(starCount * 3);
+    const starColors = new Float32Array(starCount * 3);
+    this.starTwinklePhases = new Float32Array(starCount);
+
+    const starPalettes = [
+      new THREE.Color(0xffffff),
+      new THREE.Color(0xfef08a),
+      new THREE.Color(0x93c5fd),
+      new THREE.Color(0xc4b5fd),
+      new THREE.Color(0x6ee7b7)
+    ];
+
+    for (let i = 0; i < starCount; i++) {
+      const theta = Math.random() * Math.PI * 2; // azimuth
+      const phi = 0.08 + Math.random() * (Math.PI * 0.44); // elevation above horizon
+      const radius = 1700 + Math.random() * 400;
+
+      const x = radius * Math.cos(theta) * Math.sin(phi);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(theta) * Math.sin(phi);
+
+      starPositions[i * 3] = x;
+      starPositions[i * 3 + 1] = y;
+      starPositions[i * 3 + 2] = z;
+
+      const col = starPalettes[Math.floor(Math.random() * starPalettes.length)];
+      starColors[i * 3] = col.r;
+      starColors[i * 3 + 1] = col.g;
+      starColors[i * 3 + 2] = col.b;
+
+      this.starTwinklePhases[i] = Math.random() * Math.PI * 2;
+    }
+
+    const starsGeo = new THREE.BufferGeometry();
+    starsGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    starsGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+
+    const starsMat = new THREE.PointsMaterial({
+      size: 4.5,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false
+    });
+
+    this.starsPoints = new THREE.Points(starsGeo, starsMat);
+    this.celestialGroup.add(this.starsPoints);
+  }
+
   // --- BUILD 3D FOG OF WAR SHROUD (Continuous Displaced Mesh with Smooth Alpha Texture) ---
   private buildFogOfWar() {
     const ts = this.gridManager.tileSize;
@@ -2735,15 +2977,15 @@ export class ThreeRenderer {
 
   private dayNightKeyframes = [
     {
-      t: 0.0, // Midnight (Luminous soft moonlight, clear visibility)
+      t: 0.0, // Midnight (Luminous soft moonlight, starry sky)
       sunColor: new THREE.Color(0xc7d2fe),
       sunIntensity: 0.65,
       ambientColor: new THREE.Color(0x1e293b),
       ambientIntensity: 0.46,
       hemiSky: new THREE.Color(0x334155),
       hemiGround: new THREE.Color(0x0f172a),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#070b14'),
+      fogColor: new THREE.Color('#070b14')
     },
     {
       t: 0.16, // 3:50 AM - Soft Night
@@ -2753,19 +2995,19 @@ export class ThreeRenderer {
       ambientIntensity: 0.48,
       hemiSky: new THREE.Color(0x334155),
       hemiGround: new THREE.Color(0x0f172a),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#0a1020'),
+      fogColor: new THREE.Color('#0a1020')
     },
     {
-      t: 0.22, // 5:15 AM - Early Dawn (Soft golden morning glow)
+      t: 0.22, // 5:15 AM - Early Dawn (Soft golden & lavender morning glow)
       sunColor: new THREE.Color(0xfde68a),
       sunIntensity: 1.05,
       ambientColor: new THREE.Color(0x78350f),
       ambientIntensity: 0.55,
       hemiSky: new THREE.Color(0xfba55d),
       hemiGround: new THREE.Color(0x334155),
-      skyColor: new THREE.Color('#0f172a'),
-      fogColor: new THREE.Color('#0f172a')
+      skyColor: new THREE.Color('#1e1b4b'),
+      fogColor: new THREE.Color('#2e1065')
     },
     {
       t: 0.28, // 6:45 AM - Bright Morning Sun
@@ -2775,8 +3017,8 @@ export class ThreeRenderer {
       ambientIntensity: 0.68,
       hemiSky: new THREE.Color(0xbae6fd),
       hemiGround: new THREE.Color(0x475569),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#1e40af'),
+      fogColor: new THREE.Color('#38bdf8')
     },
     {
       t: 0.35, // 8:24 AM - Radiant Morning Daylight
@@ -2786,8 +3028,8 @@ export class ThreeRenderer {
       ambientIntensity: 0.72,
       hemiSky: new THREE.Color(0xbfdbfe),
       hemiGround: new THREE.Color(0x475569),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#0284c7'),
+      fogColor: new THREE.Color('#7dd3fc')
     },
     {
       t: 0.50, // 12:00 PM - High Noon (Peak Daylight)
@@ -2797,8 +3039,8 @@ export class ThreeRenderer {
       ambientIntensity: 0.75,
       hemiSky: new THREE.Color(0xbfdbfe),
       hemiGround: new THREE.Color(0x475569),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#0284c7'),
+      fogColor: new THREE.Color('#38bdf8')
     },
     {
       t: 0.68, // 4:20 PM - Warm Golden Afternoon
@@ -2808,30 +3050,30 @@ export class ThreeRenderer {
       ambientIntensity: 0.70,
       hemiSky: new THREE.Color(0xfed7aa),
       hemiGround: new THREE.Color(0x475569),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#0369a1'),
+      fogColor: new THREE.Color('#60a5fa')
     },
     {
-      t: 0.78, // 6:45 PM - Sunset (Warm Amber Sky)
+      t: 0.78, // 6:45 PM - Sunset (Warm Amber / Crimson Sky)
       sunColor: new THREE.Color(0xf59e0b),
       sunIntensity: 1.15,
       ambientColor: new THREE.Color(0x78350f),
       ambientIntensity: 0.58,
       hemiSky: new THREE.Color(0xf97316),
       hemiGround: new THREE.Color(0x334155),
-      skyColor: new THREE.Color('#1c1917'),
-      fogColor: new THREE.Color('#1c1917')
+      skyColor: new THREE.Color('#7c2d12'),
+      fogColor: new THREE.Color('#9a3412')
     },
     {
-      t: 0.85, // 8:24 PM - Dusk
+      t: 0.85, // 8:24 PM - Dusk / Twilight
       sunColor: new THREE.Color(0x60a5fa),
       sunIntensity: 0.80,
       ambientColor: new THREE.Color(0x1e293b),
       ambientIntensity: 0.50,
       hemiSky: new THREE.Color(0x334155),
       hemiGround: new THREE.Color(0x1e293b),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#1e1b4b'),
+      fogColor: new THREE.Color('#172554')
     },
     {
       t: 0.92, // 10:00 PM - Nightfall (Clear Soft Moonlight)
@@ -2841,8 +3083,8 @@ export class ThreeRenderer {
       ambientIntensity: 0.46,
       hemiSky: new THREE.Color(0x334155),
       hemiGround: new THREE.Color(0x0f172a),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#070b14'),
+      fogColor: new THREE.Color('#070b14')
     },
     {
       t: 1.0, // Midnight Wrap
@@ -2852,35 +3094,81 @@ export class ThreeRenderer {
       ambientIntensity: 0.46,
       hemiSky: new THREE.Color(0x334155),
       hemiGround: new THREE.Color(0x0f172a),
-      skyColor: new THREE.Color('#090d16'),
-      fogColor: new THREE.Color('#090d16')
+      skyColor: new THREE.Color('#070b14'),
+      fogColor: new THREE.Color('#070b14')
     }
   ];
 
   private updateDayNightLighting(state: GameState) {
     const t = (((state.stats.dayTime % 2400) + 2400) % 2400) / 2400; // 0.0 to 1.0
     const sunAngle = (t - 0.25) * Math.PI * 2;
-
-    const sunDist = 550;
     const sinAngle = Math.sin(sunAngle);
-    const isDay = sinAngle > 0;
-    const sunY = isDay ? sinAngle * sunDist : -sinAngle * sunDist * 0.85;
-    const rawSunX = Math.cos(sunAngle) * sunDist;
-    const rawSunZ = Math.sin(sunAngle * 0.5) * 160;
 
-    // Shadow texel stabilization: Snap shadow target position to shadow map texel grid
-    // so shadows don't shimmer or vibrate during camera movement or time passing
+    // 1. Celestial Sky Spheres & Orbits (Sun, Moon, Stars)
+    const skyRadius = 1600;
+    const skyHeight = 1200;
+    const skyDepth = 480;
+
+    const sunX = Math.cos(sunAngle) * skyRadius;
+    const sunY = sinAngle * skyHeight;
+    const sunZ = Math.sin(sunAngle * 0.5) * skyDepth;
+
+    const moonX = -sunX;
+    const moonY = -sunY;
+    const moonZ = -sunZ;
+
+    // Anchor celestial dome directly above camera target so it covers the sky
+    this.celestialGroup.position.set(this.cameraTarget.x, this.cameraTarget.y, this.cameraTarget.z);
+
+    if (this.sunObject) {
+      this.sunObject.position.set(sunX, sunY, sunZ);
+      this.sunObject.visible = sunY > -180;
+      if (this.sunCorona) {
+        this.sunCorona.material.opacity = Math.max(0, Math.min(1.0, (sunY + 120) / 320));
+      }
+    }
+
+    if (this.moonObject) {
+      this.moonObject.position.set(moonX, moonY, moonZ);
+      this.moonObject.visible = moonY > -180;
+      if (this.moonGlow) {
+        this.moonGlow.material.opacity = Math.max(0, Math.min(1.0, (moonY + 120) / 320));
+      }
+    }
+
+    if (this.starsPoints) {
+      const starOpacity = Math.max(0, Math.min(1.0, (180 - sunY) / 450));
+      (this.starsPoints.material as THREE.PointsMaterial).opacity = starOpacity;
+    }
+
+    // 2. Smooth Continuous Directional Light Orbit (Zero Discontinuous Flips)
+    const sunLightDist = 650;
+    const rawSunX = Math.cos(sunAngle) * sunLightDist;
+    const rawSunY = sinAngle * sunLightDist;
+    const rawSunZ = Math.sin(sunAngle * 0.5) * 180;
+
+    // Smooth day/night blend factor across horizon (-0.12 to +0.12)
+    const dayBlend = THREE.MathUtils.smoothstep(sinAngle, -0.12, 0.12);
+
+    const sunLightX = rawSunX;
+    const sunLightY = Math.max(70, rawSunY);
+    const sunLightZ = rawSunZ;
+
+    const moonLightX = -rawSunX;
+    const moonLightY = Math.max(75, -rawSunY);
+    const moonLightZ = -rawSunZ;
+
+    const lightPosX = THREE.MathUtils.lerp(moonLightX, sunLightX, dayBlend);
+    const lightPosY = THREE.MathUtils.lerp(moonLightY, sunLightY, dayBlend);
+    const lightPosZ = THREE.MathUtils.lerp(moonLightZ, sunLightZ, dayBlend);
+
     const shadowD = 600;
     const texelWorldSize = (shadowD * 2) / 4096;
     const snappedTargetX = Math.round(this.cameraTarget.x / texelWorldSize) * texelWorldSize;
     const snappedTargetZ = Math.round(this.cameraTarget.z / texelWorldSize) * texelWorldSize;
 
     this.dirLight.target.position.set(snappedTargetX, 0, snappedTargetZ);
-    if (isDay) {
-      this.dirLight.position.set(rawSunX + snappedTargetX, Math.max(50, sunY), rawSunZ + snappedTargetZ);
-    } else {
-      this.dirLight.position.set(-rawSunX + snappedTargetX, Math.max(60, sunY), -rawSunZ + snappedTargetZ);
-    }
+    this.dirLight.position.set(lightPosX + snappedTargetX, lightPosY, lightPosZ + snappedTargetZ);
     this.dirLight.target.updateMatrixWorld();
     this.dirLight.updateMatrixWorld();
 
@@ -2955,6 +3243,17 @@ export class ThreeRenderer {
     if (now - this.lastFogUpdate > 140) {
       this.lastFogUpdate = now;
       this.updateFogOfWar(state);
+    }
+
+    // Update curved terrain under buildings whenever structures change
+    const structHash = state.buildings.map(b => `${b.id}_${b.x}_${b.y}_${b.hp}`).join('|') + ';' + state.lairs.map(l => `${l.id}_${l.x}_${l.y}_${l.hp}`).join('|');
+    if (structHash !== this.lastStructureHash) {
+      this.lastStructureHash = structHash;
+      this.lastKnownStructures = [
+        ...state.buildings.filter(b => b.hp > 0),
+        ...state.lairs.filter(l => l.hp > 0 && l.type !== 'sewer_grate')
+      ];
+      this.updateTerrainMeshHeights();
     }
 
     this.updateTerrainRoads(state);
@@ -3096,54 +3395,98 @@ export class ThreeRenderer {
     this.selectionGroup.clear();
 
     if (isStructure) {
-      // Sample the ground elevation at the 4 corners and center of structure
-      const yNW = this.getTerrainHeight(entityX - halfW, entityZ - halfH);
-      const yNE = this.getTerrainHeight(entityX + halfW, entityZ - halfH);
-      const ySE = this.getTerrainHeight(entityX + halfW, entityZ + halfH);
-      const ySW = this.getTerrainHeight(entityX - halfW, entityZ + halfH);
-      const centerH = this.getTerrainHeight(entityX, entityZ);
-      const maxGroundY = Math.max(yNW, yNE, ySE, ySW, centerH);
+      // Densely sample perimeter elevation at 64 points along the 4 edges so the aura strictly hugs the terrain
+      const samplePointsPerEdge = 16;
+      const outerPoints: THREE.Vector3[] = [];
+      const innerPoints: THREE.Vector3[] = [];
+      const innerScale = 0.88;
 
-      this.selectionGroup.position.set(entityX, maxGroundY + 0.35, entityZ);
+      const addPerimeterPoints = (wHalf: number, hHalf: number, targetArr: THREE.Vector3[], yOffset: number) => {
+        // 1. North Edge: (-wHalf, -hHalf) -> (+wHalf, -hHalf)
+        for (let i = 0; i < samplePointsPerEdge; i++) {
+          const t = i / samplePointsPerEdge;
+          const lx = -wHalf + t * (wHalf * 2);
+          const lz = -hHalf;
+          const ry = this.getTerrainHeight(entityX + lx, entityZ + lz) - groundY + yOffset;
+          targetArr.push(new THREE.Vector3(lx, ry, lz));
+        }
+        // 2. East Edge: (+wHalf, -hHalf) -> (+wHalf, +hHalf)
+        for (let i = 0; i < samplePointsPerEdge; i++) {
+          const t = i / samplePointsPerEdge;
+          const lx = wHalf;
+          const lz = -hHalf + t * (hHalf * 2);
+          const ry = this.getTerrainHeight(entityX + lx, entityZ + lz) - groundY + yOffset;
+          targetArr.push(new THREE.Vector3(lx, ry, lz));
+        }
+        // 3. South Edge: (+wHalf, +hHalf) -> (-wHalf, +hHalf)
+        for (let i = 0; i < samplePointsPerEdge; i++) {
+          const t = i / samplePointsPerEdge;
+          const lx = wHalf - t * (wHalf * 2);
+          const lz = hHalf;
+          const ry = this.getTerrainHeight(entityX + lx, entityZ + lz) - groundY + yOffset;
+          targetArr.push(new THREE.Vector3(lx, ry, lz));
+        }
+        // 4. West Edge: (-wHalf, +hHalf) -> (-wHalf, -hHalf)
+        for (let i = 0; i < samplePointsPerEdge; i++) {
+          const t = i / samplePointsPerEdge;
+          const lx = -wHalf;
+          const lz = hHalf - t * (hHalf * 2);
+          const ry = this.getTerrainHeight(entityX + lx, entityZ + lz) - groundY + yOffset;
+          targetArr.push(new THREE.Vector3(lx, ry, lz));
+        }
+      };
 
-      // Relative offsets from maxGroundY (all at or slightly above the floor)
-      const rNW = Math.max(0, yNW - maxGroundY) + 0.25;
-      const rNE = Math.max(0, yNE - maxGroundY) + 0.25;
-      const rSE = Math.max(0, ySE - maxGroundY) + 0.25;
-      const rSW = Math.max(0, ySW - maxGroundY) + 0.25;
+      addPerimeterPoints(halfW, halfH, outerPoints, 0.45);
+      addPerimeterPoints(halfW * innerScale, halfH * innerScale, innerPoints, 0.42);
 
-      const framePoints = [
-        new THREE.Vector3(-halfW, rNW, -halfH),
-        new THREE.Vector3(halfW, rNE, -halfH),
-        new THREE.Vector3(halfW, rSE, halfH),
-        new THREE.Vector3(-halfW, rSW, halfH)
-      ];
-      const frameGeo = new THREE.BufferGeometry().setFromPoints(framePoints);
-      const frameMat = new THREE.LineBasicMaterial({
+      const outerGeo = new THREE.BufferGeometry().setFromPoints(outerPoints);
+      const outerMat = new THREE.LineBasicMaterial({
         color: colorHex,
         linewidth: 3,
         depthTest: true,
         depthWrite: false
       });
-      const frameLoop = new THREE.LineLoop(frameGeo, frameMat);
-      frameLoop.renderOrder = 3;
-      this.selectionGroup.add(frameLoop);
+      const outerLoop = new THREE.LineLoop(outerGeo, outerMat);
+      outerLoop.renderOrder = 999;
+      this.selectionGroup.add(outerLoop);
 
-      // 4 Elegant Corner Brackets with depthTest: true
+      const innerGeo = new THREE.BufferGeometry().setFromPoints(innerPoints);
+      const innerMat = new THREE.LineBasicMaterial({
+        color: colorHex,
+        transparent: true,
+        opacity: 0.5,
+        linewidth: 2,
+        depthTest: true,
+        depthWrite: false
+      });
+      const innerLoop = new THREE.LineLoop(innerGeo, innerMat);
+      innerLoop.renderOrder = 999;
+      this.selectionGroup.add(innerLoop);
+
+      // 4 Elegant Corner L-Brackets that also conform to ground elevation
       const armLen = Math.min(10, halfW * 0.35);
-      const bracketCorners = [
-        [-halfW, -halfH, armLen, 0, 0, armLen, rNW],
-        [halfW, -halfH, -armLen, 0, 0, armLen, rNE],
-        [-halfW, halfH, armLen, 0, 0, -armLen, rSW],
-        [halfW, halfH, -armLen, 0, 0, -armLen, rSE]
+      const cornerDefs = [
+        { cx: -halfW, cz: -halfH, dx: 1, dz: 1 },
+        { cx: halfW, cz: -halfH, dx: -1, dz: 1 },
+        { cx: -halfW, cz: halfH, dx: 1, dz: -1 },
+        { cx: halfW, cz: halfH, dx: -1, dz: -1 }
       ];
 
-      bracketCorners.forEach(([cx, cz, dx, , , dz, cy]) => {
-        const cPoints = [
-          new THREE.Vector3(cx + dx, cy + 0.2, cz),
-          new THREE.Vector3(cx, cy + 0.2, cz),
-          new THREE.Vector3(cx, cy + 0.2, cz + dz)
-        ];
+      cornerDefs.forEach(({ cx, cz, dx, dz }) => {
+        const cPoints: THREE.Vector3[] = [];
+        const bracketSteps = 6;
+        for (let s = bracketSteps; s >= 0; s--) {
+          const lx = cx + dx * (s / bracketSteps) * armLen;
+          const lz = cz;
+          const ry = this.getTerrainHeight(entityX + lx, entityZ + lz) - groundY + 0.55;
+          cPoints.push(new THREE.Vector3(lx, ry, lz));
+        }
+        for (let s = 1; s <= bracketSteps; s++) {
+          const lx = cx;
+          const lz = cz + dz * (s / bracketSteps) * armLen;
+          const ry = this.getTerrainHeight(entityX + lx, entityZ + lz) - groundY + 0.55;
+          cPoints.push(new THREE.Vector3(lx, ry, lz));
+        }
         const cGeo = new THREE.BufferGeometry().setFromPoints(cPoints);
         const cMat = new THREE.LineBasicMaterial({
           color: colorHex,
@@ -3152,18 +3495,18 @@ export class ThreeRenderer {
           depthWrite: false
         });
         const cLine = new THREE.Line(cGeo, cMat);
-        cLine.renderOrder = 3;
+        cLine.renderOrder = 999;
         this.selectionGroup.add(cLine);
       });
     } else {
-      // 3D Conforming Unit Selection Ring (Samples terrain elevation around circle perimeter)
+      // 3D Conforming Unit Selection Ring (48 sample points around circle perimeter)
       const ringPoints: THREE.Vector3[] = [];
-      const steps = 36;
+      const steps = 48;
       for (let i = 0; i <= steps; i++) {
         const angle = (i / steps) * Math.PI * 2;
         const rx = Math.cos(angle) * radius;
         const rz = Math.sin(angle) * radius;
-        const ry = this.getTerrainHeight(entityX + rx, entityZ + rz) - groundY + 0.35;
+        const ry = this.getTerrainHeight(entityX + rx, entityZ + rz) - groundY + 0.45;
         ringPoints.push(new THREE.Vector3(rx, ry, rz));
       }
 
@@ -3175,16 +3518,16 @@ export class ThreeRenderer {
         depthWrite: false
       });
       const ring = new THREE.LineLoop(ringGeo, ringMat);
-      ring.renderOrder = 3;
+      ring.renderOrder = 999;
       this.selectionGroup.add(ring);
 
       // Inner faint indicator disc
       const innerPoints: THREE.Vector3[] = [];
       for (let i = 0; i <= steps; i++) {
         const angle = (i / steps) * Math.PI * 2;
-        const rx = Math.cos(angle) * (radius * 0.65);
-        const rz = Math.sin(angle) * (radius * 0.65);
-        const ry = this.getTerrainHeight(entityX + rx, entityZ + rz) - groundY + 0.3;
+        const rx = Math.cos(angle) * (radius * 0.68);
+        const rz = Math.sin(angle) * (radius * 0.68);
+        const ry = this.getTerrainHeight(entityX + rx, entityZ + rz) - groundY + 0.40;
         innerPoints.push(new THREE.Vector3(rx, ry, rz));
       }
       const innerGeo = new THREE.BufferGeometry().setFromPoints(innerPoints);
@@ -3196,7 +3539,7 @@ export class ThreeRenderer {
         depthWrite: false
       });
       const innerRing = new THREE.LineLoop(innerGeo, innerMat);
-      innerRing.renderOrder = 3;
+      innerRing.renderOrder = 999;
       this.selectionGroup.add(innerRing);
     }
   }
@@ -3372,16 +3715,9 @@ export class ThreeRenderer {
       const ts = this.gridManager.tileSize;
       const px = (b.x + b.width / 2) * ts;
       const pz = (b.y + b.height / 2) * ts;
+      const groundY = this.getTerrainHeight(px, pz);
 
-      // Sample terrain elevation at the 4 footprint corners & center
-      const yNW = this.getTerrainHeight(b.x * ts, b.y * ts);
-      const yNE = this.getTerrainHeight((b.x + b.width) * ts, b.y * ts);
-      const ySW = this.getTerrainHeight(b.x * ts, (b.y + b.height) * ts);
-      const ySE = this.getTerrainHeight((b.x + b.width) * ts, (b.y + b.height) * ts);
-      const yCenter = this.getTerrainHeight(px, pz);
-      const maxGroundY = Math.max(yNW, yNE, ySW, ySE, yCenter);
-
-      group.position.set(px, maxGroundY, pz);
+      group.position.set(px, groundY, pz);
 
       // Rotate building facade so its front entrance physically faces its road doorstep apron
       const facing = b.facing || 'south';
@@ -3458,18 +3794,17 @@ export class ThreeRenderer {
     const w = b.width * ts;
     const h = b.height * ts;
 
-    // Subterranean Earth-Retaining Masonry Foundation Plinth
-    // Anchors deep underground so buildings never sink or float on uneven hills!
+    // Subtle beveled stone foundation curb trimming the base of the building
     const isCottage = b.type === 'peasant_cottage';
-    const plinthDepth = 16.0;
-    const plinthGeo = new THREE.BoxGeometry(isCottage ? w * 0.65 : w * 0.94, plinthDepth, isCottage ? h * 0.65 : h * 0.94);
+    const plinthDepth = 3.2;
+    const plinthGeo = new THREE.BoxGeometry(isCottage ? w * 0.72 : w * 0.96, plinthDepth, isCottage ? h * 0.72 : h * 0.96);
     const plinthMat = new THREE.MeshStandardMaterial({
       color: 0x475569,
       map: this.royalCastleWallTexture,
       roughness: 0.9
     });
     const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-    plinth.position.y = -plinthDepth / 2 + 0.6;
+    plinth.position.y = -plinthDepth / 2 + 0.2;
     plinth.castShadow = true;
     plinth.receiveShadow = true;
     group.add(plinth);
@@ -3589,6 +3924,25 @@ export class ThreeRenderer {
       crate.position.set(-w * 0.25, 4, h * 0.25);
       group.add(crate);
 
+      return group;
+    }
+
+    // Try loading the high-quality KayKit 3D GLTF building model from ModelRegistry
+    const gltfBuilding = ModelRegistry.getInstance().getBuildingModel(b.type);
+    if (gltfBuilding) {
+      const box = new THREE.Box3().setFromObject(gltfBuilding);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const maxDim = Math.max(size.x, size.z);
+      const targetDim = Math.min(w, h) * (b.type === 'palace' ? 1.05 : (isCottage ? 0.85 : 0.95));
+      const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
+
+      gltfBuilding.scale.set(scale, scale, scale);
+      gltfBuilding.position.set(-center.x * scale, -box.min.y * scale + 0.1, -center.z * scale);
+      group.add(gltfBuilding);
       return group;
     }
 
@@ -5100,15 +5454,7 @@ export class ThreeRenderer {
       const ts = this.gridManager.tileSize;
       const px = (lair.x + lair.width / 2) * ts;
       const pz = (lair.y + lair.height / 2) * ts;
-
-      const yNW = this.getTerrainHeight(lair.x * ts, lair.y * ts);
-      const yNE = this.getTerrainHeight((lair.x + lair.width) * ts, lair.y * ts);
-      const ySW = this.getTerrainHeight(lair.x * ts, (lair.y + lair.height) * ts);
-      const ySE = this.getTerrainHeight((lair.x + lair.width) * ts, (lair.y + lair.height) * ts);
-      const yCenter = this.getTerrainHeight(px, pz);
-
-      // For sewer grates (ground-flush street drain), use center ground height; for elevated lairs use maxGroundY
-      const groundY = lair.type === 'sewer_grate' ? yCenter : Math.max(yNW, yNE, ySW, ySE, yCenter);
+      const groundY = this.getTerrainHeight(px, pz);
 
       group.position.set(px, groundY, pz);
       group.visible = this.gridManager.isPixelExplored(px, pz);
@@ -5197,11 +5543,11 @@ export class ThreeRenderer {
     }
 
     // Subterranean Earth Base Mound for large 3D lairs
-    const plinthDepth = 14.0;
+    const plinthDepth = 3.2;
     const plinthGeo = new THREE.BoxGeometry(w * 0.94, plinthDepth, h * 0.94);
     const plinthMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.95 });
     const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-    plinth.position.y = -plinthDepth / 2 + 0.5;
+    plinth.position.y = -plinthDepth / 2 + 0.2;
     group.add(plinth);
 
     if (lair.type === 'graveyard') {
@@ -5902,6 +6248,24 @@ export class ThreeRenderer {
   private create3DPeasantMesh(p: Peasant): THREE.Group {
     const group = new THREE.Group();
 
+    // Try loading high quality 3D citizen model
+    const gltfPeasant = ModelRegistry.getInstance().getCitizenModel('peasant');
+    if (gltfPeasant) {
+      const box = new THREE.Box3().setFromObject(gltfPeasant);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const targetHeight = 11.5;
+      const scale = size.y > 0 ? targetHeight / size.y : 1.0;
+
+      gltfPeasant.scale.set(scale, scale, scale);
+      gltfPeasant.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      group.add(gltfPeasant);
+      return group;
+    }
+
     // Night Torch in Left Hand
     const torch = this.create3DNightTorchMesh();
     torch.position.set(-1.8, 3.2, 0.6);
@@ -6233,6 +6597,26 @@ export class ThreeRenderer {
 
   private create3DHeroMesh(h: Hero): THREE.Group {
     const group = new THREE.Group();
+
+    // Try loading the high-quality KayKit 3D GLTF hero character model
+    const gltfHero = ModelRegistry.getInstance().getHeroModel(h.heroClass);
+    if (gltfHero) {
+      const box = new THREE.Box3().setFromObject(gltfHero);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const isDwarf = h.heroClass === 'dwarf';
+      const targetHeight = isDwarf ? 10.0 : 12.8;
+      const scale = size.y > 0 ? targetHeight / size.y : 1.0;
+
+      gltfHero.scale.set(scale, scale, scale);
+      gltfHero.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      group.add(gltfHero);
+      return group;
+    }
+
     const classDef = HERO_CLASS_DEFINITIONS[h.heroClass];
     const colorNum = parseInt(classDef.color.replace('#', '0x'), 16);
     const isDwarf = h.heroClass === 'dwarf';
@@ -7082,6 +7466,32 @@ export class ThreeRenderer {
 
   private create3DMonsterMesh(m: Monster): THREE.Group {
     const group = new THREE.Group();
+
+    // Check if high-quality 3D model exists for this monster
+    if (m.type !== 'red_dragon') {
+      const gltfMonster = ModelRegistry.getInstance().getMonsterModel(m.type);
+      if (gltfMonster) {
+        const box = new THREE.Box3().setFromObject(gltfMonster);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+
+        let targetHeight = 12.0;
+        if (m.type === 'werewolf' || m.type === 'dire_wolf') targetHeight = 16.0;
+        else if (m.type === 'vampire_lord') targetHeight = 18.0;
+        else if (m.type === 'necromancer') targetHeight = 14.0;
+        else if (m.type === 'troll') targetHeight = 17.0;
+
+        const scale = size.y > 0 ? targetHeight / size.y : 1.0;
+
+        gltfMonster.scale.set(scale, scale, scale);
+        gltfMonster.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+        group.add(gltfMonster);
+        return group;
+      }
+    }
+
     const def = MONSTER_DEFINITIONS[m.type];
     const colorNum = parseInt(def.color.replace('#', '0x'), 16);
 
@@ -8197,6 +8607,24 @@ export class ThreeRenderer {
 
   private create3DTaxCollectorMesh(tc: TaxCollector): THREE.Group {
     const group = new THREE.Group();
+
+    // Try loading high quality 3D citizen model
+    const gltfTC = ModelRegistry.getInstance().getCitizenModel('tax_collector');
+    if (gltfTC) {
+      const box = new THREE.Box3().setFromObject(gltfTC);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const targetHeight = 11.5;
+      const scale = size.y > 0 ? targetHeight / size.y : 1.0;
+
+      gltfTC.scale.set(scale, scale, scale);
+      gltfTC.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      group.add(gltfTC);
+      return group;
+    }
 
     // Royal Purple Velvet Tunic
     const bodyGeo = new THREE.BoxGeometry(2.8, 3.8, 2.0);
