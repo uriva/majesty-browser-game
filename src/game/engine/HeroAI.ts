@@ -262,9 +262,9 @@ export class HeroAIManager {
       if (dist > 8) {
         this.moveTowards(hero, hero.targetX, hero.targetY, delta, buildings, lairs);
       } else {
-        // Destination reached! Pause and stand guard
+        // Destination reached! Short pause to stand guard then patrol again
         hero.state = 'idle';
-        hero.stateTimer = Math.random() * 2.0 + 1.5;
+        hero.stateTimer = Math.random() * 0.8 + 0.5;
         hero.targetX = undefined;
         hero.targetY = undefined;
         hero.currentThought = 'Standing guard over the realm';
@@ -526,28 +526,28 @@ export class HeroAIManager {
         hero.currentThought = 'Patrolling the outer wilderness';
       }
     } else if (hero.heroClass === 'warrior' || hero.heroClass === 'dwarf') {
-      // Warriors & Dwarves patrol kingdom buildings, cottages, and gates
+      // Stalwart Warriors & Dwarves patrol kingdom buildings, gates, and the perimeter
       const ts = this.gridManager.tileSize;
-      const patrolCandidates = buildings.filter(b => b.hp > 0 && Math.hypot(b.x * ts - hero.x, b.y * ts - hero.y) < 320);
-      if (patrolCandidates.length > 0 && Math.random() < 0.75) {
-        const chosen = patrolCandidates[Math.floor(Math.random() * patrolCandidates.length)];
+      const distantBuildings = buildings.filter(b => b.hp > 0 && Math.hypot((b.x + b.width / 2) * ts - hero.x, (b.y + b.height / 2) * ts - hero.y) > 40);
+      if (distantBuildings.length > 0 && Math.random() < 0.75) {
+        const chosen = distantBuildings[Math.floor(Math.random() * distantBuildings.length)];
         const angle = Math.random() * Math.PI * 2;
-        const radius = Math.max(chosen.width, chosen.height) * ts * 0.5 + 24;
+        const radius = Math.max(chosen.width, chosen.height) * ts * 0.6 + 24;
         const rawX = (chosen.x + chosen.width / 2) * ts + Math.cos(angle) * radius;
         const rawY = (chosen.y + chosen.height / 2) * ts + Math.sin(angle) * radius;
         const safe = this.gridManager.findNearestWalkablePosition(rawX, rawY, buildings, lairs);
         hero.targetX = safe.x;
         hero.targetY = safe.y;
-        hero.currentThought = `Patrolling near ${chosen.name}`;
+        hero.currentThought = `Marching patrol to ${chosen.name}`;
       } else {
         const angle = Math.random() * Math.PI * 2;
-        const dist = Math.random() * 100 + 40;
-        const rawX = Math.max(ts * 1.5, Math.min((this.gridManager.width - 2) * ts, hero.x + Math.cos(angle) * dist));
-        const rawY = Math.max(ts * 1.5, Math.min((this.gridManager.height - 2) * ts, hero.y + Math.sin(angle) * dist));
+        const dist = Math.random() * 140 + 60;
+        const rawX = Math.max(ts * 2, Math.min((this.gridManager.width - 2) * ts, hero.x + Math.cos(angle) * dist));
+        const rawY = Math.max(ts * 2, Math.min((this.gridManager.height - 2) * ts, hero.y + Math.sin(angle) * dist));
         const safe = this.gridManager.findNearestWalkablePosition(rawX, rawY, buildings, lairs);
         hero.targetX = safe.x;
         hero.targetY = safe.y;
-        hero.currentThought = 'Standing guard over the settlement';
+        hero.currentThought = 'Patrolling kingdom perimeter';
       }
     } else if (hero.heroClass === 'rogue') {
       const ts = this.gridManager.tileSize;

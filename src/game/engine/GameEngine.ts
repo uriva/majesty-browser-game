@@ -1521,8 +1521,9 @@ export class GameEngine {
     const name = names[Math.floor(Math.random() * names.length)];
     const quirk = HERO_QUIRKS[Math.floor(Math.random() * HERO_QUIRKS.length)];
 
-    const spawnX = (building.x + building.width / 2) * this.gridManager.tileSize;
-    const spawnY = (building.y + building.height) * this.gridManager.tileSize + 10;
+    const rawSpawnX = (building.x + building.width / 2) * this.gridManager.tileSize;
+    const rawSpawnY = (building.y + building.height) * this.gridManager.tileSize + 10;
+    const safeSpawn = this.gridManager.findNearestWalkablePosition(rawSpawnX, rawSpawnY, this.state.buildings, this.state.lairs, building.id);
 
     const newHero: Hero = {
       id: `hero_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -1531,8 +1532,8 @@ export class GameEngine {
       level: 1,
       xp: 0,
       xpToNextLevel: 100,
-      x: spawnX,
-      y: spawnY,
+      x: safeSpawn.x,
+      y: safeSpawn.y,
       hp: classDef.baseHp,
       maxHp: classDef.baseHp,
       mp: classDef.baseMp,
@@ -1545,8 +1546,8 @@ export class GameEngine {
       attackRange: classDef.attackRange,
       attackCooldown: classDef.attackCooldown,
       currentCooldown: 0,
-      state: 'wandering',
-      stateTimer: 2,
+      state: 'idle',
+      stateTimer: 0.1, // Immediately triggers AI decision loop on frame 1
       homeGuildId: building.id,
       equipment: {
         weaponLevel: 0,
@@ -1572,7 +1573,7 @@ export class GameEngine {
     this.state.heroes.push(newHero);
 
     audioManager.playVoice(`${heroClass}_ready`);
-    this.addFloatingText(`+${newHero.name} Trained!`, spawnX, spawnY - 20, '#38bdf8');
+    this.addFloatingText(`+${newHero.name} Trained!`, safeSpawn.x, safeSpawn.y - 20, '#38bdf8');
     this.addNotification('Hero Ready!', `${newHero.name} (${classDef.name}) has completed training and joined the realm!`, 'success');
   }
 

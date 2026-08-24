@@ -14,6 +14,7 @@ export class ThreeRenderer {
 
   // Character Skeletal Animation Controllers
   private animControllers: Map<string, CharacterAnimationController> = new Map();
+  private lastUnitPositions: Map<string, { x: number; y: number }> = new Map();
 
   // Lighting
   private ambientLight: THREE.AmbientLight;
@@ -6270,8 +6271,14 @@ export class ThreeRenderer {
       }
       this.smoothRotate(pGroup, targetAngle, delta, 16);
 
-      const isMoving = p.state === 'walking_to_site' || p.state === 'fleeing';
-      const peasantSpeed = p.state === 'fleeing' ? 60 : (p.speed || 35);
+      const prevPos = this.lastUnitPositions.get(p.id);
+      const movedDist = prevPos ? Math.hypot(p.x - prevPos.x, p.y - prevPos.y) : 0;
+      this.lastUnitPositions.set(p.id, { x: p.x, y: p.y });
+
+      const isMoving = (movedDist > 0.04 || p.state === 'walking_to_site' || p.state === 'fleeing') && p.state !== 'idle_at_palace';
+      const peasantBaseSpeed = p.state === 'fleeing' ? 60 : (p.speed || 35);
+      const calculatedSpeed = movedDist > 0.02 ? (movedDist / Math.max(0.001, delta)) : peasantBaseSpeed;
+      const peasantSpeed = Math.max(peasantBaseSpeed * 0.8, Math.min(peasantBaseSpeed * 1.5, calculatedSpeed));
       const strideFreq = (peasantSpeed / 35) * 3.5;
 
       // Update Skeletal Animation Controller if present
@@ -6324,6 +6331,7 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.peasantsMap.delete(id);
+        this.lastUnitPositions.delete(id);
         const ctrl = this.animControllers.get(id);
         if (ctrl) {
           ctrl.dispose();
@@ -6551,9 +6559,29 @@ export class ThreeRenderer {
       }
       this.smoothRotate(heroGroup, targetAngle, delta, 16);
 
-      const isMoving = (h.state === 'wandering' || h.state === 'pursuing_flag' || h.state === 'fleeing' || h.state === 'collecting_treasure') && h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 3;
+      const prevPos = this.lastUnitPositions.get(h.id);
+      const movedDist = prevPos ? Math.hypot(h.x - prevPos.x, h.y - prevPos.y) : 0;
+      this.lastUnitPositions.set(h.id, { x: h.x, y: h.y });
+
+      const hasActivePath = Boolean(h.path && h.path.length > 0);
+      const hasTargetDist = h.targetX !== undefined && Math.hypot(h.targetX - h.x, (h.targetY ?? h.y) - h.y) > 2.5;
+      const isTravelingState = (
+        h.state === 'wandering' ||
+        h.state === 'pursuing_flag' ||
+        h.state === 'fleeing' ||
+        h.state === 'collecting_treasure' ||
+        h.state === 'visiting_marketplace' ||
+        h.state === 'visiting_blacksmith' ||
+        h.state === 'visiting_inn' ||
+        h.state === 'resting_at_guild' ||
+        h.state === 'healing_ally' ||
+        (h.state === 'attacking_target' && h.isAttackingAnimation <= 0)
+      );
+
+      const isMoving = (movedDist > 0.04 || hasActivePath || (hasTargetDist && isTravelingState)) && h.state !== 'idle' && h.isAttackingAnimation <= 0;
       const heroBaseSpeed = h.speed || 45;
-      const heroActualSpeed = heroBaseSpeed * (h.state === 'fleeing' ? 1.25 : (h.state === 'pursuing_flag' ? 1.1 : 1.0));
+      const calculatedSpeed = movedDist > 0.02 ? (movedDist / Math.max(0.001, delta)) : heroBaseSpeed;
+      const heroActualSpeed = Math.max(heroBaseSpeed * 0.8, Math.min(heroBaseSpeed * 1.5, calculatedSpeed));
       const strideFreq = (heroActualSpeed / 40) * 3.5;
 
       // Update Skeletal Animation Controller if present
@@ -6611,6 +6639,7 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.heroesMap.delete(id);
+        this.lastUnitPositions.delete(id);
         const ctrl = this.animControllers.get(id);
         if (ctrl) {
           ctrl.dispose();
@@ -7350,8 +7379,16 @@ export class ThreeRenderer {
 
       const isAttacking = m.isAttackingAnimation > 0;
       const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
-      const isMoving = (m.state === 'wandering' || m.state === 'raiding' || m.state === 'returning_to_lair' || (m.state === 'attacking' && !isAttacking)) && m.targetX !== undefined;
-      const monsterSpeed = m.speed || 40;
+
+      const prevPos = this.lastUnitPositions.get(m.id);
+      const movedDist = prevPos ? Math.hypot(m.x - prevPos.x, m.y - prevPos.y) : 0;
+      this.lastUnitPositions.set(m.id, { x: m.x, y: m.y });
+
+      const hasActivePath = Boolean(m.path && m.path.length > 0);
+      const isMoving = (movedDist > 0.04 || hasActivePath || ((m.state === 'wandering' || m.state === 'raiding' || m.state === 'returning_to_lair' || (m.state === 'attacking' && !isAttacking)) && m.targetX !== undefined)) && !isAttacking;
+      const monsterBaseSpeed = m.speed || 40;
+      const calculatedSpeed = movedDist > 0.02 ? (movedDist / Math.max(0.001, delta)) : monsterBaseSpeed;
+      const monsterSpeed = Math.max(monsterBaseSpeed * 0.8, Math.min(monsterBaseSpeed * 1.5, calculatedSpeed));
       const strideFreq = (monsterSpeed / 40) * 3.5;
       const walkStride = isMoving ? Math.sin(time * strideFreq) * 0.55 : 0;
 
@@ -7613,6 +7650,7 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.monstersMap.delete(id);
+        this.lastUnitPositions.delete(id);
         const ctrl = this.animControllers.get(id);
         if (ctrl) {
           ctrl.dispose();
@@ -8742,8 +8780,15 @@ export class ThreeRenderer {
       }
       this.smoothRotate(tcGroup, targetAngle, delta, 16);
 
-      const isMoving = tc.state === 'seeking_building' || tc.state === 'returning_to_palace' || tc.state === 'fleeing';
-      const tcSpeed = tc.state === 'fleeing' ? 68 : (tc.speed || 42);
+      const prevPos = this.lastUnitPositions.get(tc.id);
+      const movedDist = prevPos ? Math.hypot(tc.x - prevPos.x, tc.y - prevPos.y) : 0;
+      this.lastUnitPositions.set(tc.id, { x: tc.x, y: tc.y });
+
+      const hasActivePath = Boolean(tc.path && tc.path.length > 0);
+      const isMoving = movedDist > 0.04 || hasActivePath || tc.state === 'seeking_building' || tc.state === 'returning_to_palace' || tc.state === 'fleeing';
+      const tcBaseSpeed = tc.state === 'fleeing' ? 68 : (tc.speed || 42);
+      const calculatedSpeed = movedDist > 0.02 ? (movedDist / Math.max(0.001, delta)) : tcBaseSpeed;
+      const tcSpeed = Math.max(tcBaseSpeed * 0.8, Math.min(tcBaseSpeed * 1.5, calculatedSpeed));
       const strideFreq = (tcSpeed / 40) * 3.5;
 
       // Update Skeletal Animation Controller if present
@@ -8788,6 +8833,7 @@ export class ThreeRenderer {
       if (!activeIds.has(id)) {
         this.scene.remove(group);
         this.taxCollectorsMap.delete(id);
+        this.lastUnitPositions.delete(id);
         const ctrl = this.animControllers.get(id);
         if (ctrl) {
           ctrl.dispose();
