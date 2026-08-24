@@ -1494,17 +1494,33 @@ export class ThreeRenderer {
             this.terrainFeaturesList.push(tree2);
           }
         } else if (tile === 4) {
-          // Mountain Rock Formation
-          const rock = new THREE.Mesh(rockGeo, rockMat);
-          const rockY = this.getTerrainHeight(px, pz) + 3.5;
-          rock.position.set(px, rockY, pz);
-          rock.scale.set(1.4, 1.2, 1.3);
-          rock.rotation.set((x * 0.4) % Math.PI, (y * 0.6) % Math.PI, 0.2);
-          rock.castShadow = true;
-          rock.receiveShadow = true;
-          rock.userData = { tx: x, ty: y };
-          this.terrainGroup.add(rock);
-          this.terrainFeaturesList.push(rock);
+          // Mountain Rock Formation (Kenney 3D Boulders / Crags)
+          const gltfRock = ModelRegistry.getInstance().getRockModel(x + y);
+          let rockObj: THREE.Object3D;
+          if (gltfRock) {
+            const box = new THREE.Box3().setFromObject(gltfRock);
+            const size = new THREE.Vector3(); box.getSize(size);
+            const center = new THREE.Vector3(); box.getCenter(center);
+            const targetH = 12.0;
+            const scale = size.y > 0 ? targetH / size.y : 1.0;
+            gltfRock.scale.set(scale, scale, scale);
+            gltfRock.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+            const rGrp = new THREE.Group();
+            rGrp.add(gltfRock);
+            rockObj = rGrp;
+          } else {
+            const rock = new THREE.Mesh(rockGeo, rockMat);
+            rock.scale.set(1.4, 1.2, 1.3);
+            rock.castShadow = true;
+            rock.receiveShadow = true;
+            rockObj = rock;
+          }
+          const rockY = this.getTerrainHeight(px, pz) + 0.2;
+          rockObj.position.set(px, rockY, pz);
+          rockObj.rotation.set(0, (x * 0.4 + y * 0.6) % (Math.PI * 2), 0);
+          rockObj.userData = { tx: x, ty: y };
+          this.terrainGroup.add(rockObj);
+          this.terrainFeaturesList.push(rockObj);
         } else if (tile === 0) {
           // Open meadow flora scattering (Wildflowers, Grass tufts, River pebbles)
           const hash = (((x * 283 + y * 439) % 1000) + 1000) % 1000 / 1000;
@@ -2519,6 +2535,25 @@ export class ThreeRenderer {
 
   private create3DGrassTuftMesh(variant: number): THREE.Group {
     const tuft = new THREE.Group();
+
+    // Try loading Kenney 3D Grass / Bush Model
+    const gltfBush = ModelRegistry.getInstance().getBushOrGrassModel(variant);
+    if (gltfBush) {
+      const box = new THREE.Box3().setFromObject(gltfBush);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const targetHeight = 3.6;
+      const scale = size.y > 0 ? targetHeight / size.y : 1.0;
+
+      gltfBush.scale.set(scale, scale, scale);
+      gltfBush.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      tuft.add(gltfBush);
+      return tuft;
+    }
+
     const colors = [0x2d6a4f, 0x40916c, 0x52b788, 0x74c69d];
     const col = colors[variant % colors.length];
     const mat = new THREE.MeshStandardMaterial({
@@ -2550,6 +2585,25 @@ export class ThreeRenderer {
 
   private create3DWildflowerMesh(type: number): THREE.Group {
     const group = new THREE.Group();
+
+    // Try loading Kenney 3D Flower / Mushroom Model
+    const gltfFlora = ModelRegistry.getInstance().getFloraModel(type);
+    if (gltfFlora) {
+      const box = new THREE.Box3().setFromObject(gltfFlora);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const targetHeight = 3.2;
+      const scale = size.y > 0 ? targetHeight / size.y : 1.0;
+
+      gltfFlora.scale.set(scale, scale, scale);
+      gltfFlora.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      group.add(gltfFlora);
+      return group;
+    }
+
     const stemMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.8 });
     const stemGeo = new THREE.CylinderGeometry(0.12, 0.15, 2.5, 5);
     stemGeo.translate(0, 1.25, 0);
@@ -2612,6 +2666,24 @@ export class ThreeRenderer {
 
   private create3DTreeMesh(variant: number): THREE.Group {
     const tree = new THREE.Group();
+
+    // Try loading Kenney 3D Tree Model
+    const gltfTree = ModelRegistry.getInstance().getTreeModel(variant);
+    if (gltfTree) {
+      const box = new THREE.Box3().setFromObject(gltfTree);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      const targetHeight = variant === 1 ? 24.0 : 20.0;
+      const scale = size.y > 0 ? targetHeight / size.y : 1.0;
+
+      gltfTree.scale.set(scale, scale, scale);
+      gltfTree.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      tree.add(gltfTree);
+      return tree;
+    }
 
     if (variant === 0) {
       // 1. Lush Royal Broadleaf Oak Tree (Gnarled trunk + 5 fluffy organic foliage cloud clusters)
