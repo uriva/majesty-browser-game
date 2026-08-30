@@ -25,6 +25,7 @@ export const ScenarioModal: React.FC<ScenarioModalProps> = ({
   onRestartScenario
 }) => {
   const [showScenarioList, setShowScenarioList] = useState<boolean>(false);
+  const hasFiredConfettiRef = React.useRef<boolean>(false);
 
   useEffect(() => {
     if (isOpen && !isEndScreen) {
@@ -34,19 +35,34 @@ export const ScenarioModal: React.FC<ScenarioModalProps> = ({
     }
   }, [isOpen, isEndScreen]);
 
-  if (!isOpen) return null;
-
-  if (isEndScreen && gameState?.gameWon && !showScenarioList) {
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-    } catch {
-      // confetti fallback
+  // Tasteful, single-burst royal victory confetti celebration
+  useEffect(() => {
+    if (isOpen && isEndScreen && gameState?.gameWon && !showScenarioList) {
+      if (!hasFiredConfettiRef.current) {
+        hasFiredConfettiRef.current = true;
+        try {
+          confetti({
+            particleCount: 70,
+            spread: 65,
+            origin: { y: 0.6, x: 0.4 }
+          });
+          setTimeout(() => {
+            confetti({
+              particleCount: 70,
+              spread: 65,
+              origin: { y: 0.6, x: 0.6 }
+            });
+          }, 350);
+        } catch {
+          // fallback
+        }
+      }
+    } else if (!isOpen) {
+      hasFiredConfettiRef.current = false;
     }
-  }
+  }, [isOpen, isEndScreen, gameState?.gameWon, showScenarioList]);
+
+  if (!isOpen) return null;
 
   // Determine the next scenario
   const currentScenarioId = gameState?.scenario?.id;
