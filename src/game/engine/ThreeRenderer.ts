@@ -1395,7 +1395,11 @@ export class ThreeRenderer {
       transparent: true,
       opacity: 0.98,
       roughness: 0.75,
-      depthWrite: false
+      depthWrite: false,
+      depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -2.0,
+      polygonOffsetUnits: -2.0
     });
     this.roadsMesh = new THREE.Mesh(roadDecalGeo, roadDecalMat);
     this.roadsMesh.position.set((w * ts) / 2, 0, (h * ts) / 2);
@@ -5973,49 +5977,109 @@ export class ThreeRenderer {
         group.add(ember);
       }
     } else if (lair.type === 'wolf_den') {
-      // Rocky Cave Mouth Burrow
-      const caveMoundGeo = new THREE.SphereGeometry(w * 0.45, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-      const caveMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
-      const cave = new THREE.Mesh(caveMoundGeo, caveMat);
-      cave.position.y = 0;
-      cave.castShadow = true;
-      group.add(cave);
+      // Natural Rocky Predator Cavern diorama built from textured KayKit boulders, gnarled deadwood & bones
+      const r1 = ModelRegistry.getInstance().cloneModel('rock_large_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (r1) {
+        r1.scale.set(1.8, 1.6, 1.8);
+        r1.position.set(-w * 0.28, 0, -h * 0.1);
+        r1.rotation.set(0.2, 0.4, 0.1);
+        group.add(r1);
+      }
+      const r2 = ModelRegistry.getInstance().cloneModel('rock_large_b') || ModelRegistry.getInstance().getRockModel(1);
+      if (r2) {
+        r2.scale.set(1.7, 1.8, 1.7);
+        r2.position.set(w * 0.28, 0, -h * 0.12);
+        r2.rotation.set(-0.1, -0.6, -0.15);
+        group.add(r2);
+      }
+      const r3 = ModelRegistry.getInstance().cloneModel('rock_large_a') || ModelRegistry.getInstance().getRockModel(2);
+      if (r3) {
+        r3.scale.set(2.1, 1.3, 1.8);
+        r3.position.set(0, 8.5, -h * 0.15);
+        r3.rotation.set(0.35, 1.2, 0.2);
+        group.add(r3);
+      }
+      const r4 = ModelRegistry.getInstance().cloneModel('rock_small_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (r4) {
+        r4.scale.set(1.6, 1.6, 1.6);
+        r4.position.set(-w * 0.35, 0, h * 0.25);
+        group.add(r4);
+      }
+      const r5 = ModelRegistry.getInstance().cloneModel('rock_small_b') || ModelRegistry.getInstance().getRockModel(1);
+      if (r5) {
+        r5.scale.set(1.8, 1.8, 1.8);
+        r5.position.set(w * 0.32, 0, h * 0.28);
+        group.add(r5);
+      }
 
-      // Dark Cave Mouth
-      const mouthGeo = new THREE.CircleGeometry(6, 12);
-      const darkMat = new THREE.MeshBasicMaterial({ color: 0x030712 });
-      const mouth = new THREE.Mesh(mouthGeo, darkMat);
-      mouth.position.set(0, 4, h * 0.35);
-      group.add(mouth);
+      // Dark Cave Interior Abyss Cavity
+      const interiorMat = new THREE.MeshBasicMaterial({ color: 0x050404 });
+      const caveInterior = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 8.0, 10, 8), interiorMat);
+      caveInterior.position.set(0, 5, -h * 0.12);
+      caveInterior.rotation.x = Math.PI / 2;
+      group.add(caveInterior);
 
-      // Fresh-Kill Bone Pile strewn at the entrance
-      const boneMat = new THREE.MeshStandardMaterial({ color: 0xe7e5e4, roughness: 0.85 });
-      for (let bIdx = 0; bIdx < 6; bIdx++) {
-        const ang = (bIdx / 6) * Math.PI - Math.PI / 2;
-        const bx = Math.sin(ang) * 5.5;
-        const bz = h * 0.35 + 2.2 + Math.abs(Math.cos(ang)) * 2;
-        const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 3.2, 5), boneMat);
-        bone.position.set(bx, 0.45, bz);
-        bone.rotation.z = Math.PI / 2 + Math.sin(bIdx * 2.3) * 0.5;
-        bone.rotation.y = Math.cos(bIdx * 1.7) * 0.8;
+      // Glowing Amber Predator Eyes in the dark cavity
+      const eyesMat = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        emissive: 0xd97706,
+        emissiveIntensity: 2.5
+      });
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.35, 4, 4), eyesMat);
+      eyeL.position.set(-1.1, 4.2, -h * 0.05);
+      group.add(eyeL);
+      const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.35, 4, 4), eyesMat);
+      eyeR.position.set(1.1, 4.2, -h * 0.05);
+      group.add(eyeR);
+
+      // Gnarled Dead Tree root arching over the cave
+      const deadTree = ModelRegistry.getInstance().cloneModel('tree_dead_large');
+      if (deadTree) {
+        deadTree.scale.set(1.2, 1.2, 1.2);
+        deadTree.position.set(-w * 0.22, 1.0, -h * 0.25);
+        deadTree.rotation.y = 0.8;
+        deadTree.rotation.z = -0.15;
+        group.add(deadTree);
+      }
+
+      // Fresh-Kill Bone Pile & Skulls
+      const skull = ModelRegistry.getInstance().cloneModel('skull');
+      if (skull) {
+        skull.scale.set(1.4, 1.4, 1.4);
+        skull.position.set(-3.2, 0.5, h * 0.22);
+        skull.rotation.set(0.2, 0.5, -0.3);
+        group.add(skull);
+      }
+      const skullPost = ModelRegistry.getInstance().cloneModel('post_skull');
+      if (skullPost) {
+        skullPost.scale.set(1.2, 1.2, 1.2);
+        skullPost.position.set(w * 0.38, 0, -h * 0.2);
+        group.add(skullPost);
+      }
+
+      // Strewn Rib Bones
+      const boneMat = new THREE.MeshStandardMaterial({ color: 0xdedbd2, roughness: 0.75 });
+      for (let bIdx = 0; bIdx < 5; bIdx++) {
+        const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.8, 4), boneMat);
+        const bx = -2.5 + bIdx * 1.3;
+        const bz = h * 0.18 + Math.sin(bIdx * 1.5) * 2.2;
+        bone.position.set(bx, 0.3, bz);
+        bone.rotation.set(Math.PI / 2, 0.4 * bIdx, 0.3);
         group.add(bone);
       }
-      // Gnawed Skull by the threshold
-      const gnawSkull = new THREE.Mesh(new THREE.SphereGeometry(1.15, 7, 7), boneMat);
-      gnawSkull.scale.set(1.1, 0.8, 1);
-      gnawSkull.position.set(-3.4, 0.9, h * 0.35 + 3.4);
-      group.add(gnawSkull);
 
-      // Ring of weathered Boulders framing the den
-      const boulderMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 1.0 });
-      for (let bo = 0; bo < 6; bo++) {
-        const bAng = (bo / 6) * Math.PI * 2 + 0.55;
-        if (Math.sin(bAng) > 0.75) continue; // keep the mouth clear
-        const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(2.2 + (bo % 3) * 0.6, 0), boulderMat);
-        boulder.position.set(Math.cos(bAng) * w * 0.42, 1.4, Math.sin(bAng) * h * 0.42);
-        boulder.rotation.set(bo * 0.7, bo * 1.3, 0);
-        boulder.castShadow = true;
-        group.add(boulder);
+      // Wild Thorns & Poisonous Mushroom clusters
+      const bush = ModelRegistry.getInstance().cloneModel('bush_detailed') || ModelRegistry.getInstance().getBushOrGrassModel(1);
+      if (bush) {
+        bush.scale.set(1.1, 1.1, 1.1);
+        bush.position.set(w * 0.35, 0.2, 0);
+        group.add(bush);
+      }
+      const shrooms = ModelRegistry.getInstance().cloneModel('mushrooms') || ModelRegistry.getInstance().getFloraModel(3);
+      if (shrooms) {
+        shrooms.scale.set(1.6, 1.6, 1.6);
+        shrooms.position.set(-w * 0.32, 0.2, h * 0.12);
+        group.add(shrooms);
       }
     } else if (lair.type === 'ancient_ruins') {
       // Grand Ancient Ruined Citadel & Mystical Dark Arcane Altar
@@ -6142,118 +6206,189 @@ export class ThreeRenderer {
         group.add(shrooms);
       }
     } else if (lair.type === 'dragon_cavern') {
-      // Volcanic Obsidian Peaks with Magma Crag
-      const volcanoGeo = new THREE.ConeGeometry(w * 0.55, 36, 8);
-      const volcanoMat = new THREE.MeshStandardMaterial({ color: 0x450a0a, roughness: 0.9 });
-      const volcano = new THREE.Mesh(volcanoGeo, volcanoMat);
-      volcano.position.y = 18;
-      volcano.castShadow = true;
-      group.add(volcano);
-
-      const magmaGeo = new THREE.SphereGeometry(7, 8, 8);
-      const magmaMat = new THREE.MeshStandardMaterial({ color: 0xea580c, emissive: 0xf97316, emissiveIntensity: 1.0 });
-      const magma = new THREE.Mesh(magmaGeo, magmaMat);
-      magma.position.y = 32;
-      group.add(magma);
-
-      // Molten Lava Cracks snaking down the slopes
-      const crackMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xdc2626, emissiveIntensity: 1.4 });
-      for (let cr = 0; cr < 5; cr++) {
-        const ang = (cr / 5) * Math.PI * 2;
-        for (let seg = 0; seg < 3; seg++) {
-          const crackSeg = new THREE.Mesh(new THREE.BoxGeometry(0.9 - seg * 0.15, 3.4, 0.55), crackMat);
-          const rad = w * 0.42 - seg * 2.6;
-          crackSeg.position.set(Math.cos(ang) * rad, 27 - seg * 6.5, Math.sin(ang) * rad);
-          crackSeg.rotation.y = ang + Math.PI / 2;
-          crackSeg.rotation.x = Math.sin(seg * 2 + cr) * 0.35;
-          group.add(crackSeg);
-        }
+      // Jagged Volcanic Caldera & Molten Wyrm Peak (Layered organic rock formations)
+      const r1 = ModelRegistry.getInstance().cloneModel('rock_large_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (r1) {
+        r1.scale.set(2.8, 3.2, 2.8);
+        r1.position.set(-w * 0.24, 0, -h * 0.2);
+        r1.rotation.set(0.1, 0.5, 0.2);
+        group.add(r1);
+      }
+      const r2 = ModelRegistry.getInstance().cloneModel('rock_large_b') || ModelRegistry.getInstance().getRockModel(1);
+      if (r2) {
+        r2.scale.set(2.6, 3.4, 2.6);
+        r2.position.set(w * 0.24, 0, -h * 0.18);
+        r2.rotation.set(-0.15, -0.8, -0.1);
+        group.add(r2);
+      }
+      const r3 = ModelRegistry.getInstance().cloneModel('rock_large_a') || ModelRegistry.getInstance().getRockModel(2);
+      if (r3) {
+        r3.scale.set(2.7, 3.0, 2.7);
+        r3.position.set(0, 0, -h * 0.34);
+        group.add(r3);
+      }
+      const r4 = ModelRegistry.getInstance().cloneModel('rock_small_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (r4) {
+        r4.scale.set(2.2, 2.2, 2.2);
+        r4.position.set(-w * 0.38, 0, h * 0.22);
+        group.add(r4);
+      }
+      const r5 = ModelRegistry.getInstance().cloneModel('rock_small_b') || ModelRegistry.getInstance().getRockModel(1);
+      if (r5) {
+        r5.scale.set(2.4, 2.4, 2.4);
+        r5.position.set(w * 0.38, 0, h * 0.24);
+        group.add(r5);
       }
 
-      // Jagged Obsidian Shards jutting from the base
-      const shardMat = new THREE.MeshStandardMaterial({ color: 0x0c0a09, roughness: 0.25, metalness: 0.4 });
-      for (let sh = 0; sh < 6; sh++) {
-        const sAng = (sh / 6) * Math.PI * 2 + 0.3;
-        const shardH = 5 + (sh % 3) * 2.5;
-        const shard = new THREE.Mesh(new THREE.ConeGeometry(1.1, shardH, 5), shardMat);
-        shard.position.set(Math.cos(sAng) * w * 0.52, shardH / 2, Math.sin(sAng) * h * 0.52);
-        shard.rotation.z = Math.sin(sh * 1.9) * 0.28;
-        shard.castShadow = true;
-        group.add(shard);
+      // Molten Glowing Magma Caldera & Crag Maw
+      const magmaMat = new THREE.MeshStandardMaterial({
+        color: 0xea580c,
+        emissive: 0xf97316,
+        emissiveIntensity: 2.8,
+        roughness: 0.2
+      });
+      const magmaPool = new THREE.Mesh(new THREE.CylinderGeometry(8, 9, 3, 10), magmaMat);
+      magmaPool.position.set(0, 1.5, 0);
+      group.add(magmaPool);
+
+      // Glowing lava fissures extending outward
+      const fissureMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xdc2626, emissiveIntensity: 2.2 });
+      for (let cr = 0; cr < 6; cr++) {
+        const ang = (cr / 6) * Math.PI * 2;
+        const fissure = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 8), fissureMat);
+        fissure.position.set(Math.cos(ang) * (w * 0.32), 0.3, Math.sin(ang) * (h * 0.32));
+        fissure.rotation.y = ang + Math.PI / 2;
+        group.add(fissure);
       }
 
-      // Eternal Sulfurous Smoke Plume from the crater
-      const craterSmoke = this.createSmokeEmitter(0, 34, 0, true, 4);
+      // Dragon Hoard Gold Piles
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.9, roughness: 0.2 });
+      for (let g = 0; g < 4; g++) {
+        const ang = (g / 4) * Math.PI * 2 + 0.4;
+        const goldPile = new THREE.Mesh(new THREE.DodecahedronGeometry(1.8, 0), goldMat);
+        goldPile.position.set(Math.cos(ang) * 9, 0.8, Math.sin(ang) * 9);
+        group.add(goldPile);
+      }
+
+      const deadTree = ModelRegistry.getInstance().cloneModel('tree_dead_large');
+      if (deadTree) {
+        deadTree.scale.set(1.3, 1.3, 1.3);
+        deadTree.position.set(w * 0.36, 0.2, -h * 0.32);
+        group.add(deadTree);
+      }
+
+      const skullPost = ModelRegistry.getInstance().cloneModel('post_skull');
+      if (skullPost) {
+        skullPost.scale.set(1.5, 1.5, 1.5);
+        skullPost.position.set(-w * 0.36, 0.2, h * 0.32);
+        group.add(skullPost);
+      }
+
+      // Continuous Sulfurous Smoke Emitter
+      const craterSmoke = this.createSmokeEmitter(0, 18, -h * 0.15, true, 5);
       group.add(craterSmoke);
     } else if (lair.type === 'harpy_roost') {
-      // Gnarled Dead Tree with cliff-top nest
-      const barkMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 1.0 });
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 2.2, 26, 7), barkMat);
-      trunk.position.y = 13;
-      trunk.rotation.z = Math.sin(w) * 0.06;
-      trunk.castShadow = true;
-      group.add(trunk);
-
-      for (let br = 0; br < 5; br++) {
-        const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.6, 9 - (br % 3) * 1.8, 5), barkMat);
-        const bAng = (br / 5) * Math.PI * 2 + 0.4;
-        branch.position.set(Math.cos(bAng) * 3.4, 20 - (br % 3) * 3.2, Math.sin(bAng) * 3.4);
-        branch.rotation.z = Math.cos(bAng) * 0.85;
-        branch.rotation.x = -Math.sin(bAng) * 0.85;
-        branch.castShadow = true;
-        group.add(branch);
+      // Jagged Cliff Pinnacle with Deadwood Tree Roost & Talon Nest
+      const r1 = ModelRegistry.getInstance().cloneModel('rock_large_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (r1) {
+        r1.scale.set(2.2, 2.8, 2.2);
+        r1.position.set(0, 0, 0);
+        group.add(r1);
+      }
+      const r2 = ModelRegistry.getInstance().cloneModel('rock_large_b') || ModelRegistry.getInstance().getRockModel(1);
+      if (r2) {
+        r2.scale.set(1.8, 2.2, 1.8);
+        r2.position.set(-w * 0.22, 0, h * 0.15);
+        group.add(r2);
+      }
+      const r3 = ModelRegistry.getInstance().cloneModel('rock_small_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (r3) {
+        r3.scale.set(1.8, 1.8, 1.8);
+        r3.position.set(w * 0.25, 0, -h * 0.18);
+        group.add(r3);
       }
 
-      // Twiggy nest cradling the summit
-      const nestMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 1.0 });
-      const nest = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 3.4, 2.2, 8), nestMat);
-      nest.position.y = 26.4;
+      // Dead Twisted Tree atop the peak
+      const deadTree = ModelRegistry.getInstance().cloneModel('tree_dead_large');
+      if (deadTree) {
+        deadTree.scale.set(1.5, 1.6, 1.5);
+        deadTree.position.set(0, 10, 0);
+        group.add(deadTree);
+      }
+
+      // Woven Talon Nest with skull trophies & bones
+      const nestMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 1.0 });
+      const nest = new THREE.Mesh(new THREE.TorusGeometry(4.2, 1.2, 6, 10), nestMat);
+      nest.rotation.x = Math.PI / 2;
+      nest.position.set(0, 24, 0);
       nest.castShadow = true;
       group.add(nest);
 
-      // Scattered bone pickings from unfortunate travelers
-      const boneMat = new THREE.MeshStandardMaterial({ color: 0xfefce8, roughness: 0.5 });
-      for (const side of [-1, 1]) {
-        const bone = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 2.2, 4, 6), boneMat);
-        bone.position.set(side * 2.6, 27.8, side * 0.8);
-        bone.rotation.z = Math.PI / 2.15;
-        group.add(bone);
+      // Skull in the nest
+      const skull = ModelRegistry.getInstance().cloneModel('skull');
+      if (skull) {
+        skull.scale.set(1.2, 1.2, 1.2);
+        skull.position.set(1.2, 24.8, 0.8);
+        group.add(skull);
+      }
+
+      // Red war ribbon banner
+      const redFlag = ModelRegistry.getInstance().cloneModel('flag_red');
+      if (redFlag) {
+        redFlag.scale.set(1.3, 1.3, 1.3);
+        redFlag.position.set(-w * 0.3, 0.2, h * 0.25);
+        group.add(redFlag);
       }
     } else if (lair.type === 'troll_bridge') {
-      // Ancient Stone Arch Bridge — tolls extracted at club-point
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95 });
-      const mossStone = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 1.0 });
-
-      // Abutments
-      for (const side of [-1, 1]) {
-        const pier = new THREE.Mesh(new THREE.BoxGeometry(4.2, 10, w * 0.85), stoneMat);
-        pier.position.set(side * w * 0.38, 5, 0);
-        pier.castShadow = true;
-        group.add(pier);
+      // Ancient Mossy Bridge Encampment with boulders, toll totem & fire
+      const r1 = ModelRegistry.getInstance().cloneModel('rock_large_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (r1) {
+        r1.scale.set(1.8, 1.6, 1.8);
+        r1.position.set(-w * 0.35, 0, 0);
+        group.add(r1);
+      }
+      const r2 = ModelRegistry.getInstance().cloneModel('rock_large_b') || ModelRegistry.getInstance().getRockModel(1);
+      if (r2) {
+        r2.scale.set(1.8, 1.6, 1.8);
+        r2.position.set(w * 0.35, 0, 0);
+        group.add(r2);
       }
 
-      // Arched deck segments
-      for (let s = -2; s <= 2; s++) {
-        const seg = new THREE.Mesh(new THREE.BoxGeometry(w * 0.19, 2.2, w * 0.72), stoneMat);
-        seg.position.set(s * w * 0.185, 10.4 - Math.abs(s) * Math.abs(s) * 0.55, 0);
-        seg.rotation.z = -s * 0.22;
-        seg.castShadow = true;
-        group.add(seg);
+      // Stone Bridge Arch Lair Structure
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.9 });
+      const arch = new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, 5, h * 0.5), stoneMat);
+      arch.position.set(0, 6, 0);
+      arch.castShadow = true;
+      group.add(arch);
 
-        if (Math.abs(s) < 2) {
-          const moss = new THREE.Mesh(new THREE.BoxGeometry(w * 0.14, 0.7, w * 0.5), mossStone);
-          moss.position.set(s * w * 0.185, 11.7 - Math.abs(s) * Math.abs(s) * 0.55, 0);
-          group.add(moss);
-        }
+      const weaponRack = ModelRegistry.getInstance().cloneModel('weaponrack');
+      if (weaponRack) {
+        weaponRack.scale.set(1.3, 1.3, 1.3);
+        weaponRack.position.set(w * 0.28, 0.2, h * 0.28);
+        group.add(weaponRack);
       }
 
-      // Toll-keeper's campfire under the arch
-      const fireRing = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.35, 5, 9), stoneMat);
-      fireRing.rotation.x = Math.PI / 2;
-      fireRing.position.set(0, 0.6, h * 0.28);
-      group.add(fireRing);
+      const skullPost = ModelRegistry.getInstance().cloneModel('post_skull');
+      if (skullPost) {
+        skullPost.scale.set(1.4, 1.4, 1.4);
+        skullPost.position.set(-w * 0.32, 0.2, h * 0.28);
+        group.add(skullPost);
+      }
+
+      // Troll Firepit
+      const fireRingMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 1.0 });
+      for (let fr = 0; fr < 6; fr++) {
+        const ang = (fr / 6) * Math.PI * 2;
+        const ringStone = new THREE.Mesh(new THREE.DodecahedronGeometry(0.8, 0), fireRingMat);
+        ringStone.position.set(Math.cos(ang) * 3.2, 0.5, h * 0.22 + Math.sin(ang) * 3.2);
+        group.add(ringStone);
+      }
+      const emberMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xdc2626, emissiveIntensity: 2.0 });
+      const ember = new THREE.Mesh(new THREE.SphereGeometry(0.9, 6, 6), emberMat);
+      ember.position.set(0, 0.6, h * 0.22);
+      group.add(ember);
     } else if (lair.type === 'dark_castle') {
-      // Authentic Dark Sovereign Fortress Keep
+      // Authentic Dark Sovereign Gothic Keep
       const gltfCastle = ModelRegistry.getInstance().cloneModel('dark_castle_keep');
       if (gltfCastle) {
         const box = new THREE.Box3().setFromObject(gltfCastle);
@@ -6267,27 +6402,33 @@ export class ThreeRenderer {
         const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
 
         gltfCastle.scale.set(scale, scale, scale);
-        gltfCastle.position.set(-center.x * scale, -box.min.y * scale + 0.2, -center.z * scale);
+        gltfCastle.position.set(-center.x * scale, -box.min.y * scale + 0.1, -center.z * scale);
         group.add(gltfCastle);
-      } else {
-        const castleMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.75, metalness: 0.25 });
-        const keep = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 30, h * 0.42), castleMat);
-        keep.position.y = 15;
-        keep.castShadow = true;
-        group.add(keep);
       }
 
       const redFlag = ModelRegistry.getInstance().cloneModel('flag_red');
       if (redFlag) {
         redFlag.scale.set(1.6, 1.6, 1.6);
-        redFlag.position.set(w * 0.36, 0.2, h * 0.36);
+        redFlag.position.set(w * 0.38, 0.2, h * 0.38);
         group.add(redFlag);
       }
       const skullPost = ModelRegistry.getInstance().cloneModel('post_skull');
       if (skullPost) {
         skullPost.scale.set(1.5, 1.5, 1.5);
-        skullPost.position.set(-w * 0.36, 0.2, h * 0.36);
+        skullPost.position.set(-w * 0.38, 0.2, h * 0.38);
         group.add(skullPost);
+      }
+      const deadTree = ModelRegistry.getInstance().cloneModel('tree_dead_large');
+      if (deadTree) {
+        deadTree.scale.set(1.3, 1.3, 1.3);
+        deadTree.position.set(w * 0.36, 0.2, -h * 0.32);
+        group.add(deadTree);
+      }
+      const tomb = ModelRegistry.getInstance().cloneModel('gravestone');
+      if (tomb) {
+        tomb.scale.set(1.4, 1.4, 1.4);
+        tomb.position.set(-w * 0.34, 0.2, -h * 0.28);
+        group.add(tomb);
       }
     } else {
       const rockGeo = new THREE.DodecahedronGeometry(w * 0.35, 0);

@@ -25,7 +25,8 @@ import {
   Info,
   Save,
   FolderOpen,
-  Settings
+  Settings,
+  Check
 } from 'lucide-react';
 
 interface GameHUDProps {
@@ -59,6 +60,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLog, setShowLog] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const handleQuickSave = () => {
+    if (state.isGameOver) return;
+    onSaveGame();
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2400);
+  };
 
   const toggleSound = () => {
     const next = !soundEnabled;
@@ -185,18 +194,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Save / Load Royal Archives */}
           <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-800">
             <button
-              onClick={() => {
-                if (onOpenSaveModal) {
-                  onOpenSaveModal();
-                } else {
-                  onSaveGame();
-                }
-              }}
+              onClick={handleQuickSave}
               disabled={state.isGameOver}
-              title="Save Game Archive (Ctrl+S)"
-              className="p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 text-slate-300 hover:text-amber-400"
+              title={justSaved ? 'Kingdom Saved! ✓' : 'Quick Save (Ctrl+S)'}
+              className={`p-1.5 rounded transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                justSaved
+                  ? 'bg-emerald-950/90 border border-emerald-500 text-emerald-300 scale-105'
+                  : 'hover:bg-slate-800 text-slate-300 hover:text-amber-400'
+              }`}
             >
-              <Save className="w-4 h-4" />
+              {justSaved ? <Check className="w-4 h-4 text-emerald-400 animate-pulse" /> : <Save className="w-4 h-4" />}
             </button>
             <button
               onClick={() => {
@@ -209,8 +216,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 }
               }}
               title={saveMeta
-                ? `Load Game Archive — ${saveMeta.scenarioName}, Day ${saveMeta.day}, ${Math.round(saveMeta.treasuryGold)}g`
-                : 'Load Game Archive (Ctrl+L)'}
+                ? `Royal Archives — ${saveMeta.scenarioName}, Day ${saveMeta.day}, ${Math.round(saveMeta.treasuryGold)}g (Ctrl+L)`
+                : 'Royal Archives / Load Game (Ctrl+L)'}
               className="p-1.5 rounded transition-colors hover:bg-slate-800 text-slate-300 hover:text-amber-400"
             >
               <FolderOpen className="w-4 h-4" />

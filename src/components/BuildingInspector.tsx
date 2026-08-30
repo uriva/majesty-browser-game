@@ -12,7 +12,8 @@ import {
   Sparkles, 
   X, 
   Lock, 
-  Users
+  Users,
+  ShieldAlert
 } from 'lucide-react';
 
 interface BuildingInspectorProps {
@@ -153,163 +154,191 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
       </div>
 
       {/* Hero Recruitment */}
-      {bDef.recruits && bDef.recruits.length > 0 && (
-        <div className="mb-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <UserPlus className="w-3.5 h-3.5" /> Recruit Heroes
-            </span>
-            <span className="text-[11px] text-slate-400 font-normal">
-              {livingHeroCount} / {building.heroSlots} Enlisted
-              {building.trainingQueue && building.trainingQueue.length > 0 && (
-                <span className="text-sky-400 font-bold ml-1">
-                  ({building.trainingQueue.length} in training)
-                </span>
-              )}
-            </span>
-          </div>
+      {bDef.recruits && bDef.recruits.length > 0 && (() => {
+        const maxHeroSlots = building.heroSlots || bDef.maxHeroSlots || 4;
+        const totalQueuedAndRecruited = livingHeroCount + (building.trainingQueue?.length || 0);
+        const isGuildFull = totalQueuedAndRecruited >= maxHeroSlots;
 
-          {/* Active Living Guild Heroes Roster */}
-          {livingGuildHeroes.length > 0 && (
-            <div className="mb-3 space-y-1.5 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Users className="w-3 h-3 text-amber-400" /> Active Guild Members ({livingGuildHeroes.length}):
-              </div>
-              <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
-                {livingGuildHeroes.map((h) => {
-                  const classDef = HERO_CLASS_DEFINITIONS[h.heroClass];
-                  const hpPct = Math.round((h.hp / (h.maxHp || 100)) * 100);
-  const totalActiveHeroes = heroesCount ?? heroes.filter(h => !h.isDead).length;
-
-  return (
-                    <button
-                      key={h.id}
-                      onClick={() => onSelectHero && onSelectHero(h)}
-                      className="w-full flex items-center justify-between p-1.5 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 hover:border-amber-500/50 text-left transition-colors group"
-                      title="Click to track hero"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-5 h-5 rounded text-[10px] font-bold font-serif flex items-center justify-center text-white"
-                          style={{ backgroundColor: classDef.accentColor }}
-                        >
-                          {h.heroClass[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-slate-200 group-hover:text-amber-300 transition-colors">
-                            {h.name} <span className="text-[10px] text-amber-400 font-mono">Lvl {h.level}</span>
-                          </div>
-                          <div className="text-[9px] text-slate-400 truncate max-w-[130px]">
-                            {h.state.replace('_', ' ')}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] font-mono text-emerald-400 font-bold">
-                          {Math.round(h.hp)} HP
-                        </div>
-                        <div className="w-12 bg-slate-900 rounded-full h-1 overflow-hidden mt-0.5 border border-slate-800">
-                          <div
-                            className="bg-emerald-500 h-full"
-                            style={{ width: `${hpPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Active Training Progress Card */}
-          {building.trainingQueue && building.trainingQueue.length > 0 && (
-            <div
-              key={building.trainingQueue[0].id || `${building.trainingQueue[0].heroClass}_${building.trainingQueue.length}`}
-              className="bg-sky-950/40 border border-sky-700/60 rounded-lg p-2.5 mb-2.5"
-            >
-              <div className="flex justify-between items-center text-xs mb-1">
-                <span className="text-sky-300 font-bold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
-                  Training {HERO_CLASS_DEFINITIONS[building.trainingQueue[0].heroClass].name}...
+        return (
+          <div className="mb-4">
+            <div className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <UserPlus className="w-3.5 h-3.5" /> Recruit Heroes
+              </span>
+              {isGuildFull ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Guild Full ({livingHeroCount}/{maxHeroSlots})
                 </span>
-                <span className="font-mono text-[11px] text-sky-400">
-                  {Math.round(building.trainingQueue[0].progress)}%
-                </span>
-              </div>
-              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-sky-950">
-                <div
-                  className="bg-gradient-to-r from-sky-500 to-cyan-400 h-full"
-                  style={{ width: `${Math.min(100, Math.max(0, building.trainingQueue[0].progress))}%` }}
-                />
-              </div>
-              {building.trainingQueue.length > 1 && (
-                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400">
-                  <span>Queued:</span>
-                  {building.trainingQueue.slice(1).map((q, idx) => (
-                    <span key={q.id || idx} className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 text-sky-300 font-mono">
-                      {HERO_CLASS_DEFINITIONS[q.heroClass].name}
+              ) : (
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {livingHeroCount} / {maxHeroSlots} Enlisted
+                  {building.trainingQueue && building.trainingQueue.length > 0 && (
+                    <span className="text-sky-400 font-bold ml-1">
+                      ({building.trainingQueue.length} in training)
                     </span>
-                  ))}
-                </div>
+                  )}
+                </span>
               )}
             </div>
-          )}
 
-          <div className="space-y-2">
-            {bDef.recruits.map((heroClass) => {
-              const classDef = HERO_CLASS_DEFINITIONS[heroClass];
-              const cost = bDef.heroRecruitCost?.[heroClass] || 150;
-              const canAfford = treasuryGold >= cost;
-              const totalQueuedAndRecruited = livingHeroCount + (building.trainingQueue?.length || 0);
-              const isFull = totalQueuedAndRecruited >= building.heroSlots;
-              const isShaking = shakingId === `recruit_${heroClass}`;
+            {/* Active Living Guild Heroes Roster */}
+            {livingGuildHeroes.length > 0 && (
+              <div className="mb-3 space-y-1.5 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Users className="w-3 h-3 text-amber-400" /> Active Guild Members ({livingGuildHeroes.length}/{maxHeroSlots}):
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                  {livingGuildHeroes.map((h) => {
+                    const classDef = HERO_CLASS_DEFINITIONS[h.heroClass];
+                    const hpPct = Math.round((h.hp / (h.maxHp || 100)) * 100);
 
-              return (
-                <button
-                  key={heroClass}
-                  disabled={isFull}
-                  onClick={() => handleRecruitClick(heroClass, cost, isFull)}
-                  className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
-                    isShaking
-                      ? 'animate-error-shake'
-                      : isFull
-                      ? 'bg-slate-900/50 border-slate-800 text-slate-500 cursor-not-allowed'
-                      : canAfford
-                      ? 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-700/60 text-amber-100 hover:border-amber-500 shadow-sm active:scale-95'
-                      : 'bg-slate-900/60 border-rose-900/50 text-slate-300 hover:bg-rose-950/40 hover:border-rose-700/80 active:scale-95'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div 
-                      className="w-7 h-7 rounded border border-amber-400/50 flex items-center justify-center font-bold text-xs font-serif"
-                      style={{ backgroundColor: classDef.accentColor, color: '#fff' }}
-                    >
-                      {heroClass[0].toUpperCase()}
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => onSelectHero && onSelectHero(h)}
+                        className="w-full flex items-center justify-between p-1.5 rounded bg-slate-950/70 hover:bg-slate-800 border border-slate-800/80 hover:border-amber-500/50 text-left transition-colors group"
+                        title="Click to track hero"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-5 h-5 rounded text-[10px] font-bold font-serif flex items-center justify-center text-white"
+                            style={{ backgroundColor: classDef.accentColor }}
+                          >
+                            {h.heroClass[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-xs font-semibold text-slate-200 group-hover:text-amber-300 transition-colors">
+                              {h.name} <span className="text-[10px] text-amber-400 font-mono">Lvl {h.level}</span>
+                            </div>
+                            <div className="text-[9px] text-slate-400 truncate max-w-[130px]">
+                              {h.state.replace('_', ' ')}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] font-mono text-emerald-400 font-bold">
+                            {Math.round(h.hp)} HP
+                          </div>
+                          <div className="w-12 bg-slate-900 rounded-full h-1 overflow-hidden mt-0.5 border border-slate-800">
+                            <div
+                              className="bg-emerald-500 h-full"
+                              style={{ width: `${hpPct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Guild Full Warning Banner */}
+            {isGuildFull && (
+              <div className="mb-2.5 p-2 rounded-lg bg-amber-950/40 border border-amber-700/50 flex items-center gap-2 text-xs text-amber-200">
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="text-[11px] leading-tight">
+                  <span className="font-bold text-amber-300">Guild Capacity Reached ({livingHeroCount}/{maxHeroSlots}).</span>
+                  <span className="text-slate-400 block text-[10px] mt-0.5">All quarters are occupied. Build an additional guild to recruit more heroes.</span>
+                </div>
+              </div>
+            )}
+
+            {/* Active Training Progress Card */}
+            {building.trainingQueue && building.trainingQueue.length > 0 && (
+              <div
+                key={building.trainingQueue[0].id || `${building.trainingQueue[0].heroClass}_${building.trainingQueue.length}`}
+                className="bg-sky-950/40 border border-sky-700/60 rounded-lg p-2.5 mb-2.5"
+              >
+                <div className="flex justify-between items-center text-xs mb-1">
+                  <span className="text-sky-300 font-bold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                    Training {HERO_CLASS_DEFINITIONS[building.trainingQueue[0].heroClass].name}...
+                  </span>
+                  <span className="font-mono text-[11px] text-sky-400">
+                    {Math.round(building.trainingQueue[0].progress)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-sky-950">
+                  <div
+                    className="bg-gradient-to-r from-sky-500 to-cyan-400 h-full"
+                    style={{ width: `${Math.min(100, Math.max(0, building.trainingQueue[0].progress))}%` }}
+                  />
+                </div>
+                {building.trainingQueue.length > 1 && (
+                  <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-400">
+                    <span>Queued:</span>
+                    {building.trainingQueue.slice(1).map((q, idx) => (
+                      <span key={q.id || idx} className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 text-sky-300 font-mono">
+                        {HERO_CLASS_DEFINITIONS[q.heroClass].name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {bDef.recruits.map((heroClass) => {
+                const classDef = HERO_CLASS_DEFINITIONS[heroClass];
+                const cost = bDef.heroRecruitCost?.[heroClass] || 150;
+                const canAfford = treasuryGold >= cost;
+                const isShaking = shakingId === `recruit_${heroClass}`;
+
+                return (
+                  <button
+                    key={heroClass}
+                    disabled={isGuildFull}
+                    onClick={() => handleRecruitClick(heroClass, cost, isGuildFull)}
+                    className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${
+                      isShaking
+                        ? 'animate-error-shake'
+                        : isGuildFull
+                        ? 'bg-slate-950/80 border-slate-800/80 text-slate-500 cursor-not-allowed opacity-60'
+                        : canAfford
+                        ? 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-700/60 text-amber-100 hover:border-amber-500 shadow-sm active:scale-95 cursor-pointer'
+                        : 'bg-slate-900/60 border-rose-900/50 text-slate-300 hover:bg-rose-950/40 hover:border-rose-700/80 active:scale-95 cursor-pointer'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div 
+                        className={`w-7 h-7 rounded border flex items-center justify-center font-bold text-xs font-serif ${
+                          isGuildFull ? 'border-slate-700 opacity-60' : 'border-amber-400/50'
+                        }`}
+                        style={{ backgroundColor: isGuildFull ? '#334155' : classDef.accentColor, color: '#fff' }}
+                      >
+                        {heroClass[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <div className={`font-semibold text-xs ${isGuildFull ? 'text-slate-400' : 'text-slate-200'}`}>
+                          {classDef.name}
+                          <span className="text-[10px] text-slate-400 font-normal ml-1.5">
+                            ({classDef.trainingTime}s training)
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {isGuildFull ? `Cannot enlist — guild capacity full (${livingHeroCount}/${maxHeroSlots})` : classDef.description}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-semibold text-xs text-slate-200">
-                        {classDef.name}
-                        <span className="text-[10px] text-slate-400 font-normal ml-1.5">
-                          ({classDef.trainingTime}s training)
+                    <div className="text-right">
+                      {isGuildFull ? (
+                        <span className="px-2 py-1 rounded bg-slate-900 border border-slate-700/80 text-slate-400 font-mono font-bold text-[10px] uppercase tracking-wider">
+                          Full
                         </span>
-                      </div>
-                      <div className="text-[10px] text-slate-400">
-                        {classDef.description}
-                      </div>
+                      ) : (
+                        <div className={`text-xs font-bold font-mono ${canAfford ? 'text-amber-300' : 'text-rose-400'}`}>
+                          {cost}g
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-xs font-bold font-mono ${canAfford ? 'text-amber-300' : 'text-rose-400'}`}>
-                      {cost}g
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Researched & Available Upgrades */}
       {bDef.upgrades && bDef.upgrades.length > 0 && (

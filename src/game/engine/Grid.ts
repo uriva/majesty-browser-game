@@ -461,10 +461,10 @@ export class GridManager {
         const bottomDist = (by + bh + unitRadius) - entity.y;
 
         const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
-        if (minDist === leftDist) entity.x = bx - unitRadius - 1.0;
-        else if (minDist === rightDist) entity.x = bx + bw + unitRadius + 1.0;
-        else if (minDist === topDist) entity.y = by - unitRadius - 1.0;
-        else if (minDist === bottomDist) entity.y = by + bh + unitRadius + 1.0;
+        if (minDist === leftDist) entity.x = bx - unitRadius - 1.5;
+        else if (minDist === rightDist) entity.x = bx + bw + unitRadius + 1.5;
+        else if (minDist === topDist) entity.y = by - unitRadius - 1.5;
+        else if (minDist === bottomDist) entity.y = by + bh + unitRadius + 1.5;
       }
     }
 
@@ -488,10 +488,10 @@ export class GridManager {
         const bottomDist = (ly + lh + unitRadius) - entity.y;
 
         const minDist = Math.min(leftDist, rightDist, topDist, bottomDist);
-        if (minDist === leftDist) entity.x = lx - unitRadius - 1.0;
-        else if (minDist === rightDist) entity.x = lx + lw + unitRadius + 1.0;
-        else if (minDist === topDist) entity.y = ly - unitRadius - 1.0;
-        else if (minDist === bottomDist) entity.y = ly + lh + unitRadius + 1.0;
+        if (minDist === leftDist) entity.x = lx - unitRadius - 1.5;
+        else if (minDist === rightDist) entity.x = lx + lw + unitRadius + 1.5;
+        else if (minDist === topDist) entity.y = ly - unitRadius - 1.5;
+        else if (minDist === bottomDist) entity.y = ly + lh + unitRadius + 1.5;
       }
     }
   }
@@ -840,9 +840,10 @@ export class GridManager {
       return true;
     }
 
-    // 1. Direct line-of-sight shortcut: only switch if target is close or clear of any corners
+    // 1. Direct line-of-sight shortcut: only use direct movement if line of sight is strictly unobstructed
     const hasActiveMultiPath = !!(entity.path && entity.path.length > 1);
-    const canDirectMove = distToTarget < 30 || (!hasActiveMultiPath && this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId, 10.5));
+    const hasClearLOS = this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId, 8.5);
+    const canDirectMove = (distToTarget < 12 && hasClearLOS) || (!hasActiveMultiPath && hasClearLOS);
 
     if (canDirectMove) {
       entity.path = undefined;
@@ -861,6 +862,26 @@ export class GridManager {
         entity.x += vx;
       } else if (this.isWalkablePosition(entity.x, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
         entity.y += vy;
+      } else {
+        // Multi-angle deflection when brushing a corner
+        const angles = [0.35, -0.35, 0.70, -0.70, 1.05, -1.05, 1.40, -1.40];
+        let deflected = false;
+        for (const ang of angles) {
+          const cosA = Math.cos(ang);
+          const sinA = Math.sin(ang);
+          const rvx = (vx * cosA - vy * sinA) * 0.9;
+          const rvy = (vx * sinA + vy * cosA) * 0.9;
+          if (this.isWalkablePosition(entity.x + rvx, entity.y + rvy, buildings, lairs, targetBuildingId, 7)) {
+            entity.x += rvx;
+            entity.y += rvy;
+            deflected = true;
+            break;
+          }
+        }
+        if (!deflected) {
+          // Re-route with A* path on next frame
+          entity.pathTargetKey = undefined;
+        }
       }
 
       this.resolveCollision(entity, buildings, lairs, targetBuildingId, 7);
@@ -923,14 +944,14 @@ export class GridManager {
         } else if (this.isWalkablePosition(entity.x, entity.y + vy, buildings, lairs, targetBuildingId, 7)) {
           entity.y += vy;
         } else {
-          // Multi-angle deflection checks (rotate move vector by ±30°, ±50°, ±70°) to smoothly glide around corners
-          const angles = [0.52, -0.52, 0.87, -0.87, 1.22, -1.22];
+          // Multi-angle deflection checks to smoothly glide around building corners and doorways
+          const angles = [0.35, -0.35, 0.70, -0.70, 1.05, -1.05, 1.40, -1.40];
           let deflected = false;
           for (const ang of angles) {
             const cosA = Math.cos(ang);
             const sinA = Math.sin(ang);
-            const rvx = (vx * cosA - vy * sinA) * 0.88;
-            const rvy = (vx * sinA + vy * cosA) * 0.88;
+            const rvx = (vx * cosA - vy * sinA) * 0.9;
+            const rvy = (vx * sinA + vy * cosA) * 0.9;
             if (this.isWalkablePosition(entity.x + rvx, entity.y + rvy, buildings, lairs, targetBuildingId, 7)) {
               entity.x += rvx;
               entity.y += rvy;

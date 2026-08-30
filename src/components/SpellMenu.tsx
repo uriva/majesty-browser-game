@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { SovereignSpell } from '../game/types';
-import { Zap, HeartPulse, Eye, Swords, Coins, X } from 'lucide-react';
+import { Zap, HeartPulse, Eye, Swords, Coins, X, Sparkles, Crosshair } from 'lucide-react';
 import { audioManager } from '../game/engine/Audio';
 
 interface SpellMenuProps {
@@ -11,6 +11,7 @@ interface SpellMenuProps {
   mana: number;
   activeSpellId: string | null;
   onSelectSpell: (spellId: string | null) => void;
+  onCastInstantSpell?: (spellId: string) => void;
 }
 
 export const SpellMenu: React.FC<SpellMenuProps> = ({
@@ -18,7 +19,8 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
   treasuryGold,
   mana,
   activeSpellId,
-  onSelectSpell
+  onSelectSpell,
+  onCastInstantSpell
 }) => {
   const [shakingId, setShakingId] = useState<string | null>(null);
 
@@ -41,6 +43,16 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
       audioManager.playInsufficientGoldSound();
       return;
     }
+
+    // Global / Non-targeted spells trigger immediately on single click
+    if (spell.targetType === 'global') {
+      if (onCastInstantSpell) {
+        onCastInstantSpell(spell.id);
+      }
+      return;
+    }
+
+    // Targeted AOE spells enter placement mode
     audioManager.playClick();
     onSelectSpell(isSelected ? null : spell.id);
   };
@@ -56,7 +68,7 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
             onClick={() => onSelectSpell(null)}
             className="flex items-center gap-1 text-[11px] text-rose-400 hover:text-rose-300 font-semibold px-2 py-0.5 bg-rose-950/50 border border-rose-800/60 rounded"
           >
-            <X className="w-3 h-3" /> Cancel Spell
+            <X className="w-3 h-3" /> Cancel Targeting
           </button>
         )}
       </div>
@@ -68,6 +80,7 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
           const onCooldown = spell.currentCooldown > 0;
           const canAfford = treasuryGold >= spell.goldCost && mana >= spell.manaCost && !onCooldown;
           const isShaking = shakingId === `spell_${spell.id}`;
+          const isInstant = spell.targetType === 'global';
 
           return (
             <button
@@ -86,21 +99,32 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
               {/* Cooldown overlay */}
               {onCooldown && (
                 <div 
-                  className="absolute inset-0 bg-slate-950/80 flex items-center justify-center font-mono font-bold text-xs text-purple-300 z-10"
+                  className="absolute inset-0 bg-slate-950/85 flex items-center justify-center font-mono font-bold text-xs text-purple-300 z-10 backdrop-blur-[1px]"
                 >
                   Cooldown: {Math.ceil(spell.currentCooldown)}s
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded bg-purple-950 border border-purple-700/60 flex items-center justify-center text-purple-300">
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <div className="w-7 h-7 rounded bg-purple-950 border border-purple-700/60 flex items-center justify-center text-purple-300 shrink-0">
                   <Icon className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="font-bold text-xs text-purple-200 leading-tight">
-                    {spell.name}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-bold text-xs text-purple-200 leading-tight">
+                      {spell.name}
+                    </span>
+                    {isInstant ? (
+                      <span className="px-1.5 py-0.2 rounded bg-purple-950/80 border border-purple-600/60 text-purple-300 text-[9px] font-bold flex items-center gap-0.5">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-400" /> Instant
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.2 rounded bg-slate-950/80 border border-slate-700 text-slate-400 text-[9px] flex items-center gap-0.5">
+                        <Crosshair className="w-2.5 h-2.5 text-sky-400" /> Target Area
+                      </span>
+                    )}
                   </div>
-                  <div className="text-[10px] text-slate-400 leading-snug">
+                  <div className="text-[10px] text-slate-400 leading-snug truncate mt-0.5">
                     {spell.description}
                   </div>
                 </div>

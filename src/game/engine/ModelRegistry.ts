@@ -89,8 +89,8 @@ export class ModelRegistry {
       'tree_dead_large': '/models/tree_dead_large.gltf',
       'post_skull': '/models/post_skull.gltf',
       'skull': '/models/skull.gltf',
-      'dark_castle_keep': '/models/building_castle_red.gltf',
-      'dark_tower': '/models/building_tower_B_red.gltf'
+      'dark_castle_keep': '/models/building_church_red.gltf',
+      'dark_tower': '/models/building_tower_B_blue.gltf'
     };
 
     const natureModels: Record<string, string> = {

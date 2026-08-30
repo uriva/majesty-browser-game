@@ -1,0 +1,58 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Rounded Obsidian Shield Background -->
+  <rect width="64" height="64" rx="14" fill="url(#bgGrad)" stroke="#f59e0b" stroke-width="2.5" />
+  
+  <!-- Outer Glow Filter -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1e1b4b" />
+      <stop offset="0.6" stop-color="#0f172a" />
+      <stop offset="1" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="crownGold" x1="32" y1="12" x2="32" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fef08a" />
+      <stop offset="0.3" stop-color="#facc15" />
+      <stop offset="0.75" stop-color="#d97706" />
+      <stop offset="1" stop-color="#78350f" />
+    </linearGradient>
+    <linearGradient id="bandGold" x1="14" y1="46" x2="50" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#92400e" />
+      <stop offset="0.5" stop-color="#f59e0b" />
+      <stop offset="1" stop-color="#92400e" />
+    </linearGradient>
+    <filter id="glow" x="0" y="0" width="64" height="64" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Crown Body -->
+  <g filter="url(#glow)">
+    <path
+      d="M13 47L8 18L21 31L32 12L43 31L56 18L51 47H13Z"
+      fill="url(#crownGold)"
+      stroke="#78350f"
+      stroke-width="1.5"
+      stroke-linejoin="round"
+    />
+    
+    <!-- Crown Spires / Pearl Finials -->
+    <circle cx="8" cy="18" r="3.5" fill="#fef08a" stroke="#ca8a04" stroke-width="1" />
+    <circle cx="32" cy="12" r="4.5" fill="#fef08a" stroke="#ca8a04" stroke-width="1.2" />
+    <circle cx="56" cy="18" r="3.5" fill="#fef08a" stroke="#ca8a04" stroke-width="1" />
+    
+    <!-- Midpoint Jewels -->
+    <circle cx="21" cy="31" r="2.6" fill="#ef4444" stroke="#991b1b" stroke-width="0.8" />
+    <circle cx="43" cy="31" r="2.6" fill="#3b82f6" stroke="#1d4ed8" stroke-width="0.8" />
+
+    <!-- Royal Diadem Base Band -->
+    <rect x="13" y="44" width="38" height="6" rx="2" fill="url(#bandGold)" stroke="#78350f" stroke-width="1" />
+    
+    <!-- Inset Base Gems -->
+    <circle cx="20" cy="47" r="1.6" fill="#ef4444" />
+    <circle cx="26" cy="47" r="1.4" fill="#38bdf8" />
+    <circle cx="32" cy="47" r="2.0" fill="#10b981" />
+    <circle cx="38" cy="47" r="1.4" fill="#38bdf8" />
+    <circle cx="44" cy="47" r="1.6" fill="#ef4444" />
+  </g>
+</svg>

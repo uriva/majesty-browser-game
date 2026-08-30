@@ -795,6 +795,16 @@ export const GameView: React.FC = () => {
                     : null;
                 }
               }}
+              onCastInstantSpell={(spellId) => {
+                if (engineRef.current) {
+                  const palace = engineRef.current.state.buildings.find(b => b.type === 'palace');
+                  const tx = palace ? (palace.x + palace.width / 2) * engineRef.current.state.tileSize : engineRef.current.state.camera.x;
+                  const ty = palace ? (palace.y + palace.height / 2) * engineRef.current.state.tileSize : engineRef.current.state.camera.y;
+                  engineRef.current.castSpell(spellId, tx, ty);
+                  setActiveSpellId(null);
+                  engineRef.current.state.activePlacement = null;
+                }
+              }}
             />
           </div>
         )}
