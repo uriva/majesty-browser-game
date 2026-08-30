@@ -404,6 +404,7 @@ export class ModelRegistry {
     let key: string | null = null;
     switch (monsterType) {
       case 'skeleton':
+      case 'zombie':
         key = 'skeleton_warrior';
         break;
       case 'skeleton_mage':
@@ -417,17 +418,23 @@ export class ModelRegistry {
       case 'goblin_archer':
       case 'goblin_shaman':
       case 'orc':
+      case 'troll':
+      case 'minotaur':
         key = 'orc_raider';
         break;
       case 'werewolf':
       case 'dire_wolf':
+      case 'giant_rat':
         key = 'werewolf';
         break;
       case 'vampire_lord':
+      case 'vampire':
+      case 'harpy':
+      case 'red_dragon':
         key = 'vampire';
         break;
       default:
-        key = null;
+        key = 'orc_raider';
     }
     if (!key) return null;
     return this.createAnimatedCharacter(key);
