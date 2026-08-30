@@ -4037,23 +4037,25 @@ export class ThreeRenderer {
       return group;
     }
 
-    // Try loading the high-quality KayKit 3D GLTF building model from ModelRegistry
-    const gltfBuilding = ModelRegistry.getInstance().getBuildingModel(b.type);
-    if (gltfBuilding) {
-      const box = new THREE.Box3().setFromObject(gltfBuilding);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
+    // Try loading the high-quality KayKit 3D GLTF building model from ModelRegistry (palace uses custom tiered model)
+    if (b.type !== 'palace') {
+      const gltfBuilding = ModelRegistry.getInstance().getBuildingModel(b.type);
+      if (gltfBuilding) {
+        const box = new THREE.Box3().setFromObject(gltfBuilding);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
 
-      const maxDim = Math.max(size.x, size.z);
-      const targetDim = Math.min(w, h) * (b.type === 'palace' ? 1.05 : (isCottage ? 0.85 : 0.95));
-      const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
+        const maxDim = Math.max(size.x, size.z);
+        const targetDim = Math.min(w, h) * (isCottage ? 0.85 : 0.95);
+        const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
 
-      gltfBuilding.scale.set(scale, scale, scale);
-      gltfBuilding.position.set(-center.x * scale, -box.min.y * scale + 0.1, -center.z * scale);
-      group.add(gltfBuilding);
-      return group;
+        gltfBuilding.scale.set(scale, scale, scale);
+        gltfBuilding.position.set(-center.x * scale, -box.min.y * scale + 0.1, -center.z * scale);
+        group.add(gltfBuilding);
+        return group;
+      }
     }
 
     if (b.type === 'palace') {
@@ -4078,12 +4080,12 @@ export class ThreeRenderer {
       const level = b.level || 1;
       const isUpgrading = (b.researchQueue && b.researchQueue.some(r => r.isBuildingUpgrade)) || false;
 
-      // 1. Raised Cobblestone Ground Courtyard Plinth (On the ground level!)
-      const plinthScale = level === 1 ? 0.84 : (level === 2 ? 0.9 : 0.96);
-      const plinthGeo = new THREE.BoxGeometry(w * plinthScale, 2.5, h * plinthScale);
+      // 1. Raised Cobblestone Ground Courtyard Plinth (Scales with level: compact at Lv 1, expanding at Lv 2 & 3)
+      const plinthScale = level === 1 ? 0.70 : (level === 2 ? 0.86 : 0.96);
+      const plinthGeo = new THREE.BoxGeometry(w * plinthScale, 2.0, h * plinthScale);
       const plinthMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.cobbleTexture, roughness: 0.85 });
       const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-      plinth.position.y = 1.25;
+      plinth.position.y = 1.0;
       plinth.receiveShadow = true;
       group.add(plinth);
 
@@ -4091,56 +4093,56 @@ export class ThreeRenderer {
       const courtyardFloorGeo = new THREE.PlaneGeometry(w * plinthScale * 0.95, h * plinthScale * 0.95);
       courtyardFloorGeo.rotateX(-Math.PI / 2);
       const courtyardFloor = new THREE.Mesh(courtyardFloorGeo, plinthMat);
-      courtyardFloor.position.y = 1.3;
+      courtyardFloor.position.y = 1.1;
       courtyardFloor.receiveShadow = true;
       group.add(courtyardFloor);
 
-      // 2. Four Outer Perimeter Curtain Walls (Enclosing the ground courtyard)
-      const wallHeight = level === 1 ? 18 : (level === 2 ? 24 : 28);
-      const wallHalfW = w * 0.38;
-      const wallHalfH = h * 0.38;
-      const wallThick = 4.5;
+      // 2. Perimeter Curtain Walls (Enclosing the courtyard)
+      const wallHeight = level === 1 ? 12 : (level === 2 ? 22 : 28);
+      const wallHalfW = w * (level === 1 ? 0.30 : (level === 2 ? 0.36 : 0.40));
+      const wallHalfH = h * (level === 1 ? 0.30 : (level === 2 ? 0.36 : 0.40));
+      const wallThick = level === 1 ? 3.5 : 4.5;
 
       // North Curtain Wall
-      const northWallGeo = new THREE.BoxGeometry(w * 0.76, wallHeight, wallThick);
+      const northWallGeo = new THREE.BoxGeometry(wallHalfW * 2, wallHeight, wallThick);
       const northWall = new THREE.Mesh(northWallGeo, stoneWallMat);
-      northWall.position.set(0, wallHeight / 2 + 1.25, -wallHalfH);
+      northWall.position.set(0, wallHeight / 2 + 1.0, -wallHalfH);
       northWall.castShadow = true;
       group.add(northWall);
 
       // South Curtain Wall (Flanking Left & Right of Central Gatehouse)
-      const gateWidth = 18;
-      const sideWallW = (w * 0.76 - gateWidth) / 2;
+      const gateWidth = level === 1 ? 14 : 18;
+      const sideWallW = (wallHalfW * 2 - gateWidth) / 2;
       const southWallLGeo = new THREE.BoxGeometry(sideWallW, wallHeight, wallThick);
       const southWallL = new THREE.Mesh(southWallLGeo, stoneWallMat);
-      southWallL.position.set(-(gateWidth / 2 + sideWallW / 2), wallHeight / 2 + 1.25, wallHalfH);
+      southWallL.position.set(-(gateWidth / 2 + sideWallW / 2), wallHeight / 2 + 1.0, wallHalfH);
       southWallL.castShadow = true;
       group.add(southWallL);
 
       const southWallR = new THREE.Mesh(southWallLGeo, stoneWallMat);
-      southWallR.position.set(gateWidth / 2 + sideWallW / 2, wallHeight / 2 + 1.25, wallHalfH);
+      southWallR.position.set(gateWidth / 2 + sideWallW / 2, wallHeight / 2 + 1.0, wallHalfH);
       southWallR.castShadow = true;
       group.add(southWallR);
 
       // East Curtain Wall
-      const sideWallGeo = new THREE.BoxGeometry(wallThick, wallHeight, h * 0.76);
+      const sideWallGeo = new THREE.BoxGeometry(wallThick, wallHeight, wallHalfH * 2);
       const eastWall = new THREE.Mesh(sideWallGeo, stoneWallMat);
-      eastWall.position.set(wallHalfW, wallHeight / 2 + 1.25, 0);
+      eastWall.position.set(wallHalfW, wallHeight / 2 + 1.0, 0);
       eastWall.castShadow = true;
       group.add(eastWall);
 
       // West Curtain Wall
       const westWall = new THREE.Mesh(sideWallGeo, stoneWallMat);
-      westWall.position.set(-wallHalfW, wallHeight / 2 + 1.25, 0);
+      westWall.position.set(-wallHalfW, wallHeight / 2 + 1.0, 0);
       westWall.castShadow = true;
       group.add(westWall);
 
       // Parapet Crenellations on outer walls
-      const merlonGeo = new THREE.BoxGeometry(3.5, 3.5, 3.5);
+      const merlonGeo = new THREE.BoxGeometry(3.0, 2.8, 3.0);
       const numMerlons = level === 1 ? 2 : 3;
 
       for (let i = -numMerlons; i <= numMerlons; i += 2) {
-        const my = wallHeight + 2.5;
+        const my = wallHeight + 2.0;
         const mNorth = new THREE.Mesh(merlonGeo, stoneWallMat); mNorth.position.set(i * (wallHalfW / numMerlons), my, -wallHalfH); group.add(mNorth);
         if (Math.abs(i) > 1) {
           const mSouth = new THREE.Mesh(merlonGeo, stoneWallMat); mSouth.position.set(i * (wallHalfW / numMerlons), my, wallHalfH); group.add(mSouth);
@@ -4150,45 +4152,46 @@ export class ThreeRenderer {
       }
 
       // 3. Arched Gatehouse & Iron Portcullis on South Wall
-      const ghHeight = level === 1 ? 16 : 22;
-      const gatehouseGeo = new THREE.BoxGeometry(16, ghHeight, 6);
+      const ghHeight = level === 1 ? 14 : 22;
+      const gatehouseGeo = new THREE.BoxGeometry(gateWidth + 2, ghHeight, 5.5);
       const gatehouse = new THREE.Mesh(gatehouseGeo, stoneWallMat);
-      gatehouse.position.set(0, ghHeight / 2 + 1.25, wallHalfH + 2);
+      gatehouse.position.set(0, ghHeight / 2 + 1.0, wallHalfH + 1.5);
       group.add(gatehouse);
 
-      const portcullisGeo = new THREE.BoxGeometry(9, 14, 1.2);
+      const portcullisGeo = new THREE.BoxGeometry(gateWidth * 0.55, level === 1 ? 10 : 14, 1.2);
       const portcullisMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.2 });
       const portcullis = new THREE.Mesh(portcullisGeo, portcullisMat);
-      portcullis.position.set(0, 8, wallHalfH + 4);
+      portcullis.position.set(0, (level === 1 ? 5 : 7) + 1.0, wallHalfH + 3.5);
       group.add(portcullis);
 
       // Torches at gatehouse entrance
       const torchGeo = new THREE.BoxGeometry(1.2, 2.2, 1.2);
       const flameMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xf59e0b, emissiveIntensity: 1.5 });
-      const torchL = new THREE.Mesh(torchGeo, flameMat); torchL.position.set(-7, 14, wallHalfH + 5); group.add(torchL);
-      const torchR = new THREE.Mesh(torchGeo, flameMat); torchR.position.set(7, 14, wallHalfH + 5); group.add(torchR);
+      const torchL = new THREE.Mesh(torchGeo, flameMat); torchL.position.set(-gateWidth * 0.45, 12, wallHalfH + 4.5); group.add(torchL);
+      const torchR = new THREE.Mesh(torchGeo, flameMat); torchR.position.set(gateWidth * 0.45, 12, wallHalfH + 4.5); group.add(torchR);
 
-      // 4. Four Round Corner Bastion Towers (Scale height & features with level)
-      const turretR = level === 1 ? 6 : (level === 2 ? 7.5 : 9);
-      const turretH = level === 1 ? 28 : (level === 2 ? 38 : 48);
-      const turretGeo = new THREE.CylinderGeometry(turretR, turretR + 1, turretH, 12);
-      const turretRoofGeo = new THREE.ConeGeometry(turretR + 1.8, level === 1 ? 14 : 18, 12);
+      // 4. Corner Bastion Towers (Level 1 has 2 front watchtowers, Levels 2 & 3 have 4 massive bastions)
+      const turretR = level === 1 ? 4.8 : (level === 2 ? 7.0 : 8.5);
+      const turretH = level === 1 ? 22 : (level === 2 ? 36 : 48);
+      const turretGeo = new THREE.CylinderGeometry(turretR, turretR + 0.8, turretH, 12);
+      const turretRoofGeo = new THREE.ConeGeometry(turretR + 1.5, level === 1 ? 10 : 16, 12);
 
-      const offsets = [
-        [-wallHalfW, -wallHalfH],
-        [wallHalfW, -wallHalfH],
-        [-wallHalfW, wallHalfH],
-        [wallHalfW, wallHalfH]
-      ];
+      const offsets = level === 1
+        ? [[-wallHalfW, wallHalfH], [wallHalfW, wallHalfH]]
+        : [
+            [-wallHalfW, -wallHalfH],
+            [wallHalfW, -wallHalfH],
+            [-wallHalfW, wallHalfH],
+            [wallHalfW, wallHalfH]
+          ];
 
       offsets.forEach(([tx, tz]) => {
         const turret = new THREE.Mesh(turretGeo, stoneWallMat);
-        turret.position.set(tx, turretH / 2 + 1.25, tz);
+        turret.position.set(tx, turretH / 2 + 1.0, tz);
         turret.castShadow = true;
         group.add(turret);
 
         if (level >= 2) {
-          // Machicolation corbel ring
           const corbelGeo = new THREE.CylinderGeometry(turretR + 1.5, turretR + 0.5, 3.5, 12);
           const corbel = new THREE.Mesh(corbelGeo, stoneWallMat);
           corbel.position.set(tx, turretH - 2, tz);
@@ -4196,19 +4199,19 @@ export class ThreeRenderer {
         }
 
         const tRoof = new THREE.Mesh(turretRoofGeo, roofSlateMat);
-        tRoof.position.set(tx, turretH + (level === 1 ? 7 : 9) + 1.25, tz);
+        tRoof.position.set(tx, turretH + (level === 1 ? 5 : 8) + 1.0, tz);
         tRoof.castShadow = true;
         group.add(tRoof);
 
         // Royal Pennant Flag
         const flagpoleGeo = new THREE.CylinderGeometry(0.3, 0.3, 8, 4);
         const flagpole = new THREE.Mesh(flagpoleGeo, goldMat);
-        flagpole.position.set(tx, turretH + 19, tz);
+        flagpole.position.set(tx, turretH + (level === 1 ? 14 : 18), tz);
         group.add(flagpole);
 
-        const pennantGeo = new THREE.BoxGeometry(5, 3, 0.2);
+        const pennantGeo = new THREE.BoxGeometry(4.5, 2.6, 0.2);
         const pennant = new THREE.Mesh(pennantGeo, roofSlateMat);
-        pennant.position.set(tx + 2.5, turretH + 19, tz);
+        pennant.position.set(tx + 2.2, turretH + (level === 1 ? 14 : 18), tz);
         group.add(pennant);
       });
 
