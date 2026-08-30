@@ -3821,6 +3821,14 @@ export class ThreeRenderer {
         hoistBucket.position.y = -14 + Math.sin(time * 1.8) * 2.5;
       }
 
+      // Animate hovering beacon crystal on upgraded Palace
+      const beacon = group.getObjectByName('beaconCrystal');
+      if (beacon) {
+        beacon.rotation.y = time * 1.8;
+        const baseY = beacon.userData.baseY || beacon.position.y;
+        beacon.position.y = baseY + Math.sin(time * 2.2) * 0.9;
+      }
+
       // Animate smoke particles in chimneys, campfires & forges
       const smokeEmitter = group.getObjectByName('smokeEmitter');
       if (smokeEmitter) {
@@ -4054,86 +4062,109 @@ export class ThreeRenderer {
         const level = b.level || 1;
         const isUpgrading = (b.researchQueue && b.researchQueue.some(r => r.isBuildingUpgrade)) || false;
 
-        // Scale KayKit castle to fit the 4x4 footprint nicely
+        // Scale KayKit castle directly to fit the footprint with level progression
         const maxDim = Math.max(size.x, size.z);
         const baseDim = Math.min(w, h);
-        const targetDim = baseDim * (level === 1 ? 0.90 : (level === 2 ? 0.96 : 1.02));
+        const targetDim = baseDim * (level === 1 ? 0.90 : (level === 2 ? 1.02 : 1.15));
         const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
 
-        // Raised Courtyard Cobblestone Foundation Plinth
-        const plinthH = level === 1 ? 1.8 : (level === 2 ? 2.6 : 3.4);
-        const plinthScale = level === 1 ? 0.94 : (level === 2 ? 0.98 : 1.02);
-        const plinthGeo = new THREE.BoxGeometry(w * plinthScale, plinthH, h * plinthScale);
-        const plinthMat = new THREE.MeshStandardMaterial({
-          color: 0x475569,
-          map: this.cobbleTexture,
-          roughness: 0.85
-        });
-        const plinth = new THREE.Mesh(plinthGeo, plinthMat);
-        plinth.position.y = plinthH / 2;
-        plinth.receiveShadow = true;
-        group.add(plinth);
-
-        // Position the KayKit GLTF Castle atop the plinth
+        // Position the KayKit GLTF Castle directly on the ground (no brick platform)
         gltfCastle.scale.set(scale, scale, scale);
-        gltfCastle.position.set(-center.x * scale, -box.min.y * scale + plinthH + 0.05, -center.z * scale);
+        gltfCastle.position.set(-center.x * scale, -box.min.y * scale + 0.1, -center.z * scale);
         group.add(gltfCastle);
 
         // Materials for royal decorations
         const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.85, roughness: 0.2 });
         const roofSlateMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.6 });
+        const turretRoofMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.5 });
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
         const flameMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xf59e0b, emissiveIntensity: 1.8 });
         const torchGeo = new THREE.BoxGeometry(1.2, 2.5, 1.2);
 
-        // Entrance Gate Torches (Flanking front south gate)
-        const gateZ = h * 0.44;
+        // Entrance Gate Torches (Flanking front south gate directly on ground)
+        const gateZ = (h / 2) * (level === 1 ? 0.88 : (level === 2 ? 0.94 : 1.0));
         const torchL = new THREE.Mesh(torchGeo, flameMat);
-        torchL.position.set(-14, plinthH + 6, gateZ);
+        torchL.position.set(-14 * scale, 6, gateZ);
         group.add(torchL);
 
         const torchR = new THREE.Mesh(torchGeo, flameMat);
-        torchR.position.set(14, plinthH + 6, gateZ);
+        torchR.position.set(14 * scale, 6, gateZ);
         group.add(torchR);
 
-        // Level 2 & Level 3 Grand Royal Enhancements
+        if (level === 3) {
+          // Extra outer braziers for Level 3 Citadel
+          const torchL2 = new THREE.Mesh(torchGeo, flameMat);
+          torchL2.position.set(-28 * scale, 6, gateZ - 6);
+          group.add(torchL2);
+
+          const torchR2 = new THREE.Mesh(torchGeo, flameMat);
+          torchR2.position.set(28 * scale, 6, gateZ - 6);
+          group.add(torchR2);
+        }
+
+        // --- LEVEL 2 (Fortress) & LEVEL 3 (Citadel) ARCHITECTURAL PROGRESSIONS ---
         if (level >= 2) {
-          // Flanking Royal Pennant Flagpoles
-          const flagpoleGeo = new THREE.CylinderGeometry(0.35, 0.35, 18, 6);
-          const pennantGeo = new THREE.BoxGeometry(6.0, 3.5, 0.2);
+          // Fortified Corner Bastions / Watchturrets
+          const bastionR = level === 3 ? 5.5 : 4.2;
+          const bastionH = level === 3 ? 32 : 24;
+          const turretGeo = new THREE.CylinderGeometry(bastionR, bastionR + 0.5, bastionH, 10);
+          const turretRoofGeo = new THREE.ConeGeometry(bastionR + 1.2, level === 3 ? 12 : 9, 10);
 
-          const flagCorners = [
-            [-w * 0.42, h * 0.42],
-            [w * 0.42, h * 0.42],
-            [-w * 0.42, -h * 0.42],
-            [w * 0.42, -h * 0.42]
-          ];
+          // Level 2 has 2 front watchturrets, Level 3 has 4 corner bastions
+          const bastionPositions = level === 3
+            ? [
+                [-w * 0.44, h * 0.44],
+                [w * 0.44, h * 0.44],
+                [-w * 0.44, -h * 0.44],
+                [w * 0.44, -h * 0.44]
+              ]
+            : [
+                [-w * 0.42, h * 0.42],
+                [w * 0.42, h * 0.42]
+              ];
 
-          flagCorners.forEach(([fx, fz]) => {
+          bastionPositions.forEach(([bxPos, bzPos]) => {
+            const turret = new THREE.Mesh(turretGeo, stoneMat);
+            turret.position.set(bxPos, bastionH / 2, bzPos);
+            turret.castShadow = true;
+            group.add(turret);
+
+            const tRoof = new THREE.Mesh(turretRoofGeo, turretRoofMat);
+            tRoof.position.set(bxPos, bastionH + (level === 3 ? 6 : 4.5), bzPos);
+            tRoof.castShadow = true;
+            group.add(tRoof);
+
+            // Flagpole atop bastion
+            const flagpoleGeo = new THREE.CylinderGeometry(0.3, 0.3, 10, 4);
             const pole = new THREE.Mesh(flagpoleGeo, goldMat);
-            pole.position.set(fx, plinthH + 9, fz);
+            pole.position.set(bxPos, bastionH + (level === 3 ? 16 : 13), bzPos);
             group.add(pole);
 
+            const pennantGeo = new THREE.BoxGeometry(5.0, 2.8, 0.2);
             const pennant = new THREE.Mesh(pennantGeo, roofSlateMat);
-            pennant.position.set(fx + (fx > 0 ? 3.2 : -3.2), plinthH + 15, fz);
+            pennant.position.set(bxPos + (bxPos > 0 ? 2.6 : -2.6), bastionH + (level === 3 ? 16 : 13), bzPos);
             group.add(pennant);
           });
 
           // Sovereign Golden Crown Spire atop Keep
           const crownGeo = new THREE.CylinderGeometry(3.5, 5, 8, 8);
           const crown = new THREE.Mesh(crownGeo, goldMat);
-          crown.position.set(0, size.y * scale + plinthH + 4, 0);
+          crown.position.set(0, size.y * scale + 4, 0);
           group.add(crown);
 
-          // Glowing Sovereign Mana Beacon Crystal
-          const beaconGeo = new THREE.OctahedronGeometry(level === 3 ? 4.0 : 2.8, 0);
+          // Glowing Floating Sovereign Mana Beacon Crystal
+          const beaconGeo = new THREE.OctahedronGeometry(level === 3 ? 4.2 : 2.8, 0);
           const beaconMat = new THREE.MeshStandardMaterial({
             color: 0xfacc15,
             emissive: 0xf59e0b,
-            emissiveIntensity: level === 3 ? 2.0 : 1.4,
+            emissiveIntensity: level === 3 ? 2.2 : 1.5,
             roughness: 0.1
           });
           const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-          beacon.position.set(0, size.y * scale + plinthH + (level === 3 ? 12 : 9), 0);
+          const beaconY = size.y * scale + (level === 3 ? 13 : 9.5);
+          beacon.name = 'beaconCrystal';
+          beacon.position.set(0, beaconY, 0);
+          beacon.userData = { baseY: beaconY };
           group.add(beacon);
         }
 
@@ -4164,7 +4195,7 @@ export class ThreeRenderer {
 
           // Animated Wooden Construction Crane atop East Wall
           const craneBase = new THREE.Group();
-          craneBase.position.set(w * 0.36, 26, 0);
+          craneBase.position.set(w * 0.36, 22, 0);
 
           const mastGeo = new THREE.CylinderGeometry(1.2, 1.4, 20, 6);
           const mast = new THREE.Mesh(mastGeo, postMat);
@@ -4197,7 +4228,7 @@ export class ThreeRenderer {
         }
 
         // Palace Keep Chimney & Animated Smoke
-        group.add(this.createSmokeEmitter(6, size.y * scale + plinthH + 2, -6, false, 5));
+        group.add(this.createSmokeEmitter(6, size.y * scale + 2, -6, false, 5));
 
         return group;
       }
