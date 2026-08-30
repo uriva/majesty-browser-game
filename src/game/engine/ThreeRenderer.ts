@@ -76,6 +76,7 @@ export class ThreeRenderer {
   private projectilesMap: Map<string, THREE.Group> = new Map();
   private floatingTextsMap: Map<string, THREE.Sprite> = new Map();
   private heroLabelsMap: Map<string, { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; sprite: THREE.Sprite; lastHp: number; lastLevel: number }> = new Map();
+  private sleepingSpritesMap: Map<string, { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; sprite: THREE.Sprite }> = new Map();
 
   // Selection & Placement Highlights
   private selectionGroup: THREE.Group;
@@ -3427,6 +3428,7 @@ export class ThreeRenderer {
     this.updateCorpses(state);
     this.updateProjectiles(state);
     this.updateFloatingTexts(state);
+    this.updateSleepingAnimations(state, delta);
 
     // Update Selection Visuals
     this.updateSelectionVisuals(state);
@@ -9047,6 +9049,126 @@ export class ThreeRenderer {
     sprite.scale.set(isGold ? 48 : 38, isGold ? 15.0 : 11.875, 1);
     sprite.renderOrder = 1001;
     return sprite;
+  }
+
+  // --- 3D SLEEPING "ZZZ" DRIFTING ANIMATION SYSTEM ---
+  private updateSleepingAnimations(state: GameState, delta: number) {
+    const activeSleepingIds = new Set<string>();
+    const time = Date.now() * 0.001;
+    const isDeadOfNight = state.stats.dayTime >= 2300 || state.stats.dayTime < 350;
+
+    // 1. Heroes resting / sleeping at Guild or Inn
+    for (const h of state.heroes) {
+      if (h.isDead) continue;
+      const isResting = h.state === 'resting_at_guild' || h.state === 'visiting_inn';
+      if (isResting) {
+        const id = `sleep_${h.id}`;
+        activeSleepingIds.add(id);
+        this.renderUnitSleepZzz(id, h.x, h.y, 22, time, this.gridManager.isPixelVisible(h.x, h.y));
+      }
+    }
+
+    // 2. Peasants / Builders sleeping during the Dead of Night
+    if (isDeadOfNight) {
+      for (const p of state.peasants) {
+        if (p.hp <= 0) continue;
+        if (p.state === 'idle_at_palace') {
+          const id = `sleep_${p.id}`;
+          activeSleepingIds.add(id);
+          this.renderUnitSleepZzz(id, p.x, p.y, 14, time, this.gridManager.isPixelVisible(p.x, p.y));
+        }
+      }
+    }
+
+    // Clean up inactive sleep sprites
+    for (const [id, entry] of this.sleepingSpritesMap.entries()) {
+      if (!activeSleepingIds.has(id)) {
+        this.scene.remove(entry.sprite);
+        entry.texture.dispose();
+        entry.sprite.material.dispose();
+        this.sleepingSpritesMap.delete(id);
+      }
+    }
+  }
+
+  private renderUnitSleepZzz(id: string, worldX: number, worldY: number, baseHeight: number, time: number, isVisible: boolean) {
+    let entry = this.sleepingSpritesMap.get(id);
+    if (!entry) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const spriteMat = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.set(13, 13, 1);
+      sprite.renderOrder = 1000;
+      this.scene.add(sprite);
+      entry = { canvas, texture, sprite };
+      this.sleepingSpritesMap.set(id, entry);
+    }
+
+    entry.sprite.visible = isVisible;
+    if (!isVisible) return;
+
+    // Draw animated drifting Zzz on canvas
+    const ctx = entry.canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, 128, 128);
+
+      // Loop cycle: 0.0 to 1.0 every 1.8 seconds
+      const phase = (time * 0.55) % 1.0;
+
+      // 3 ascending, floating Z's with sinusoidal drift
+      const zItems = [
+        { char: 'z', size: 18, delay: 0.0, baseX: 45, baseY: 95 },
+        { char: 'Z', size: 24, delay: 0.33, baseX: 60, baseY: 70 },
+        { char: 'Z', size: 32, delay: 0.66, baseX: 78, baseY: 42 }
+      ];
+
+      for (let i = 0; i < zItems.length; i++) {
+        const item = zItems[i];
+        const itemPhase = (phase + item.delay) % 1.0;
+        const driftX = Math.sin(time * 2.5 + i * 1.5) * 8;
+        const floatY = -itemPhase * 28;
+        const alpha = Math.sin(itemPhase * Math.PI); // fades in at start, peaks mid, fades at end
+
+        if (alpha > 0.01) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, alpha * 0.95));
+          ctx.font = `bold ${item.size}px "Comic Sans MS", "Segoe UI", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          const posX = item.baseX + driftX;
+          const posY = item.baseY + floatY;
+
+          // Soft night glow shadow
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 8;
+
+          // Dark outline for high readability
+          ctx.strokeStyle = '#030712';
+          ctx.lineWidth = 4;
+          ctx.strokeText(item.char, posX, posY);
+
+          // Glowing cyan-celestial fill
+          ctx.fillStyle = i === 2 ? '#e0f2fe' : (i === 1 ? '#7dd3fc' : '#38bdf8');
+          ctx.fillText(item.char, posX, posY);
+          ctx.restore();
+        }
+      }
+
+      entry.texture.needsUpdate = true;
+    }
+
+    const terrainH = this.getTerrainHeight(worldX, worldY);
+    const bob = Math.sin(time * 2.0) * 1.2;
+    entry.sprite.position.set(worldX + 2, terrainH + baseHeight + bob, worldY);
   }
 
   // Screen to 3D World Raycasting

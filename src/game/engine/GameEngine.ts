@@ -1086,7 +1086,10 @@ export class GameEngine {
       this.peasantReplenishTimer = 0;
     }
 
-    const isNight = this.state.dayPhase === 'night';
+    // Builders operate diligently through almost all hours (day, dusk, dawn, and evening).
+    // They only head in to sleep during the deep dead of night (23:00 to 03:30).
+    const time = this.state.stats.dayTime;
+    const isDeadOfNight = time >= 2300 || time < 350;
     const ts = this.gridManager.tileSize;
 
     // Group active peasants by target building to assign distinct perimeter work slots
@@ -1104,8 +1107,8 @@ export class GameEngine {
       const p = this.state.peasants[pIdx];
       if (p.hp <= 0) continue;
 
-      if (isNight) {
-        // At night, peasants walk to individual spaced resting spots in the Palace Courtyard
+      if (isDeadOfNight) {
+        // In the dead of night, peasants walk to individual spaced resting spots in the Palace Courtyard to sleep
         const idleSpotX = palaceGate.x + Math.sin(pIdx * 1.6) * (14 + (pIdx % 3) * 6);
         const idleSpotY = palaceGate.y + 12 + Math.cos(pIdx * 1.6) * 10;
         const distToGate = Math.hypot(idleSpotX - p.x, idleSpotY - p.y);
@@ -1647,6 +1650,40 @@ export class GameEngine {
     }
     if (building.researchedUpgrades.includes(upgradeId)) {
       return false;
+    }
+
+    // Check Palace Level requirement
+    const palace = this.state.buildings.find(b => b.type === 'palace' && b.hp > 0);
+    const palaceLevel = palace?.level || 1;
+    if (upg.requiresPalaceLevel && palaceLevel < upg.requiresPalaceLevel) {
+      this.addNotification('Prerequisite Not Met', `${upg.name} requires Palace Level ${upg.requiresPalaceLevel}! Upgrade your Palace first.`, 'warning');
+      return false;
+    }
+
+    // Check Palace Lvl 3 specific gate
+    if (building.type === 'palace' && upgradeId === 'palace_lvl3' && building.level < 2) {
+      this.addNotification('Prerequisite Not Met', `${upg.name} requires Palace Fortress (Level 2) first!`, 'warning');
+      return false;
+    }
+
+    // Check Prerequisite Upgrades in this building
+    if (upg.requiresUpgrade && !building.researchedUpgrades.includes(upg.requiresUpgrade)) {
+      const reqUpgDef = bDef.upgrades?.find(u => u.id === upg.requiresUpgrade);
+      this.addNotification('Prerequisite Not Met', `${upg.name} requires ${reqUpgDef?.name || upg.requiresUpgrade} first!`, 'warning');
+      return false;
+    }
+    if (upg.requiredUpgrades && !upg.requiredUpgrades.every(uId => building.researchedUpgrades.includes(uId))) {
+      this.addNotification('Prerequisite Not Met', `${upg.name} requires prior research tiers first!`, 'warning');
+      return false;
+    }
+
+    // Special check for Blacksmith Mithril Arms (Tier 2): requires Iron Weapons OR Steel Armor
+    if (building.type === 'blacksmith' && upgradeId === 'mithril_forging') {
+      const hasTier1 = building.researchedUpgrades.includes('iron_weapons') || building.researchedUpgrades.includes('steel_armor');
+      if (!hasTier1) {
+        this.addNotification('Prerequisite Not Met', 'Mithril Arms requires researching Iron Weapons or Steel Armor first!', 'warning');
+        return false;
+      }
     }
 
     // Check Hero Count Requirement (e.g. Palace Lv.2 requires 4+ heroes, Palace Lv.3 requires 8+ heroes)

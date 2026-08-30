@@ -1,5 +1,5 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
-import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Projectile, TaxCollector, Treasure } from '../types';
+import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 
 export class CanvasRenderer {
@@ -59,9 +59,12 @@ export class CanvasRenderer {
       this.renderFlag(flag, state);
     }
 
-    // 7. Render Tax Collectors
+    // 7. Render Tax Collectors & Peasants
     for (const tc of state.taxCollectors) {
       this.renderTaxCollector(tc, state);
+    }
+    for (const p of state.peasants) {
+      this.renderPeasant(p, state);
     }
 
     // 8. Render Monsters (Sorted by Y for depth layering)
@@ -1323,6 +1326,22 @@ export class CanvasRenderer {
     ctx.font = 'bold 7px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`${hero.level}`, x, y - 25 - bodyBob);
+
+    // 8. SLEEPING "Zzz" ANIMATION FOR RESTING HEROES
+    if (hero.state === 'resting_at_guild' || hero.state === 'visiting_inn') {
+      const time = Date.now() * 0.003;
+      const zPhase = time % 1.0;
+      const driftX = Math.sin(time * 3) * 4;
+      const floatY = -zPhase * 14;
+      const alpha = Math.sin(zPhase * Math.PI);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Zzz...', x + 4 + driftX, y - 36 + floatY);
+      ctx.restore();
+    }
   }
 
   // --- RICH ANIMATED MONSTER RENDERING ---
@@ -1760,6 +1779,67 @@ export class CanvasRenderer {
     ctx.font = 'bold 8px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(tc.goldCarried > 0 ? `Tax (${tc.goldCarried}g)` : 'Taxman', tc.x, tc.y - 30 + bob);
+  }
+
+  private renderPeasant(p: Peasant, state: GameState) {
+    const { ctx } = this;
+    if (p.hp <= 0 || !this.gridManager.isPixelVisible(p.x, p.y)) return;
+
+    const isSelected = state.selectedEntity?.type === 'peasant' && state.selectedEntity.id === p.id;
+    const isDeadOfNight = state.stats.dayTime >= 2300 || state.stats.dayTime < 350;
+    const isSleeping = isDeadOfNight && p.state === 'idle_at_palace';
+    const bob = isSleeping ? 0 : Math.sin(Date.now() * 0.008 + p.x) * 1.5;
+
+    if (isSelected) {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + 4, 12, 6, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + 4, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body (Brown peasant tunic)
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(p.x - 4, p.y - 10 + bob, 8, 10);
+
+    // Head
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - 13 + bob, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hammer if working
+    if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
+      const hSwing = Math.sin(Date.now() * 0.015) * 6;
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x + 4, p.y - 8 + bob);
+      ctx.lineTo(p.x + 8, p.y - 14 + bob + hSwing);
+      ctx.stroke();
+    }
+
+    // Sleeping "Zzz" Animation during Dead of Night
+    if (isSleeping) {
+      const time = Date.now() * 0.003;
+      const zPhase = time % 1.0;
+      const driftX = Math.sin(time * 3) * 3;
+      const floatY = -zPhase * 12;
+      const alpha = Math.sin(zPhase * Math.PI);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Zzz...', p.x + 3 + driftX, p.y - 20 + floatY);
+      ctx.restore();
+    }
   }
 
   private renderFlag(flag: Flag, state: GameState) {

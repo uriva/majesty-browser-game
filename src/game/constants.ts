@@ -31,6 +31,9 @@ export interface BuildingDef {
     icon: string;
     requiredHeroes?: number;
     requiredBuilding?: BuildingType;
+    requiresPalaceLevel?: number;
+    requiresUpgrade?: string;
+    requiredUpgrades?: string[];
     researchTime?: number;
   }[];
   requiresPalaceLevel?: number;
@@ -71,7 +74,9 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
         id: 'palace_lvl3',
         name: 'Imperial Citadel (Lvl 3)',
         cost: 3000,
-        description: 'Max palace upgrades, unlocks Dwarven Settlement & Grand Magic. Requires: 8+ Active Heroes & Blacksmith.',
+        description: 'Max palace upgrades, unlocks Dwarven Settlement & Grand Magic. Requires: Palace Lv 2, 8+ Active Heroes & Blacksmith.',
+        requiresPalaceLevel: 2,
+        requiresUpgrade: 'palace_lvl2',
         requiredHeroes: 8,
         requiredBuilding: 'blacksmith',
         researchTime: 24.0,
@@ -93,7 +98,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHeroSlots: 4,
     upgrades: [
       { id: 'iron_resolve', name: 'Iron Resolve', cost: 250, researchTime: 8.0, description: 'Warriors gain +20% HP and 10% more bravery.', icon: 'Shield' },
-      { id: 'shield_bash', name: 'Shield Bash Technique', cost: 400, researchTime: 12.0, description: 'Warriors can stun enemies for 1.5s.', icon: 'Swords' }
+      { id: 'shield_bash', name: 'Shield Bash Technique', cost: 400, researchTime: 12.0, description: 'Warriors can stun enemies for 1.5s. Requires: Iron Resolve.', requiresUpgrade: 'iron_resolve', icon: 'Swords' }
     ]
   },
   ranger_guild: {
@@ -110,7 +115,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHeroSlots: 4,
     upgrades: [
       { id: 'eagle_eye', name: 'Eagle Eye Scouting', cost: 200, researchTime: 7.0, description: 'Rangers gain +30% sight radius and reveal map faster.', icon: 'Eye' },
-      { id: 'piercing_arrows', name: 'Piercing Arrows', cost: 350, researchTime: 10.0, description: 'Ranger attacks penetrate 30% enemy armor.', icon: 'Target' }
+      { id: 'piercing_arrows', name: 'Piercing Arrows', cost: 350, researchTime: 10.0, description: 'Ranger attacks penetrate 30% enemy armor. Requires: Eagle Eye Scouting.', requiresUpgrade: 'eagle_eye', icon: 'Target' }
     ]
   },
   rogue_guild: {
@@ -127,7 +132,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     maxHeroSlots: 4,
     upgrades: [
       { id: 'poison_daggers', name: 'Poison Blades', cost: 200, researchTime: 8.0, description: 'Rogue attacks apply damage over time.', icon: 'Skull' },
-      { id: 'bounty_greed', name: 'Bounty Rush', cost: 300, researchTime: 10.0, description: 'Rogues gain +30% movement speed when pursuing flags.', icon: 'Coins' }
+      { id: 'bounty_greed', name: 'Bounty Rush', cost: 300, researchTime: 10.0, description: 'Rogues gain +30% movement speed when pursuing flags. Requires: Poison Blades.', requiresUpgrade: 'poison_daggers', icon: 'Coins' }
     ]
   },
   wizard_tower: {
@@ -145,7 +150,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     requiresPalaceLevel: 2,
     upgrades: [
       { id: 'arcane_library', name: 'Arcane Library', cost: 350, researchTime: 12.0, description: 'Wizards learn Fireball spell for AOE damage.', icon: 'Flame' },
-      { id: 'teleportation', name: 'Emergency Blink', cost: 500, researchTime: 15.0, description: 'Wizards automatically teleport to safety when near death.', icon: 'Sparkles' }
+      { id: 'teleportation', name: 'Emergency Blink', cost: 500, researchTime: 15.0, description: 'Wizards automatically teleport to safety when near death. Requires: Arcane Library.', requiresUpgrade: 'arcane_library', icon: 'Sparkles' }
     ]
   },
   cleric_temple: {
@@ -163,7 +168,7 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     requiresPalaceLevel: 2,
     upgrades: [
       { id: 'holy_blessing', name: 'Holy Radiance', cost: 300, researchTime: 10.0, description: 'Cleric healing aura is 40% stronger and hits nearby allies.', icon: 'Heart' },
-      { id: 'smite_undead', name: 'Divine Smite', cost: 400, researchTime: 12.0, description: 'Clerics deal double damage against skeletons, zombies & wraiths.', icon: 'Sun' }
+      { id: 'smite_undead', name: 'Divine Smite', cost: 400, researchTime: 12.0, description: 'Clerics deal double damage against skeletons, zombies & wraiths. Requires: Holy Radiance.', requiresUpgrade: 'holy_blessing', icon: 'Sun' }
     ]
   },
   dwarf_settlement: {
@@ -195,8 +200,8 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     constructionTime: 22.0,
     upgrades: [
       { id: 'healing_elixirs', name: 'Healing Potions Stock', cost: 150, researchTime: 8.0, description: 'Heroes can buy Healing Potions (25g) to survive in the wild.', icon: 'Cross' },
-      { id: 'speed_draughts', name: 'Speed Draughts Stock', cost: 250, researchTime: 9.0, description: 'Heroes can buy Speed Potions (60g) to rush toward objectives.', icon: 'Zap' },
-      { id: 'warding_amulets', name: 'Warding Amulets', cost: 400, researchTime: 14.0, description: 'Heroes can buy Magic Amulets (+10 Defense).', icon: 'ShieldAlert' }
+      { id: 'speed_draughts', name: 'Speed Draughts Stock', cost: 250, researchTime: 9.0, description: 'Heroes can buy Speed Potions (60g) to rush toward objectives. Requires: Healing Potions Stock.', requiresUpgrade: 'healing_elixirs', icon: 'Zap' },
+      { id: 'warding_amulets', name: 'Warding Amulets', cost: 400, researchTime: 14.0, description: 'Heroes can buy Magic Amulets (+10 Defense). Requires: Speed Draughts Stock & Palace Level 2.', requiresUpgrade: 'speed_draughts', requiresPalaceLevel: 2, icon: 'ShieldAlert' }
     ]
   },
   blacksmith: {
@@ -211,8 +216,8 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
     upgrades: [
       { id: 'iron_weapons', name: 'Iron Weapons (Tier 1)', cost: 150, researchTime: 8.0, description: 'Heroes can purchase Iron weapons (+5 ATK).', icon: 'Sword' },
       { id: 'steel_armor', name: 'Steel Armor (Tier 1)', cost: 200, researchTime: 9.0, description: 'Heroes can purchase Steel armor (+4 DEF).', icon: 'Shield' },
-      { id: 'mithril_forging', name: 'Mithril Arms (Tier 2)', cost: 400, researchTime: 14.0, description: 'Unlocks Mithril tier gear (+14 ATK, +10 DEF).', icon: 'Sparkles' },
-      { id: 'dragonforged', name: 'Dragonforged Gear (Tier 3)', cost: 800, researchTime: 20.0, description: 'Masterwork tier (+25 ATK, +18 DEF).', icon: 'Flame' }
+      { id: 'mithril_forging', name: 'Mithril Arms (Tier 2)', cost: 400, researchTime: 14.0, description: 'Unlocks Mithril tier gear (+14 ATK, +10 DEF). Requires: Iron Weapons or Steel Armor & Palace Level 2.', requiresPalaceLevel: 2, icon: 'Sparkles' },
+      { id: 'dragonforged', name: 'Dragonforged Gear (Tier 3)', cost: 800, researchTime: 20.0, description: 'Masterwork tier (+25 ATK, +18 DEF). Requires: Mithril Arms & Palace Level 3.', requiresUpgrade: 'mithril_forging', requiresPalaceLevel: 3, icon: 'Flame' }
     ]
   },
   guard_tower: {

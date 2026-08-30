@@ -386,14 +386,33 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
               const isBusy = (building.researchQueue && building.researchQueue.length > 0) || false;
 
               // Check requirements
+              const palace = allBuildings.find(b => b.type === 'palace' && b.hp > 0);
+              const palaceLevel = palace?.level || 1;
               const heroesMet = !upg.requiredHeroes || totalActiveHeroes >= upg.requiredHeroes;
               const buildingMet = !upg.requiredBuilding || allBuildings.some(b => b.type === upg.requiredBuilding && !b.isConstructing && b.hp > 0);
               const isConstructed = !building.isConstructing && building.hp > 0;
-              const isUnlocked = heroesMet && buildingMet && isConstructed;
+              const palaceLevelMet = !upg.requiresPalaceLevel || palaceLevel >= upg.requiresPalaceLevel;
+              const palaceTierMet = !(building.type === 'palace' && upg.id === 'palace_lvl3') || building.level >= 2;
+              const prereqUpgradeMet = !upg.requiresUpgrade || building.researchedUpgrades.includes(upg.requiresUpgrade);
+              const prereqMultipleMet = !upg.requiredUpgrades || upg.requiredUpgrades.every(uId => building.researchedUpgrades.includes(uId));
+              const blacksmithTier1Met = !(building.type === 'blacksmith' && upg.id === 'mithril_forging') || (building.researchedUpgrades.includes('iron_weapons') || building.researchedUpgrades.includes('steel_armor'));
+
+              const isUnlocked = isConstructed && heroesMet && buildingMet && palaceLevelMet && palaceTierMet && prereqUpgradeMet && prereqMultipleMet && blacksmithTier1Met;
 
               let lockReason = '';
               if (!isConstructed) {
                 lockReason = 'Req: Construction Complete';
+              } else if (!palaceTierMet || (!palaceLevelMet && upg.requiresPalaceLevel)) {
+                lockReason = `Req: Palace Level ${upg.requiresPalaceLevel || 2}`;
+              } else if (!prereqUpgradeMet && upg.requiresUpgrade) {
+                const reqUpgDef = bDef.upgrades?.find(u => u.id === upg.requiresUpgrade);
+                lockReason = `Req: ${reqUpgDef?.name || upg.requiresUpgrade}`;
+              } else if (!prereqMultipleMet && upg.requiredUpgrades) {
+                const missingUpg = upg.requiredUpgrades.find(uId => !building.researchedUpgrades.includes(uId));
+                const reqUpgDef = bDef.upgrades?.find(u => u.id === missingUpg);
+                lockReason = `Req: ${reqUpgDef?.name || missingUpg}`;
+              } else if (!blacksmithTier1Met) {
+                lockReason = 'Req: Iron Weapons or Steel Armor';
               } else if (!heroesMet) {
                 lockReason = `Req: ${upg.requiredHeroes}+ Active Heroes (${totalActiveHeroes}/${upg.requiredHeroes})`;
               } else if (!buildingMet && upg.requiredBuilding) {
