@@ -1131,7 +1131,8 @@ export class ThreeRenderer {
     const centerX = this.gridManager.width / 2;
     const westOffset = this.gridManager.width * 0.26;
     const tileY = worldZ / ts;
-    return (centerX - westOffset + Math.sin(tileY * 0.13) * 5 + Math.cos(tileY * 0.05) * 3) * ts;
+    const rx = Math.floor(centerX - westOffset + Math.sin(tileY * 0.13) * 5 + Math.cos(tileY * 0.05) * 3);
+    return (rx + 1.0) * ts;
   }
 
   private getEastRiverX(worldZ: number): number {
@@ -1139,7 +1140,8 @@ export class ThreeRenderer {
     const centerX = this.gridManager.width / 2;
     const eastOffset = this.gridManager.width * 0.30;
     const tileY = worldZ / ts;
-    return (centerX + eastOffset + Math.sin(tileY * 0.15 + 1.2) * 4) * ts;
+    const rx = Math.floor(centerX + eastOffset + Math.sin(tileY * 0.15 + 1.2) * 4);
+    return (rx + 1.0) * ts;
   }
 
   public getTerrainBaseElevation(x: number, z: number): number {
@@ -1172,25 +1174,48 @@ export class ThreeRenderer {
 
   public getTerrainHeight(x: number, z: number): number {
     let elev = this.getTerrainBaseElevation(x, z);
+    const baseElevation = elev;
+    const ts = this.gridManager.tileSize;
+    const tx = Math.floor(x / ts);
+    const ty = Math.floor(z / ts);
 
-    // Deep smooth parabolic riverbed channel for West River (width 22 units, depth 4.2 units)
-    const westRiverX = this.getWestRiverX(z);
-    const distWest = Math.abs(x - westRiverX);
-    if (distWest < 22) {
-      const t = 1.0 - (distWest / 22);
-      elev -= 4.2 * (t * t);
+    // If unit or position is on a stone bridge deck (tile 5), return elevated bridge height
+    if (this.gridManager.isValid(tx, ty) && this.gridManager.grid[ty][tx] === 5) {
+      return baseElevation + 2.2;
     }
 
-    // Deep smooth parabolic riverbed channel for East Mountain Brook (width 18 units, depth 3.6 units)
+    // Carve deep clean riverbed channels so ground never pokes through water
+    const westRiverX = this.getWestRiverX(z);
+    const distWest = Math.abs(x - westRiverX);
+    const riverBedRadiusW = 34.0;
+    if (distWest < riverBedRadiusW) {
+      const channelDepth = 5.2;
+      if (distWest < 22.0) {
+        elev = Math.min(elev, baseElevation - channelDepth);
+      } else {
+        const t = (distWest - 22.0) / (riverBedRadiusW - 22.0);
+        const smoothT = t * t * (3 - 2 * t);
+        const bankElev = THREE.MathUtils.lerp(baseElevation - channelDepth, baseElevation, smoothT);
+        elev = Math.min(elev, bankElev);
+      }
+    }
+
     const eastRiverX = this.getEastRiverX(z);
     const distEast = Math.abs(x - eastRiverX);
-    if (distEast < 18) {
-      const t = 1.0 - (distEast / 18);
-      elev -= 3.6 * (t * t);
+    const riverBedRadiusE = 32.0;
+    if (distEast < riverBedRadiusE) {
+      const channelDepth = 4.8;
+      if (distEast < 20.0) {
+        elev = Math.min(elev, baseElevation - channelDepth);
+      } else {
+        const t = (distEast - 20.0) / (riverBedRadiusE - 20.0);
+        const smoothT = t * t * (3 - 2 * t);
+        const bankElev = THREE.MathUtils.lerp(baseElevation - channelDepth, baseElevation, smoothT);
+        elev = Math.min(elev, bankElev);
+      }
     }
 
     // Smooth terrain leveling directly under building footprints with curved ease apron
-    const ts = this.gridManager.tileSize;
     const blendMargin = 12.0; // ~0.75 tile smooth transition
 
     for (let i = 0; i < this.lastKnownStructures.length; i++) {
@@ -1263,7 +1288,7 @@ export class ThreeRenderer {
   public getRiverWaterHeight(z: number, riverType: 'west' | 'east' = 'west'): number {
     const rx = riverType === 'west' ? this.getWestRiverX(z) : this.getEastRiverX(z);
     const baseElev = this.getTerrainBaseElevation(rx, z);
-    return baseElev - (riverType === 'west' ? 1.0 : 0.8);
+    return baseElev - (riverType === 'west' ? 1.2 : 1.0);
   }
 
   // --- BUILD 3D TERRAIN ---
@@ -1395,7 +1420,7 @@ export class ThreeRenderer {
       const ry = this.getRiverWaterHeight(rz, 'west');
       westRiverPoints.push(new THREE.Vector3(rx, ry, rz));
     }
-    const westRiverMesh = this.createContinuousRiverRibbon(westRiverPoints, ts * 1.8, waterMat, 'west');
+    const westRiverMesh = this.createContinuousRiverRibbon(westRiverPoints, ts * 2.2, waterMat, 'west');
     westRiverMesh.renderOrder = 2;
     this.terrainGroup.add(westRiverMesh);
 
@@ -1407,7 +1432,7 @@ export class ThreeRenderer {
       const ry = this.getRiverWaterHeight(rz, 'east');
       eastRiverPoints.push(new THREE.Vector3(rx, ry, rz));
     }
-    const eastRiverMesh = this.createContinuousRiverRibbon(eastRiverPoints, ts * 1.5, waterMat, 'east');
+    const eastRiverMesh = this.createContinuousRiverRibbon(eastRiverPoints, ts * 2.0, waterMat, 'east');
     eastRiverMesh.renderOrder = 2;
     this.terrainGroup.add(eastRiverMesh);
 
@@ -1438,9 +1463,9 @@ export class ThreeRenderer {
     const bridgeY3 = Math.floor(h * 0.48);
 
     const bridgeCrossings = [
-      { z: (bridgeY1 + 1) * ts, getX: (z: number) => this.getWestRiverX(z), tx: Math.floor(this.getWestRiverX((bridgeY1 + 1) * ts) / ts), ty: bridgeY1 },
-      { z: (bridgeY2 + 1) * ts, getX: (z: number) => this.getWestRiverX(z), tx: Math.floor(this.getWestRiverX((bridgeY2 + 1) * ts) / ts), ty: bridgeY2 },
-      { z: (bridgeY3 + 1) * ts, getX: (z: number) => this.getEastRiverX(z), tx: Math.floor(this.getEastRiverX((bridgeY3 + 1) * ts) / ts), ty: bridgeY3 }
+      { z: (bridgeY1 + 1.0) * ts, getX: (z: number) => this.getWestRiverX(z), tx: Math.floor(this.getWestRiverX((bridgeY1 + 1.0) * ts) / ts), ty: bridgeY1 },
+      { z: (bridgeY2 + 1.0) * ts, getX: (z: number) => this.getWestRiverX(z), tx: Math.floor(this.getWestRiverX((bridgeY2 + 1.0) * ts) / ts), ty: bridgeY2 },
+      { z: (bridgeY3 + 1.0) * ts, getX: (z: number) => this.getEastRiverX(z), tx: Math.floor(this.getEastRiverX((bridgeY3 + 1.0) * ts) / ts), ty: bridgeY3 }
     ];
 
     for (const bc of bridgeCrossings) {
@@ -1448,8 +1473,8 @@ export class ThreeRenderer {
       const bz = bc.z;
       const bridge = this.create3DBridgeMesh();
       bridge.name = 'bridgeMesh';
-      const bridgeY = this.getTerrainHeight(bx, bz);
-      bridge.position.set(bx, bridgeY + 0.4, bz);
+      const baseElev = this.getTerrainBaseElevation(bx, bz);
+      bridge.position.set(bx, baseElev + 0.1, bz);
       bridge.userData = { tx: bc.tx, ty: bc.ty };
       this.terrainGroup.add(bridge);
       this.terrainFeaturesList.push(bridge);
@@ -1626,7 +1651,7 @@ export class ThreeRenderer {
           protoMaterials.set(key, mat);
         }
 
-        let geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+        const geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
         geo.applyMatrix4(mesh.matrixWorld);
 
         if (bucketVariant === 'plain') {
@@ -1852,8 +1877,8 @@ export class ThreeRenderer {
 
   private create3DBridgeMesh(): THREE.Group {
     const group = new THREE.Group();
-    const spanX = 38.0;
-    const spanZ = 30.0;
+    const spanX = 76.0; // Spans across the 64-unit river channel onto the solid riverbanks
+    const spanZ = 64.0; // Spans both bridge road tiles (2 * 32 = 64 units)
 
     const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.85 });
     const cobbleMat = new THREE.MeshStandardMaterial({ color: 0x64748b, map: this.cobbleTexture, roughness: 0.8 });
@@ -1871,71 +1896,83 @@ export class ThreeRenderer {
       emissiveIntensity: 2.0
     });
 
-    // 1. Heavy Stone Abutment Piers on West & East Riverbanks
-    const pierGeo = new THREE.BoxGeometry(6.0, 7.0, spanZ);
+    // 1. Heavy Stone Abutment Piers on West & East Riverbanks (anchored into dry terrain)
+    const pierGeo = new THREE.BoxGeometry(9.0, 9.0, spanZ * 0.96);
     const pierL = new THREE.Mesh(pierGeo, stoneMat);
-    pierL.position.set(-spanX * 0.42, 0.5, 0);
+    pierL.position.set(-spanX * 0.44, 0.5, 0);
     pierL.castShadow = true;
     pierL.receiveShadow = true;
     group.add(pierL);
 
     const pierR = new THREE.Mesh(pierGeo, stoneMat);
-    pierR.position.set(spanX * 0.42, 0.5, 0);
+    pierR.position.set(spanX * 0.44, 0.5, 0);
     pierR.castShadow = true;
     pierR.receiveShadow = true;
     group.add(pierR);
 
-    // 2. Central Stone Arch Substructure Vault (Spans across river between abutments)
-    const archGeo = new THREE.BoxGeometry(spanX * 0.76, 3.2, spanZ);
+    // 2. Central Stone Arch Substructure Vault (Gracefully arched above water surface)
+    const archGeo = new THREE.BoxGeometry(spanX * 0.78, 3.8, spanZ * 0.94);
     const arch = new THREE.Mesh(archGeo, stoneMat);
     arch.position.set(0, 1.2, 0);
     arch.castShadow = true;
     arch.receiveShadow = true;
     group.add(arch);
 
-    // 3. Raised Cobblestone Roadway Deck
-    const deckGeo = new THREE.BoxGeometry(spanX, 1.8, spanZ - 3.2);
+    // 3. Raised Cobblestone Roadway Deck (Slightly elevated above the river)
+    const deckGeo = new THREE.BoxGeometry(spanX, 1.8, spanZ - 4.0);
     const deck = new THREE.Mesh(deckGeo, cobbleMat);
-    deck.position.set(0, 2.4, 0);
+    deck.position.set(0, 2.2, 0);
     deck.castShadow = true;
     deck.receiveShadow = true;
     group.add(deck);
 
+    // Approach ramps connecting elevated bridge deck to ground roads
+    const rampGeo = new THREE.BoxGeometry(7.0, 1.4, spanZ - 4.0);
+    const rampL = new THREE.Mesh(rampGeo, cobbleMat);
+    rampL.position.set(-spanX * 0.46, 1.2, 0);
+    rampL.rotation.z = -0.12;
+    group.add(rampL);
+
+    const rampR = new THREE.Mesh(rampGeo, cobbleMat);
+    rampR.position.set(spanX * 0.46, 1.2, 0);
+    rampR.rotation.z = 0.12;
+    group.add(rampR);
+
     // 4. Heavy Carved Stone Parapets on North & South Edges
-    const parapetGeo = new THREE.BoxGeometry(spanX, 3.2, 1.6);
+    const parapetGeo = new THREE.BoxGeometry(spanX, 3.4, 2.2);
     const pNorth = new THREE.Mesh(parapetGeo, stoneMat);
-    pNorth.position.set(0, 3.6, -spanZ / 2 + 0.8);
+    pNorth.position.set(0, 3.8, -spanZ / 2 + 1.1);
     pNorth.castShadow = true;
     pNorth.receiveShadow = true;
     group.add(pNorth);
 
     const pSouth = new THREE.Mesh(parapetGeo, stoneMat);
-    pSouth.position.set(0, 3.6, spanZ / 2 - 0.8);
+    pSouth.position.set(0, 3.8, spanZ / 2 - 1.1);
     pSouth.castShadow = true;
     pSouth.receiveShadow = true;
     group.add(pSouth);
 
     // Crenellations along North & South parapet tops
-    const crenelGeo = new THREE.BoxGeometry(3.5, 1.2, 1.7);
-    const numCrenels = 5;
+    const crenelGeo = new THREE.BoxGeometry(4.2, 1.4, 2.3);
+    const numCrenels = 7;
     for (let c = 0; c < numCrenels; c++) {
-      const cx = -spanX * 0.38 + c * (spanX * 0.76 / (numCrenels - 1));
+      const cx = -spanX * 0.40 + c * (spanX * 0.80 / (numCrenels - 1));
       const cN = new THREE.Mesh(crenelGeo, stoneMat);
-      cN.position.set(cx, 5.4, -spanZ / 2 + 0.8);
+      cN.position.set(cx, 5.8, -spanZ / 2 + 1.1);
       group.add(cN);
 
       const cS = new THREE.Mesh(crenelGeo, stoneMat);
-      cS.position.set(cx, 5.4, spanZ / 2 - 0.8);
+      cS.position.set(cx, 5.8, spanZ / 2 - 1.1);
       group.add(cS);
     }
 
     // 5. Four Grand Corner Stone Pedestals with Amber Lanterns
-    const pedestalGeo = new THREE.BoxGeometry(2.4, 4.2, 2.4);
-    const capGeo = new THREE.BoxGeometry(2.8, 0.6, 2.8);
-    const bracketGeo = new THREE.CylinderGeometry(0.3, 0.45, 0.8, 6);
-    const cageGeo = new THREE.BoxGeometry(1.6, 2.2, 1.6);
-    const emberGeo = new THREE.SphereGeometry(0.45, 6, 6);
-    const roofGeo = new THREE.ConeGeometry(1.3, 1.2, 4);
+    const pedestalGeo = new THREE.BoxGeometry(3.2, 5.0, 3.2);
+    const capGeo = new THREE.BoxGeometry(3.6, 0.8, 3.6);
+    const bracketGeo = new THREE.CylinderGeometry(0.35, 0.55, 0.9, 6);
+    const cageGeo = new THREE.BoxGeometry(1.8, 2.4, 1.8);
+    const emberGeo = new THREE.SphereGeometry(0.5, 6, 6);
+    const roofGeo = new THREE.ConeGeometry(1.5, 1.4, 4);
     roofGeo.rotateY(Math.PI / 4);
 
     const cornerCoords = [
@@ -1948,36 +1985,36 @@ export class ThreeRenderer {
     cornerCoords.forEach(([lx, lz]) => {
       // Stone Pedestal Pillar
       const pedestal = new THREE.Mesh(pedestalGeo, stoneMat);
-      pedestal.position.set(lx, 3.6, lz);
+      pedestal.position.set(lx, 4.2, lz);
       pedestal.castShadow = true;
       group.add(pedestal);
 
       // Chamfered Stone Cap
       const cap = new THREE.Mesh(capGeo, stoneMat);
-      cap.position.set(lx, 5.9, lz);
+      cap.position.set(lx, 6.8, lz);
       group.add(cap);
 
       // Wrought-Iron Base
       const bracket = new THREE.Mesh(bracketGeo, ironMat);
-      bracket.position.set(lx, 6.5, lz);
+      bracket.position.set(lx, 7.5, lz);
       group.add(bracket);
 
       // Amber Glass Lantern Cage
       const cage = new THREE.Mesh(cageGeo, amberGlassMat);
       cage.name = 'lanternCage';
-      cage.position.set(lx, 7.8, lz);
+      cage.position.set(lx, 8.8, lz);
       cage.castShadow = true;
       group.add(cage);
 
       // Glowing Ember
       const ember = new THREE.Mesh(emberGeo, emberMat);
       ember.name = 'lanternEmber';
-      ember.position.set(lx, 7.8, lz);
+      ember.position.set(lx, 8.8, lz);
       group.add(ember);
 
       // Iron Lantern Cap
       const roof = new THREE.Mesh(roofGeo, ironMat);
-      roof.position.set(lx, 9.4, lz);
+      roof.position.set(lx, 10.5, lz);
       group.add(roof);
     });
 
@@ -3046,6 +3083,8 @@ export class ThreeRenderer {
 
     const dist = this.cameraDistance;
     state.camera.zoom = 380 / dist;
+    state.camera.yaw = this.cameraYaw;
+    state.camera.pitch = this.cameraPitch;
 
     const camX = this.cameraTarget.x + dist * cosPitch * sinYaw;
     const camY = this.cameraTarget.y + dist * sinPitch;
@@ -5608,76 +5647,58 @@ export class ThreeRenderer {
     }
 
     if (lair.type === 'graveyard') {
-      // 3D Cursed Graveyard with Mausoleum & Headstones
-      const cryptGeo = new THREE.BoxGeometry(16, 14, 20);
-      const cryptMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
-      const crypt = new THREE.Mesh(cryptGeo, cryptMat);
-      crypt.position.set(0, 7, -6);
-      crypt.castShadow = true;
-      group.add(crypt);
+      // Authentic 3D Cursed Graveyard with KayKit Crypt Mausoleum, Tombstones & Twisted Dead Trees
+      const gltfCrypt = ModelRegistry.getInstance().cloneModel('crypt');
+      if (gltfCrypt) {
+        const box = new THREE.Box3().setFromObject(gltfCrypt);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
 
-      // Crypt Roof (Gabled)
-      const cRoofMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 });
-      const cRoof = this.createGableRoof(19, 23, 8, cRoofMat);
-      cRoof.position.set(0, 14, -6);
-      group.add(cRoof);
+        const maxDim = Math.max(size.x, size.z);
+        const targetDim = Math.min(w, h) * 0.58;
+        const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
 
-      // Tilted Headstones
-      const stoneGeo = new THREE.BoxGeometry(4, 7, 1.5);
-      const tombMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.9 });
-
-      const t1 = new THREE.Mesh(stoneGeo, tombMat);
-      t1.position.set(-w * 0.25, 3.5, h * 0.25);
-      t1.rotation.z = -0.15;
-      t1.castShadow = true;
-      group.add(t1);
-
-      const t2 = new THREE.Mesh(stoneGeo, tombMat);
-      t2.position.set(w * 0.25, 3.5, h * 0.2);
-      t2.rotation.z = 0.2;
-      t2.castShadow = true;
-      group.add(t2);
-
-      const t3 = new THREE.Mesh(stoneGeo, tombMat);
-      t3.position.set(w * 0.32, 3.2, -h * 0.28);
-      t3.rotation.z = -0.32;
-      t3.rotation.y = 0.5;
-      t3.castShadow = true;
-      group.add(t3);
-
-      const t4 = new THREE.Mesh(stoneGeo, tombMat);
-      t4.position.set(-w * 0.33, 2.9, h * 0.05);
-      t4.rotation.x = 0.25;
-      t4.rotation.y = -0.4;
-      group.add(t4);
-
-      // Arched Crypt Doorway with Stone Steps
-      const doorMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.95 });
-      const cryptDoor = new THREE.Mesh(new THREE.BoxGeometry(5.5, 8, 0.6), doorMat);
-      cryptDoor.position.set(0, 4, 4.1);
-      group.add(cryptDoor);
-      const doorArch = new THREE.Mesh(new THREE.TorusGeometry(2.75, 0.6, 6, 12, Math.PI), tombMat);
-      doorArch.position.set(0, 8, 4.15);
-      group.add(doorArch);
-      for (const stepX of [0]) {
-        const step = new THREE.Mesh(new THREE.BoxGeometry(9, 1.2, 3), tombMat);
-        step.position.set(stepX, 0.6, 6.2);
-        group.add(step);
+        gltfCrypt.scale.set(scale, scale, scale);
+        gltfCrypt.position.set(-center.x * scale, -box.min.y * scale + 0.2, -center.z * scale - h * 0.16);
+        group.add(gltfCrypt);
+      } else {
+        const cryptGeo = new THREE.BoxGeometry(16, 14, 20);
+        const cryptMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
+        const crypt = new THREE.Mesh(cryptGeo, cryptMat);
+        crypt.position.set(0, 7, -6);
+        group.add(crypt);
       }
 
-      // Gnarled Dead Tree with twisted branches
-      const deadWoodMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 1.0 });
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.5, 16, 6), deadWoodMat);
-      trunk.position.set(w * 0.38, 8, h * 0.35);
-      trunk.rotation.z = -0.12;
-      trunk.castShadow = true;
-      group.add(trunk);
-      for (const [bAng, bLen] of [[0.6, 7], [2.4, 6], [4.4, 5.5]] as const) {
-        const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.42, bLen, 5), deadWoodMat);
-        branch.position.set(w * 0.38 + Math.cos(bAng) * bLen * 0.45, 13 + Math.sin(bAng) * 1.5, h * 0.35 + Math.sin(bAng) * bLen * 0.4);
-        branch.rotation.z = Math.cos(bAng) > 0 ? -0.85 : 0.85;
-        branch.castShadow = true;
-        group.add(branch);
+      // Authentic Dead Twisted Tree
+      const deadTree = ModelRegistry.getInstance().cloneModel('tree_dead_large');
+      if (deadTree) {
+        deadTree.scale.set(1.3, 1.3, 1.3);
+        deadTree.position.set(w * 0.36, 0.2, h * 0.3);
+        group.add(deadTree);
+      }
+
+      // Authentic Gravestones
+      for (let g = 0; g < 4; g++) {
+        const stone = ModelRegistry.getInstance().cloneModel('gravestone');
+        if (stone) {
+          stone.scale.set(1.3, 1.3, 1.3);
+          const gx = (g % 2 === 0 ? -w * 0.28 : w * 0.18) + (g >= 2 ? 6 : -4);
+          const gz = (g >= 2 ? h * 0.26 : h * 0.08);
+          stone.position.set(gx, 0.2, gz);
+          stone.rotation.y = (g * 0.3) - 0.2;
+          stone.rotation.z = Math.sin(g * 1.7) * 0.08;
+          group.add(stone);
+        }
+      }
+
+      // Authentic Skull Post
+      const skullPost = ModelRegistry.getInstance().cloneModel('post_skull');
+      if (skullPost) {
+        skullPost.scale.set(1.3, 1.3, 1.3);
+        skullPost.position.set(-w * 0.38, 0.2, -h * 0.28);
+        group.add(skullPost);
       }
 
       // Wrought-Iron Fence Posts along the front edge
@@ -5696,85 +5717,64 @@ export class ThreeRenderer {
       rail.position.set(0, 4.4, h * 0.48);
       group.add(rail);
     } else if (lair.type === 'goblin_hut') {
-      // Mud and Straw Teepee Hut with Bone Totems
-      const hutGeo = new THREE.ConeGeometry(w * 0.42, 22, 6);
-      const hutMat = new THREE.MeshStandardMaterial({ color: 0x713f12, roughness: 0.9 });
-      const hut = new THREE.Mesh(hutGeo, hutMat);
-      hut.position.y = 11;
-      hut.castShadow = true;
-      group.add(hut);
+      // Authentic Goblin War Encampment with Tribal Tent, Weapon Racks, Skull Totems & Campfire
+      const gltfTent = ModelRegistry.getInstance().cloneModel('tent');
+      if (gltfTent) {
+        const box = new THREE.Box3().setFromObject(gltfTent);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
 
-      // Straw Thatch trim
-      const thatchGeo = new THREE.ConeGeometry(w * 0.45, 8, 6);
-      const thatchMat = new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.8 });
-      const thatch = new THREE.Mesh(thatchGeo, thatchMat);
-      thatch.position.y = 8;
-      group.add(thatch);
+        const maxDim = Math.max(size.x, size.z);
+        const targetDim = Math.min(w, h) * 0.72;
+        const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
 
-      // Tribal Totem Pole outside
-      const totemGeo = new THREE.CylinderGeometry(1, 1, 18, 6);
-      const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
-      const totem = new THREE.Mesh(totemGeo, woodMat);
-      totem.position.set(w * 0.3, 9, h * 0.25);
-      totem.castShadow = true;
-      group.add(totem);
+        gltfTent.scale.set(scale, scale, scale);
+        gltfTent.position.set(-center.x * scale - w * 0.1, -box.min.y * scale + 0.2, -center.z * scale - h * 0.08);
+        gltfTent.rotation.y = 0.35;
+        group.add(gltfTent);
+      }
 
-      const skullGeo = new THREE.SphereGeometry(2.5, 6, 6);
-      const skullMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0 });
-      const skull = new THREE.Mesh(skullGeo, skullMat);
-      skull.position.set(w * 0.3, 18, h * 0.25);
-      group.add(skull);
+      // Authentic Weapon Rack with spears & blades
+      const weaponRack = ModelRegistry.getInstance().cloneModel('weaponrack');
+      if (weaponRack) {
+        weaponRack.scale.set(1.4, 1.4, 1.4);
+        weaponRack.position.set(w * 0.32, 0.4, -h * 0.2);
+        weaponRack.rotation.y = -0.4;
+        group.add(weaponRack);
+      }
+
+      // Authentic Red War Flag / Banner
+      const redFlag = ModelRegistry.getInstance().cloneModel('flag_red');
+      if (redFlag) {
+        redFlag.scale.set(1.5, 1.5, 1.5);
+        redFlag.position.set(-w * 0.36, 0.2, -h * 0.32);
+        group.add(redFlag);
+      }
+
+      // Skull Totem Posts
+      const skullPost = ModelRegistry.getInstance().cloneModel('post_skull');
+      if (skullPost) {
+        skullPost.scale.set(1.4, 1.4, 1.4);
+        skullPost.position.set(w * 0.34, 0.2, h * 0.28);
+        group.add(skullPost);
+      }
 
       // Crackle-Fire Camp Ring with embers
       const fireRingMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 1.0 });
       for (let fr = 0; fr < 7; fr++) {
         const ang = (fr / 7) * Math.PI * 2;
-        const ringStone = new THREE.Mesh(new THREE.DodecahedronGeometry(0.85, 0), fireRingMat);
-        ringStone.position.set(-w * 0.28 + Math.cos(ang) * 3.4, 0.6, h * 0.32 + Math.sin(ang) * 3.4);
+        const ringStone = new THREE.Mesh(new THREE.DodecahedronGeometry(1.0, 0), fireRingMat);
+        ringStone.position.set(w * 0.08 + Math.cos(ang) * 4.2, 0.6, h * 0.26 + Math.sin(ang) * 4.2);
         group.add(ringStone);
       }
-      const emberMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xdc2626, emissiveIntensity: 1.6 });
-      for (let fe = 0; fe < 3; fe++) {
-        const ember = new THREE.Mesh(new THREE.SphereGeometry(0.55, 6, 6), emberMat);
-        ember.position.set(-w * 0.28 + (fe - 1) * 1.1, 0.55, h * 0.32);
+      const emberMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xdc2626, emissiveIntensity: 2.0 });
+      for (let fe = 0; fe < 4; fe++) {
+        const ember = new THREE.Mesh(new THREE.SphereGeometry(0.7, 6, 6), emberMat);
+        ember.position.set(w * 0.08 + (fe - 1.5) * 1.3, 0.7, h * 0.26 + Math.sin(fe * 2) * 1.0);
         group.add(ember);
       }
-      // Teepee of kindling sticks
-      const kindleMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.95 });
-      for (const kAng of [0.5, 2.6, 4.7]) {
-        const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 4.2, 4), kindleMat);
-        stick.position.set(-w * 0.28, 1.9, h * 0.32);
-        stick.rotation.z = Math.cos(kAng) * 0.55;
-        stick.rotation.x = Math.sin(kAng) * 0.55;
-        group.add(stick);
-      }
-
-      // Skull-Tipped Warning Stakes ringing the hut
-      const stakeMat = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95 });
-      for (let st = 0; st < 5; st++) {
-        const sAng = (st / 5) * Math.PI * 2 + 0.4;
-        const sx = Math.cos(sAng) * w * 0.44;
-        const sz = Math.sin(sAng) * h * 0.44;
-        const stake = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 6.5, 5), stakeMat);
-        stake.position.set(sx, 3.25, sz);
-        stake.rotation.z = Math.sin(sAng * 3) * 0.12;
-        group.add(stake);
-        if (st % 2 === 0) {
-          const stakeSkull = new THREE.Mesh(new THREE.SphereGeometry(0.85, 6, 6), skullMat);
-          stakeSkull.scale.set(1, 0.85, 0.95);
-          stakeSkull.position.set(sx, 7.0, sz);
-          group.add(stakeSkull);
-        }
-      }
-
-      // Tattered Tribal War Banner
-      const bannerPole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 14, 5), kindleMat);
-      bannerPole.position.set(w * 0.42, 7, -h * 0.3);
-      bannerPole.rotation.z = -0.08;
-      group.add(bannerPole);
-      const bannerCloth = new THREE.Mesh(new THREE.BoxGeometry(4.2, 6, 0.15), new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.9, side: THREE.DoubleSide }));
-      bannerCloth.position.set(w * 0.42 - 2.3, 10.5, -h * 0.3);
-      group.add(bannerCloth);
     } else if (lair.type === 'wolf_den') {
       // Rocky Cave Mouth Burrow
       const caveMoundGeo = new THREE.SphereGeometry(w * 0.45, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -5821,55 +5821,128 @@ export class ThreeRenderer {
         group.add(boulder);
       }
     } else if (lair.type === 'ancient_ruins') {
-      // Crumbling Greek / Gothic Columns & Broken Lintel
-      const colGeo = new THREE.CylinderGeometry(2.5, 3, 22, 8);
-      const marbleMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.8 });
+      // Grand Ancient Ruined Citadel & Mystical Dark Arcane Altar
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.cobbleTexture, roughness: 0.9 });
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x64748b, map: this.royalCastleWallTexture, roughness: 0.85 });
+      const mossMat = new THREE.MeshStandardMaterial({ color: 0x3f6212, roughness: 1.0 });
+      const altarMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6, metalness: 0.3 });
+      const arcaneGlowMat = new THREE.MeshStandardMaterial({
+        color: 0xc084fc,
+        emissive: 0x9333ea,
+        emissiveIntensity: 2.2,
+        roughness: 0.15,
+        metalness: 0.1
+      });
 
-      const c1 = new THREE.Mesh(colGeo, marbleMat); c1.position.set(-w * 0.25, 11, -h * 0.2); c1.castShadow = true; group.add(c1);
-      const c2 = new THREE.Mesh(colGeo, marbleMat); c2.position.set(w * 0.25, 11, -h * 0.2); c2.castShadow = true; group.add(c2);
+      // 1. Raised Stepped Stone Dais
+      const daisGeo = new THREE.BoxGeometry(w * 0.92, 1.4, h * 0.92);
+      const dais = new THREE.Mesh(daisGeo, baseMat);
+      dais.position.y = 0.7;
+      dais.receiveShadow = true;
+      group.add(dais);
 
-      // Broken Lintel resting on top
-      const lintelGeo = new THREE.BoxGeometry(w * 0.7, 4, 6);
-      const lintel = new THREE.Mesh(lintelGeo, marbleMat);
-      lintel.position.set(0, 23, -h * 0.2);
-      lintel.rotation.z = 0.1;
+      // 2. High-Quality KayKit Medieval Destroyed Building Structure (Authentic assets)
+      const gltfRuins = ModelRegistry.getInstance().cloneModel('ruins');
+      if (gltfRuins) {
+        const box = new THREE.Box3().setFromObject(gltfRuins);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+
+        const maxDim = Math.max(size.x, size.z);
+        const targetDim = Math.min(w, h) * 0.78;
+        const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
+
+        gltfRuins.scale.set(scale, scale, scale);
+        gltfRuins.position.set(-center.x * scale - w * 0.08, -box.min.y * scale + 1.2, -center.z * scale - h * 0.08);
+        group.add(gltfRuins);
+      }
+
+      // 3. Ancient Weathered Stone Pillars & Broken Arch
+      const colGeo = new THREE.CylinderGeometry(2.4, 2.9, 20, 8);
+      const c1 = new THREE.Mesh(colGeo, stoneMat);
+      c1.position.set(-w * 0.34, 10, -h * 0.32);
+      c1.castShadow = true;
+      group.add(c1);
+
+      const c2 = new THREE.Mesh(colGeo, stoneMat);
+      c2.position.set(-w * 0.34, 10, h * 0.28);
+      c2.castShadow = true;
+      group.add(c2);
+
+      // Broken Lintel
+      const lintelGeo = new THREE.BoxGeometry(4.2, 3.4, h * 0.65);
+      const lintel = new THREE.Mesh(lintelGeo, stoneMat);
+      lintel.position.set(-w * 0.34, 20.8, -h * 0.02);
+      lintel.rotation.x = 0.08;
       lintel.castShadow = true;
       group.add(lintel);
 
-      // Third Column broken to a jagged stump
-      const c3 = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 3, 9, 8), marbleMat);
-      c3.position.set(0, 4.5, h * 0.28);
-      c3.rotation.z = -0.06;
-      c3.castShadow = true;
-      group.add(c3);
+      // Broken Stump & Toppled Column Segment
+      const cStump = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.8, 7.5, 8), stoneMat);
+      cStump.position.set(w * 0.32, 4.5, h * 0.32);
+      cStump.rotation.z = 0.12;
+      group.add(cStump);
 
-      // Toppled Column Segment lying in the grass
-      const fallen = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 12, 8), marbleMat);
-      fallen.rotation.z = Math.PI / 2;
-      fallen.rotation.y = 0.5;
-      fallen.position.set(w * 0.05, 2.1, h * 0.38);
-      fallen.castShadow = true;
-      group.add(fallen);
+      const fallenCol = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 13, 8), stoneMat);
+      fallenCol.rotation.z = Math.PI / 2;
+      fallenCol.rotation.y = 0.6;
+      fallenCol.position.set(w * 0.24, 2.4, -h * 0.28);
+      fallenCol.castShadow = true;
+      group.add(fallenCol);
 
-      // Mossy Caps & creeping vines on the standing columns
-      const mossMat = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 1.0 });
-      for (const [cx, cz] of [[-w * 0.25, -h * 0.2], [w * 0.25, -h * 0.2]] as const) {
-        const cap = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 2.6, 1.6, 8), marbleMat);
-        cap.position.set(cx, 22.5, cz);
-        group.add(cap);
-        const mossPatch = new THREE.Mesh(new THREE.SphereGeometry(1.7, 7, 5), mossMat);
-        mossPatch.scale.set(1, 0.35, 1);
-        mossPatch.position.set(cx + 0.8, 23.4, cz + 0.5);
-        group.add(mossPatch);
+      // Mossy caps on pillars
+      for (const [cx, cz] of [[-w * 0.34, -h * 0.32], [-w * 0.34, h * 0.28]] as const) {
+        const mossCap = new THREE.Mesh(new THREE.SphereGeometry(2.2, 7, 5), mossMat);
+        mossCap.scale.set(1, 0.4, 1);
+        mossCap.position.set(cx, 20.8, cz);
+        group.add(mossCap);
       }
 
-      // Scattered Marble Rubble
-      const rubbleMatR = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.95 });
-      for (let rr = 0; rr < 5; rr++) {
-        const chunk = new THREE.Mesh(new THREE.DodecahedronGeometry(1.1 + (rr % 2) * 0.7, 0), rubbleMatR);
-        chunk.position.set(Math.sin(rr * 2.4) * w * 0.36, 0.9, Math.cos(rr * 1.8) * h * 0.34);
-        chunk.rotation.set(rr, rr * 1.4, 0);
-        group.add(chunk);
+      // 4. Central Corrupted Arcane Altar & Glowing Crystal Spire
+      const altarBase = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5.2, 2.8, 8), altarMat);
+      altarBase.position.set(w * 0.12, 2.4, h * 0.06);
+      altarBase.castShadow = true;
+      group.add(altarBase);
+
+      const altarRunicRing = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.4, 6, 12), arcaneGlowMat);
+      altarRunicRing.rotation.x = Math.PI / 2;
+      altarRunicRing.position.set(w * 0.12, 3.9, h * 0.06);
+      group.add(altarRunicRing);
+
+      // Floating / Jutting Dark Arcane Spire Crystal
+      const crystalGeo = new THREE.OctahedronGeometry(3.2, 0);
+      const crystal = new THREE.Mesh(crystalGeo, arcaneGlowMat);
+      crystal.scale.set(0.7, 2.2, 0.7);
+      crystal.position.set(w * 0.12, 8.5, h * 0.06);
+      crystal.castShadow = true;
+      group.add(crystal);
+
+      // 5. Authentic KayKit Nature Props: Boulders, Bushes, Mushrooms
+      const rock1 = ModelRegistry.getInstance().cloneModel('rock_large_a') || ModelRegistry.getInstance().getRockModel(0);
+      if (rock1) {
+        rock1.scale.set(1.4, 1.4, 1.4);
+        rock1.position.set(w * 0.36, 0.8, -h * 0.12);
+        group.add(rock1);
+      }
+      const rock2 = ModelRegistry.getInstance().cloneModel('rock_small_b') || ModelRegistry.getInstance().getRockModel(3);
+      if (rock2) {
+        rock2.scale.set(1.6, 1.6, 1.6);
+        rock2.position.set(-w * 0.28, 0.8, h * 0.36);
+        group.add(rock2);
+      }
+      const bush = ModelRegistry.getInstance().cloneModel('bush_detailed') || ModelRegistry.getInstance().getBushOrGrassModel(1);
+      if (bush) {
+        bush.scale.set(1.3, 1.3, 1.3);
+        bush.position.set(w * 0.32, 0.8, h * 0.18);
+        group.add(bush);
+      }
+      const shrooms = ModelRegistry.getInstance().cloneModel('mushrooms') || ModelRegistry.getInstance().getFloraModel(3);
+      if (shrooms) {
+        shrooms.scale.set(1.8, 1.8, 1.8);
+        shrooms.position.set(-w * 0.18, 0.8, -h * 0.36);
+        group.add(shrooms);
       }
     } else if (lair.type === 'dragon_cavern') {
       // Volcanic Obsidian Peaks with Magma Crag
@@ -5983,44 +6056,42 @@ export class ThreeRenderer {
       fireRing.position.set(0, 0.6, h * 0.28);
       group.add(fireRing);
     } else if (lair.type === 'dark_castle') {
-      // Brooding Dark Castle — obsidian keep with blood-red windows
-      const castleMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.75, metalness: 0.25 });
-      const trimMat = new THREE.MeshStandardMaterial({ color: 0x0c0a09, roughness: 0.4, metalness: 0.5 });
-      const windowMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 1.6 });
+      // Authentic Dark Sovereign Fortress Keep
+      const gltfCastle = ModelRegistry.getInstance().cloneModel('dark_castle_keep');
+      if (gltfCastle) {
+        const box = new THREE.Box3().setFromObject(gltfCastle);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
 
-      // Central keep
-      const keep = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 30, h * 0.42), castleMat);
-      keep.position.y = 15;
-      keep.castShadow = true;
-      group.add(keep);
+        const maxDim = Math.max(size.x, size.z);
+        const targetDim = Math.min(w, h) * 0.88;
+        const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
 
-      // Corner towers with spires
-      for (const [tx, tz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        const tower = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5.2, 36, 7), castleMat);
-        tower.position.set(tx * w * 0.36, 18, tz * h * 0.36);
-        tower.castShadow = true;
-        group.add(tower);
-
-        const spire = new THREE.Mesh(new THREE.ConeGeometry(4.8, 9, 7), trimMat);
-        spire.position.set(tx * w * 0.36, 40.5, tz * h * 0.36);
-        spire.castShadow = true;
-        group.add(spire);
-
-        const window = new THREE.Mesh(new THREE.BoxGeometry(1.1, 3.2, 0.5), windowMat);
-        window.position.set(tx * w * 0.30, 24, tz * h * 0.36 + (tz > 0 ? 5.25 : -5.25));
-        group.add(window);
+        gltfCastle.scale.set(scale, scale, scale);
+        gltfCastle.position.set(-center.x * scale, -box.min.y * scale + 0.2, -center.z * scale);
+        group.add(gltfCastle);
+      } else {
+        const castleMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.75, metalness: 0.25 });
+        const keep = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 30, h * 0.42), castleMat);
+        keep.position.y = 15;
+        keep.castShadow = true;
+        group.add(keep);
       }
 
-      // Keep battlements & gate glow
-      for (let c = -2; c <= 2; c++) {
-        const merlon = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.4, 2.0), trimMat);
-        merlon.position.set(c * (w * 0.09), 31.6, h * 0.21);
-        group.add(merlon);
+      const redFlag = ModelRegistry.getInstance().cloneModel('flag_red');
+      if (redFlag) {
+        redFlag.scale.set(1.6, 1.6, 1.6);
+        redFlag.position.set(w * 0.36, 0.2, h * 0.36);
+        group.add(redFlag);
       }
-
-      const gate = new THREE.Mesh(new THREE.BoxGeometry(w * 0.18, 8.5, 0.8), windowMat);
-      gate.position.set(0, 4.2, h * 0.215);
-      group.add(gate);
+      const skullPost = ModelRegistry.getInstance().cloneModel('post_skull');
+      if (skullPost) {
+        skullPost.scale.set(1.5, 1.5, 1.5);
+        skullPost.position.set(-w * 0.36, 0.2, h * 0.36);
+        group.add(skullPost);
+      }
     } else {
       const rockGeo = new THREE.DodecahedronGeometry(w * 0.35, 0);
       const rockMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
@@ -9123,8 +9194,6 @@ export class ThreeRenderer {
       const h = (c.height || 3) * ts;
 
       const charMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95 });
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.9 });
-      const timberMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.95 });
       const emberMat = new THREE.MeshStandardMaterial({
         color: 0xf97316,
         emissive: 0xd97706,
@@ -9132,72 +9201,45 @@ export class ThreeRenderer {
       });
 
       // 1. Charred Crumbled Foundation Plinth
-      const plinthGeo = new THREE.BoxGeometry(w * 0.92, 1.2, h * 0.92);
+      const plinthGeo = new THREE.BoxGeometry(w * 0.94, 1.2, h * 0.94);
       const plinth = new THREE.Mesh(plinthGeo, charMat);
       plinth.position.y = 0.6;
       plinth.receiveShadow = true;
       group.add(plinth);
 
-      // 2. Jagged Broken Stone Wall Stubs around perimeter
-      const wall1Geo = new THREE.BoxGeometry(w * 0.45, 4.2, 1.8);
-      const wall1 = new THREE.Mesh(wall1Geo, stoneMat);
-      wall1.position.set(-w * 0.2, 2.4, -h * 0.4);
-      wall1.rotation.y = 0.12;
-      wall1.castShadow = true;
-      group.add(wall1);
+      // 2. High-Quality Authentic KayKit 3D Ruins Model
+      const gltfRuins = ModelRegistry.getInstance().cloneModel('ruins');
+      if (gltfRuins) {
+        const box = new THREE.Box3().setFromObject(gltfRuins);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
 
-      const wall2Geo = new THREE.BoxGeometry(1.8, 3.2, h * 0.4);
-      const wall2 = new THREE.Mesh(wall2Geo, stoneMat);
-      wall2.position.set(w * 0.4, 2.0, -h * 0.1);
-      wall2.rotation.y = -0.15;
-      wall2.castShadow = true;
-      group.add(wall2);
+        const maxDim = Math.max(size.x, size.z);
+        const targetDim = Math.min(w, h) * 0.92;
+        const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
 
-      const wall3Geo = new THREE.BoxGeometry(w * 0.35, 2.6, 1.8);
-      const wall3 = new THREE.Mesh(wall3Geo, stoneMat);
-      wall3.position.set(w * 0.15, 1.6, h * 0.38);
-      wall3.castShadow = true;
-      group.add(wall3);
-
-      // 3. Fallen Charred Timber Roof Beams
-      const beam1Geo = new THREE.BoxGeometry(w * 0.6, 0.9, 0.9);
-      const beam1 = new THREE.Mesh(beam1Geo, timberMat);
-      beam1.position.set(0, 1.6, 0);
-      beam1.rotation.set(0.2, 0.45, 0.25);
-      beam1.castShadow = true;
-      group.add(beam1);
-
-      const beam2Geo = new THREE.BoxGeometry(w * 0.45, 0.8, 0.8);
-      const beam2 = new THREE.Mesh(beam2Geo, timberMat);
-      beam2.position.set(-w * 0.1, 1.2, h * 0.15);
-      beam2.rotation.set(-0.15, -0.6, -0.2);
-      beam2.castShadow = true;
-      group.add(beam2);
-
-      // 4. Shattered Rubble / Stone Blocks
-      const rubbleGeo = new THREE.DodecahedronGeometry(1.6, 0);
-      const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
-      for (let r = 0; r < 6; r++) {
-        const rubble = new THREE.Mesh(rubbleGeo, rubbleMat);
-        const rx = (Math.sin(r * 1.7) * w * 0.3);
-        const rz = (Math.cos(r * 1.7) * h * 0.3);
-        rubble.position.set(rx, 1.2, rz);
-        rubble.rotation.set(r * 0.5, r * 0.8, 0);
-        rubble.scale.set(0.8 + (r % 3) * 0.3, 0.6 + (r % 2) * 0.4, 0.8 + (r % 3) * 0.3);
-        rubble.castShadow = true;
-        group.add(rubble);
+        gltfRuins.scale.set(scale, scale, scale);
+        gltfRuins.position.set(-center.x * scale, -box.min.y * scale + 0.8, -center.z * scale);
+        group.add(gltfRuins);
+      } else {
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.9 });
+        const wall1 = new THREE.Mesh(new THREE.BoxGeometry(w * 0.45, 4.2, 1.8), stoneMat);
+        wall1.position.set(-w * 0.2, 2.4, -h * 0.4);
+        group.add(wall1);
       }
 
-      // 5. Glowing Embers in the Ashes
-      for (let e = 0; e < 3; e++) {
+      // 3. Glowing Embers in the Ashes
+      for (let e = 0; e < 4; e++) {
         const emberGeo = new THREE.SphereGeometry(0.7, 5, 5);
         const ember = new THREE.Mesh(emberGeo, emberMat);
-        ember.position.set(Math.sin(e * 2.3) * w * 0.2, 0.9, Math.cos(e * 2.3) * h * 0.2);
+        ember.position.set(Math.sin(e * 2.3) * w * 0.25, 1.0, Math.cos(e * 2.3) * h * 0.25);
         group.add(ember);
       }
 
-      // 6. Plume of Rising Smoke
-      const smoke = this.createSmokeEmitter(0, 2.0, 0, true, 4);
+      // 4. Plume of Rising Smoke
+      const smoke = this.createSmokeEmitter(0, 3.0, 0, true, 4);
       group.add(smoke);
 
       return group;

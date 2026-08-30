@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Building, Hero, HeroClass } from '../game/types';
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS } from '../game/constants';
+import { audioManager } from '../game/engine/Audio';
 import { 
   Building as BuildingIcon, 
   Heart, 
@@ -10,9 +11,8 @@ import {
   UserPlus, 
   Sparkles, 
   X, 
-  Lock,
-  Users,
-  Swords
+  Lock, 
+  Users
 } from 'lucide-react';
 
 interface BuildingInspectorProps {
@@ -38,6 +38,7 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
   onResearchUpgrade,
   onSelectHero
 }) => {
+  const [shakingId, setShakingId] = useState<string | null>(null);
   const bDef = BUILDING_DEFINITIONS[building.type];
   const hpPercent = Math.max(0, Math.min(100, (building.hp / building.maxHp) * 100));
 
@@ -47,6 +48,31 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
   );
   const livingHeroCount = livingGuildHeroes.length;
   const totalActiveHeroes = heroesCount ?? heroes.filter(h => !h.isDead).length;
+
+  const handleRecruitClick = (heroClass: HeroClass, cost: number, isFull: boolean) => {
+    if (isFull) {
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
+    if (treasuryGold < cost) {
+      setShakingId(`recruit_${heroClass}`);
+      setTimeout(() => setShakingId(null), 450);
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
+    onRecruitHero(building.id, heroClass);
+  };
+
+  const handleResearchClick = (upgradeId: string, cost: number, isBusy: boolean) => {
+    if (isBusy) return;
+    if (treasuryGold < cost) {
+      setShakingId(`research_${upgradeId}`);
+      setTimeout(() => setShakingId(null), 450);
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
+    onResearchUpgrade(building.id, upgradeId);
+  };
 
   return (
     <div className="w-84 bg-slate-950/95 border-2 border-amber-600/90 rounded-xl p-4 text-slate-100 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200 max-h-[85vh] overflow-y-auto">
@@ -237,16 +263,21 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
               const canAfford = treasuryGold >= cost;
               const totalQueuedAndRecruited = livingHeroCount + (building.trainingQueue?.length || 0);
               const isFull = totalQueuedAndRecruited >= building.heroSlots;
+              const isShaking = shakingId === `recruit_${heroClass}`;
 
               return (
                 <button
                   key={heroClass}
-                  disabled={!canAfford || isFull}
-                  onClick={() => onRecruitHero(building.id, heroClass)}
-                  className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition-all ${
-                    canAfford && !isFull
-                      ? 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-700/60 text-amber-100 hover:border-amber-500 shadow-sm'
-                      : 'bg-slate-900/50 border-slate-800 text-slate-500 cursor-not-allowed'
+                  disabled={isFull}
+                  onClick={() => handleRecruitClick(heroClass, cost, isFull)}
+                  className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                    isShaking
+                      ? 'animate-error-shake'
+                      : isFull
+                      ? 'bg-slate-900/50 border-slate-800 text-slate-500 cursor-not-allowed'
+                      : canAfford
+                      ? 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-700/60 text-amber-100 hover:border-amber-500 shadow-sm active:scale-95'
+                      : 'bg-slate-900/60 border-rose-900/50 text-slate-300 hover:bg-rose-950/40 hover:border-rose-700/80 active:scale-95'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
@@ -269,7 +300,7 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs font-bold font-mono text-amber-300">
+                    <div className={`text-xs font-bold font-mono ${canAfford ? 'text-amber-300' : 'text-rose-400'}`}>
                       {cost}g
                     </div>
                   </div>
@@ -373,12 +404,16 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
                       </span>
                     ) : (
                       <button
-                        disabled={!canAfford || isBusy}
-                        onClick={() => onResearchUpgrade(building.id, upg.id)}
-                        className={`text-xs font-bold font-mono px-2.5 py-1 rounded transition-colors ${
-                          canAfford && !isBusy
-                            ? 'bg-amber-600 hover:bg-amber-500 text-slate-950'
-                            : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                        disabled={isBusy}
+                        onClick={() => handleResearchClick(upg.id, upg.cost, isBusy)}
+                        className={`text-xs font-bold font-mono px-2.5 py-1 rounded transition-all cursor-pointer ${
+                          shakingId === `research_${upg.id}`
+                            ? 'animate-error-shake'
+                            : isBusy
+                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            : canAfford
+                            ? 'bg-amber-600 hover:bg-amber-500 text-slate-950 shadow active:scale-95'
+                            : 'bg-rose-950/80 border border-rose-700/80 text-rose-300 hover:bg-rose-900 active:scale-95'
                         }`}
                       >
                         Research ({upg.cost}g)

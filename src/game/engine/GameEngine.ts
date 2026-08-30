@@ -1,4 +1,4 @@
-import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, LAIR_NAMES, MAP_CONFIG, MONSTER_DEFINITIONS, SOVEREIGN_SPELLS } from '../constants';
+import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, LAIR_DEFINITIONS, LAIR_NAMES, MAP_CONFIG, MONSTER_DEFINITIONS, SOVEREIGN_SPELLS } from '../constants';
 import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, MonsterType, NotificationItem, Peasant, Projectile, SaveData, Scenario, SovereignSpell, Treasure } from '../types';
 import { SCENARIOS } from '../scenarios';
 import { audioManager } from './Audio';
@@ -161,7 +161,9 @@ export class GameEngine {
       camera: {
         x: centerX,
         y: centerY,
-        zoom: 1.0
+        zoom: 1.0,
+        yaw: Math.PI / 4,
+        pitch: 0.82
       },
       activePlacement: null,
       dayPhase: 'day'
@@ -270,20 +272,24 @@ export class GameEngine {
     // Spawn initial Monster Lairs from scenario definition
     for (let i = 0; i < scenario.initialLairs.length; i++) {
       const lairConf = scenario.initialLairs[i];
+      const lairDef = LAIR_DEFINITIONS[lairConf.type];
+      const lairWidth = lairDef ? lairDef.width : 3;
+      const lairHeight = lairDef ? lairDef.height : 3;
+      const lairMaxHp = lairDef ? lairDef.maxHp : 450;
       const lair: MonsterLair = {
         id: `lair_${i}_${lairConf.type}`,
         type: lairConf.type,
-        name: LAIR_NAMES[lairConf.type] || lairConf.type.replace('_', ' ').toUpperCase(),
+        name: LAIR_NAMES[lairConf.type] || lairDef?.name || lairConf.type.replace('_', ' ').toUpperCase(),
         x: lairConf.x,
         y: lairConf.y,
-        width: 3,
-        height: 3,
-        hp: 450,
-        maxHp: 450,
+        width: lairWidth,
+        height: lairHeight,
+        hp: lairMaxHp,
+        maxHp: lairMaxHp,
         spawnTimer: 4,
-        spawnInterval: lairConf.spawnInterval,
-        monsterType: lairConf.monsterType,
-        maxMonsters: lairConf.maxMonsters,
+        spawnInterval: lairConf.spawnInterval || lairDef?.defaultSpawnInterval || 15,
+        monsterType: lairConf.monsterType || lairDef?.defaultMonster || 'goblin_spearman',
+        maxMonsters: lairConf.maxMonsters ?? (lairDef?.defaultMaxMonsters || 3),
         currentMonsters: 0
       };
       this.state.lairs.push(lair);
@@ -946,6 +952,22 @@ export class GameEngine {
           height: b.height
         });
 
+        // Majesty Guild Destruction behavior:
+        // Living heroes do NOT die. Eject any heroes currently resting inside onto safe ground.
+        for (const hero of this.state.heroes) {
+          if (hero.isDead) continue;
+          if (hero.homeGuildId === b.id) {
+            if (hero.state === 'resting_at_guild') {
+              hero.state = 'wandering';
+              hero.stateTimer = 1.0;
+              hero.currentThought = 'My guild was destroyed! Seeking vengeance!';
+              const safePos = this.gridManager.findNearestWalkablePosition(hero.x, hero.y, this.state.buildings, this.state.lairs, b.id);
+              hero.x = safePos.x;
+              hero.y = safePos.y;
+            }
+          }
+        }
+
         this.state.buildings.splice(i, 1);
         continue;
       }
@@ -1183,6 +1205,32 @@ export class GameEngine {
           audioManager.playBuildingPlaced();
           this.addFloatingText('Building Complete!', p.x, p.y - 20, '#22c55e');
           this.addNotification('Construction Complete', `${targetBuilding.name} was built by your peasants!`, 'success');
+
+          // Majesty Guild Rebuilding behavior:
+          // Re-home any living homeless veteran heroes of this guild type
+          const guildDef = BUILDING_DEFINITIONS[targetBuilding.type];
+          if (guildDef && guildDef.recruits && guildDef.recruits.length > 0) {
+            const allowedClasses = guildDef.recruits;
+            const maxSlots = targetBuilding.heroSlots || guildDef.maxHeroSlots || 4;
+            if (!targetBuilding.recruitedHeroIds) targetBuilding.recruitedHeroIds = [];
+
+            for (const hero of this.state.heroes) {
+              if (hero.isDead) continue;
+              if (targetBuilding.recruitedHeroIds.length >= maxSlots) break;
+
+              // If hero is of this guild's class and their home guild is missing or destroyed
+              if (allowedClasses.includes(hero.heroClass)) {
+                const hasLivingGuild = this.state.buildings.some(b => b.id === hero.homeGuildId && b.hp > 0 && !b.isConstructing);
+                if (!hasLivingGuild) {
+                  hero.homeGuildId = targetBuilding.id;
+                  targetBuilding.recruitedHeroIds.push(hero.id);
+                  this.addFloatingText('Guild Reclaimed!', hero.x, hero.y - 15, '#fbbf24');
+                  this.addNotification('Heroes Re-Homed', `${hero.name} (${HERO_CLASS_DEFINITIONS[hero.heroClass].name}) moved into the newly built ${targetBuilding.name}!`, 'info');
+                }
+              }
+            }
+          }
+
           p.state = 'idle_at_palace';
           p.targetBuildingId = undefined;
         }

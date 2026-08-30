@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { FlagType } from '../game/types';
 import { Target, Compass, Shield, Coins, X } from 'lucide-react';
+import { audioManager } from '../game/engine/Audio';
 
 interface FlagMenuProps {
   treasuryGold: number;
@@ -18,6 +19,7 @@ export const FlagMenu: React.FC<FlagMenuProps> = ({
   onSelectFlag
 }) => {
   const [bounty, setBounty] = useState<number>(currentBountyAmount || 100);
+  const [shakingId, setShakingId] = useState<string | null>(null);
 
   const flagOptions = [
     {
@@ -48,6 +50,17 @@ export const FlagMenu: React.FC<FlagMenuProps> = ({
 
   const presets = [50, 100, 200, 500, 1000];
 
+  const handleFlagClick = (type: FlagType, isSelected: boolean) => {
+    if (treasuryGold < bounty && !isSelected) {
+      setShakingId(`flag_${type}`);
+      setTimeout(() => setShakingId(null), 450);
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
+    audioManager.playClick();
+    onSelectFlag(isSelected ? null : type, bounty);
+  };
+
   return (
     <div className="bg-slate-950/95 border-2 border-amber-600/80 rounded-xl p-3 shadow-2xl backdrop-blur max-w-sm w-full">
       <div className="flex items-center justify-between border-b border-amber-900/60 pb-2 mb-2.5">
@@ -71,25 +84,35 @@ export const FlagMenu: React.FC<FlagMenuProps> = ({
           <span className="font-bold font-mono text-amber-300 text-sm">{bounty}g</span>
         </div>
         <div className="flex gap-1">
-          {presets.map((amt) => (
-            <button
-              key={amt}
-              disabled={treasuryGold < amt}
-              onClick={() => {
-                setBounty(amt);
-                if (activeFlagType) onSelectFlag(activeFlagType, amt);
-              }}
-              className={`flex-1 py-1 text-xs font-mono font-bold rounded border transition-colors ${
-                bounty === amt
-                  ? 'bg-amber-600 border-amber-400 text-slate-950'
-                  : treasuryGold >= amt
-                  ? 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-amber-300'
-                  : 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
-              }`}
-            >
-              {amt}g
-            </button>
-          ))}
+          {presets.map((amt) => {
+            const canAffordAmt = treasuryGold >= amt;
+            return (
+              <button
+                key={amt}
+                onClick={() => {
+                  if (!canAffordAmt) {
+                    setShakingId(`preset_${amt}`);
+                    setTimeout(() => setShakingId(null), 450);
+                    audioManager.playInsufficientGoldSound();
+                    return;
+                  }
+                  setBounty(amt);
+                  if (activeFlagType) onSelectFlag(activeFlagType, amt);
+                }}
+                className={`flex-1 py-1 text-xs font-mono font-bold rounded border transition-all cursor-pointer ${
+                  shakingId === `preset_${amt}`
+                    ? 'animate-error-shake'
+                    : bounty === amt
+                    ? 'bg-amber-600 border-amber-400 text-slate-950 shadow'
+                    : canAffordAmt
+                    ? 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-amber-300 active:scale-95'
+                    : 'bg-slate-900/60 border-rose-950 text-rose-400/80 hover:border-rose-700/80 active:scale-95'
+                }`}
+              >
+                {amt}g
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -98,18 +121,20 @@ export const FlagMenu: React.FC<FlagMenuProps> = ({
         {flagOptions.map(({ type, name, icon: Icon, color, border, desc }) => {
           const isSelected = activeFlagType === type;
           const canAfford = treasuryGold >= bounty;
+          const isShaking = shakingId === `flag_${type}`;
 
           return (
             <button
               key={type}
-              disabled={!canAfford && !isSelected}
-              onClick={() => onSelectFlag(isSelected ? null : type, bounty)}
-              className={`w-full flex items-center justify-between p-2 rounded-lg border text-left transition-all ${
-                isSelected
+              onClick={() => handleFlagClick(type, isSelected)}
+              className={`w-full flex items-center justify-between p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                isShaking
+                  ? 'animate-error-shake'
+                  : isSelected
                   ? `bg-gradient-to-r ${color} ${border} text-white shadow-lg ring-2 ring-amber-400`
                   : canAfford
-                  ? 'bg-slate-900/80 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-amber-600'
-                  : 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
+                  ? 'bg-slate-900/80 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-amber-600 active:scale-95'
+                  : 'bg-slate-900/60 border-rose-900/50 text-slate-400 hover:bg-rose-950/40 hover:border-rose-700/80 active:scale-95'
               }`}
             >
               <div className="flex items-center gap-2">
@@ -119,8 +144,10 @@ export const FlagMenu: React.FC<FlagMenuProps> = ({
                   <div className="text-[10px] text-slate-400 opacity-90">{desc}</div>
                 </div>
               </div>
-              <div className="font-mono text-xs font-bold text-amber-300 ml-2">
-                {bounty}g
+              <div className="text-right">
+                <div className={`text-xs font-mono font-bold ${canAfford ? 'text-amber-300' : 'text-rose-400'}`}>
+                  {bounty}g
+                </div>
               </div>
             </button>
           );

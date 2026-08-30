@@ -318,8 +318,8 @@ export const GameView: React.FC = () => {
 
     // 2. PLACING BOUNTY FLAG
     if (activeFlagType) {
-      let targetMonster = engine.state.monsters.find(m => m.hp > 0 && Math.hypot(m.x - world.x, m.y - world.y) < 26);
-      let targetLair = engine.state.lairs.find(l => {
+      const targetMonster = engine.state.monsters.find(m => m.hp > 0 && Math.hypot(m.x - world.x, m.y - world.y) < 26);
+      const targetLair = engine.state.lairs.find(l => {
         if (l.hp <= 0) return false;
         const lx = (l.x + l.width / 2) * engine.state.tileSize;
         const ly = (l.y + l.height / 2) * engine.state.tileSize;

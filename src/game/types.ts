@@ -193,6 +193,18 @@ export interface Building {
   attackPower?: number;
 }
 
+export interface LairDef {
+  type: LairType;
+  name: string;
+  width: number;
+  height: number;
+  maxHp: number;
+  description: string;
+  defaultMonster: MonsterType;
+  defaultMaxMonsters: number;
+  defaultSpawnInterval: number;
+}
+
 export interface MonsterLair {
   id: string;
   type: LairType;
@@ -442,6 +454,8 @@ export interface GameState {
     x: number;
     y: number;
     zoom: number;
+    yaw?: number;
+    pitch?: number;
   };
   activePlacement: {
     type: 'building' | 'flag' | 'spell';

@@ -116,31 +116,81 @@ export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
       ctx.fill();
     }
 
-    // Camera Viewport Box (Scaled correctly to actual visible 3D world frustum)
-    const visibleWorldSize = 420 / state.camera.zoom;
-    const viewW = (visibleWorldSize / mapWidthPx) * canvasW;
-    const viewH = (visibleWorldSize * 0.75 / mapHeightPx) * canvasH;
+    // Camera Viewport & Viewing Angle Frustum (Accurately projected 3D perspective field-of-view)
+    const yaw = state.camera.yaw !== undefined ? state.camera.yaw : Math.PI / 4;
+    const pitch = state.camera.pitch !== undefined ? state.camera.pitch : 0.82;
+    const zoom = Math.max(0.2, state.camera.zoom || 1.0);
+
+    // Look direction on 2D map: camera looks from position towards target in (-sin(yaw), -cos(yaw)) direction
+    const dirX = -Math.sin(yaw);
+    const dirY = -Math.cos(yaw);
+    const perpX = Math.cos(yaw);
+    const perpY = -Math.sin(yaw);
+
+    const fovWorldDepth = (380 / zoom / Math.sin(Math.max(0.3, pitch))) * (canvasH / mapHeightPx);
+    const fovWorldWidth = (460 / zoom) * (canvasW / mapWidthPx);
+
+    const nearDist = fovWorldDepth * 0.42;
+    const farDist = fovWorldDepth * 0.58;
+    const nearHalfW = fovWorldWidth * 0.36;
+    const farHalfW = fovWorldWidth * 0.62;
+
     const camCenterX = (state.camera.x / mapWidthPx) * canvasW;
     const camCenterY = (state.camera.y / mapHeightPx) * canvasH;
 
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(camCenterX - viewW / 2, camCenterY - viewH / 2, viewW, viewH);
+    const nl = { x: camCenterX - dirX * nearDist - perpX * nearHalfW, y: camCenterY - dirY * nearDist - perpY * nearHalfW };
+    const nr = { x: camCenterX - dirX * nearDist + perpX * nearHalfW, y: camCenterY - dirY * nearDist + perpY * nearHalfW };
+    const fr = { x: camCenterX + dirX * farDist + perpX * farHalfW, y: camCenterY + dirY * farDist + perpY * farHalfW };
+    const fl = { x: camCenterX + dirX * farDist - perpX * farHalfW, y: camCenterY + dirY * farDist - perpY * farHalfW };
 
-    // Subtle corner tick marks on viewport box
+    // 1. Semi-transparent illuminated frustum trapezoid
+    ctx.beginPath();
+    ctx.moveTo(nl.x, nl.y);
+    ctx.lineTo(nr.x, nr.y);
+    ctx.lineTo(fr.x, fr.y);
+    ctx.lineTo(fl.x, fl.y);
+    ctx.closePath();
+
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.13)';
+    ctx.fill();
     ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 2;
-    const halfW = viewW / 2;
-    const halfH = viewH / 2;
-    const left = camCenterX - halfW;
-    const right = camCenterX + halfW;
-    const top = camCenterY - halfH;
-    const bottom = camCenterY + halfH;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 
-    ctx.strokeRect(left, top, 3, 3);
-    ctx.strokeRect(right - 3, top, 3, 3);
-    ctx.strokeRect(left, bottom - 3, 3, 3);
-    ctx.strokeRect(right - 3, bottom - 3, 3, 3);
+    // 2. Camera viewing direction arrow pointer
+    const arrowLen = Math.min(18, 10 + 6 / zoom);
+    const arrowTipX = camCenterX + dirX * arrowLen;
+    const arrowTipY = camCenterY + dirY * arrowLen;
+    const arrowWingLen = 6;
+
+    ctx.beginPath();
+    ctx.moveTo(camCenterX, camCenterY);
+    ctx.lineTo(arrowTipX, arrowTipY);
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(arrowTipX, arrowTipY);
+    ctx.lineTo(arrowTipX - dirX * arrowWingLen - perpX * 3.5, arrowTipY - dirY * arrowWingLen - perpY * 3.5);
+    ctx.moveTo(arrowTipX, arrowTipY);
+    ctx.lineTo(arrowTipX - dirX * arrowWingLen + perpX * 3.5, arrowTipY - dirY * arrowWingLen + perpY * 3.5);
+    ctx.stroke();
+
+    // 3. Camera target focal dot
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(camCenterX, camCenterY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. Subtle corner tick marks at the 4 frustum vertices
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8;
+    [nl, nr, fr, fl].forEach(pt => {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 1.8, 0, Math.PI * 2);
+      ctx.stroke();
+    });
   }, [state, mapWidthPx, mapHeightPx]);
 
   const handleMinimapClick = (e: React.MouseEvent<HTMLCanvasElement>) => {

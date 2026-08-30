@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import { BUILDING_DEFINITIONS } from '../game/constants';
 import { Building, BuildingType } from '../game/types';
+import { audioManager } from '../game/engine/Audio';
 import { 
-  Building as BuildingIcon, 
   Shield, 
   Target, 
   Flame, 
@@ -33,6 +33,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
   onSelectBuilding
 }) => {
   const [activeCategory, setActiveCategory] = useState<'guilds' | 'economy' | 'defense'>('guilds');
+  const [shakingType, setShakingType] = useState<string | null>(null);
 
   const palace = buildings.find(b => b.type === 'palace' && b.hp > 0);
   const palaceLevel = palace?.level || 1;
@@ -55,6 +56,20 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
       { type: 'guard_tower' as BuildingType, icon: Crosshair },
       { type: 'statue_king' as BuildingType, icon: Crown }
     ]
+  };
+
+  const handleButtonClick = (type: BuildingType, isUnlocked: boolean, canAfford: boolean, isSelected: boolean) => {
+    if (!isUnlocked) return;
+
+    if (!canAfford && !isSelected) {
+      setShakingType(type);
+      setTimeout(() => setShakingType(null), 450);
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
+
+    audioManager.playClick();
+    onSelectBuilding(isSelected ? null : type);
   };
 
   return (
@@ -98,6 +113,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
 
           const canAfford = treasuryGold >= def.cost;
           const isSelected = activeBuildingType === type;
+          const isShaking = shakingType === type;
 
           let lockReason = '';
           if (!palaceReqMet) {
@@ -109,23 +125,25 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
           return (
             <button
               key={type}
-              disabled={!isUnlocked || (!canAfford && !isSelected)}
-              onClick={() => onSelectBuilding(isSelected ? null : type)}
-              title={!isUnlocked ? lockReason : def.description}
-              className={`p-2 rounded-lg border flex flex-col items-center text-center transition-all relative ${
-                isSelected
+              disabled={!isUnlocked}
+              onClick={() => handleButtonClick(type, isUnlocked, canAfford, isSelected)}
+              title={!isUnlocked ? lockReason : !canAfford ? `Insufficient Gold (${def.cost}g required)` : def.description}
+              className={`p-2 rounded-lg border flex flex-col items-center text-center transition-all relative cursor-pointer ${
+                isShaking
+                  ? 'animate-error-shake'
+                  : isSelected
                   ? 'bg-amber-500 border-amber-300 text-slate-950 ring-2 ring-amber-400 shadow-lg'
                   : !isUnlocked
                   ? 'bg-slate-950/60 border-slate-900 text-slate-600 opacity-60 cursor-not-allowed'
                   : canAfford
-                  ? 'bg-slate-900/90 border-amber-800/60 text-slate-200 hover:bg-amber-950/60 hover:border-amber-500 shadow-sm'
-                  : 'bg-slate-900/40 border-slate-800 text-slate-500 cursor-not-allowed'
+                  ? 'bg-slate-900/90 border-amber-800/60 text-slate-200 hover:bg-amber-950/60 hover:border-amber-500 shadow-sm active:scale-95'
+                  : 'bg-slate-900/60 border-rose-900/50 text-slate-400 hover:bg-rose-950/40 hover:border-rose-700/80 active:scale-95'
               }`}
             >
               {!isUnlocked ? (
                 <Lock className="w-4 h-4 mb-1 text-slate-500" />
               ) : (
-                <Icon className="w-5 h-5 mb-1 text-amber-400" />
+                <Icon className={`w-5 h-5 mb-1 ${canAfford ? 'text-amber-400' : 'text-amber-500/70'}`} />
               )}
 
               <div className="font-bold text-[11px] leading-tight line-clamp-1">
@@ -137,7 +155,7 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({
                   {lockReason}
                 </div>
               ) : (
-                <div className="text-[10px] font-mono font-bold text-amber-300 mt-0.5">
+                <div className={`text-[10px] font-mono font-bold mt-0.5 ${canAfford ? 'text-amber-300' : 'text-rose-400'}`}>
                   {def.cost}g
                 </div>
               )}

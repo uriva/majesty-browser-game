@@ -80,7 +80,17 @@ export class ModelRegistry {
       'temple_fervus': '/models/building_church_green.gltf',
       'temple_krypta': '/models/building_church_red.gltf',
       'temple_helia': '/models/building_church_yellow.gltf',
-      'ruins': '/models/building_destroyed.gltf'
+      'ruins': '/models/building_destroyed.gltf',
+      'tent': '/models/tent.gltf',
+      'weaponrack': '/models/weaponrack.gltf',
+      'flag_red': '/models/flag_red.gltf',
+      'crypt': '/models/crypt.gltf',
+      'gravestone': '/models/gravestone.gltf',
+      'tree_dead_large': '/models/tree_dead_large.gltf',
+      'post_skull': '/models/post_skull.gltf',
+      'skull': '/models/skull.gltf',
+      'dark_castle_keep': '/models/building_castle_red.gltf',
+      'dark_tower': '/models/building_tower_B_red.gltf'
     };
 
     const natureModels: Record<string, string> = {
@@ -315,7 +325,7 @@ export class ModelRegistry {
     if (deathClip) actions.set('death', mixer.clipAction(deathClip));
 
     // Start with Idle action
-    let currentState: AnimState = 'idle';
+    const currentState: AnimState = 'idle';
     const idleAction = actions.get('idle');
     if (idleAction) {
       idleAction.play();

@@ -29,7 +29,8 @@ export class MonsterAIManager {
         const def = MONSTER_DEFINITIONS[lair.monsterType];
         // Spawn with radial dispersion around the perimeter of the lair (outside the structure)
         const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * 14 + (lair.type === 'sewer_grate' ? 20 : 26);
+        const lairHalfSize = Math.max(lair.width, lair.height) * (this.gridManager.tileSize / 2);
+        const radius = lairHalfSize + 10 + Math.random() * 12;
         const spawnX = (lair.x + lair.width / 2) * this.gridManager.tileSize + Math.cos(angle) * radius;
         const spawnY = (lair.y + lair.height / 2) * this.gridManager.tileSize + Math.sin(angle) * radius;
 

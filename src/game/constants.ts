@@ -1,4 +1,4 @@
-import { BuildingType, HeroClass, MonsterType, SovereignSpell } from './types';
+import { BuildingType, HeroClass, LairDef, LairType, MonsterType, SovereignSpell } from './types';
 
 export const MAP_CONFIG = {
   DEFAULT_WIDTH: 100, // in tiles
@@ -701,6 +701,108 @@ export const LAIR_NAMES: Record<string, string> = {
   harpy_roost: 'Harpy Roost',
   troll_bridge: 'Troll Bridge',
   dark_castle: 'Dark Castle'
+};
+
+export const LAIR_DEFINITIONS: Record<LairType, LairDef> = {
+  sewer_grate: {
+    type: 'sewer_grate',
+    name: 'Sewer Nest',
+    width: 2,
+    height: 2,
+    maxHp: 280,
+    description: 'A foul subterranean street grate spewing giant sewer rats.',
+    defaultMonster: 'giant_rat',
+    defaultMaxMonsters: 4,
+    defaultSpawnInterval: 10
+  },
+  goblin_hut: {
+    type: 'goblin_hut',
+    name: 'Goblin Encampment',
+    width: 3,
+    height: 3,
+    maxHp: 450,
+    description: 'A tribal mud & thatch teepee encampment of vicious goblin warbands.',
+    defaultMonster: 'goblin_spearman',
+    defaultMaxMonsters: 5,
+    defaultSpawnInterval: 14
+  },
+  wolf_den: {
+    type: 'wolf_den',
+    name: 'Wolf Den',
+    width: 3,
+    height: 3,
+    maxHp: 400,
+    description: 'A dark bone-littered rocky cave burrow harboring feral wolf packs.',
+    defaultMonster: 'dire_wolf',
+    defaultMaxMonsters: 4,
+    defaultSpawnInterval: 16
+  },
+  harpy_roost: {
+    type: 'harpy_roost',
+    name: 'Harpy Roost',
+    width: 3,
+    height: 3,
+    maxHp: 420,
+    description: 'A perilous dead-tree mountain crag where shrieking harpies nest.',
+    defaultMonster: 'harpy',
+    defaultMaxMonsters: 3,
+    defaultSpawnInterval: 20
+  },
+  graveyard: {
+    type: 'graveyard',
+    name: 'Cursed Graveyard',
+    width: 4,
+    height: 4,
+    maxHp: 650,
+    description: 'Desecrated mausoleums and crumbling tombstones raising undead legions at dusk.',
+    defaultMonster: 'skeleton',
+    defaultMaxMonsters: 5,
+    defaultSpawnInterval: 12
+  },
+  ancient_ruins: {
+    type: 'ancient_ruins',
+    name: 'Ancient Ruins',
+    width: 4,
+    height: 4,
+    maxHp: 750,
+    description: 'A crumbling cursed citadel steeped in dark sorcery and monstrous minotaurs.',
+    defaultMonster: 'minotaur',
+    defaultMaxMonsters: 3,
+    defaultSpawnInterval: 22
+  },
+  troll_bridge: {
+    type: 'troll_bridge',
+    name: 'Troll Bridge',
+    width: 4,
+    height: 3,
+    maxHp: 600,
+    description: 'A fortified stone crossing where hulking trolls bludgeon travelers for gold.',
+    defaultMonster: 'troll',
+    defaultMaxMonsters: 2,
+    defaultSpawnInterval: 28
+  },
+  dark_castle: {
+    type: 'dark_castle',
+    name: 'Dark Castle',
+    width: 5,
+    height: 5,
+    maxHp: 1000,
+    description: 'An obsidian keep with spires and battlements commanded by terrible dark lords.',
+    defaultMonster: 'werewolf',
+    defaultMaxMonsters: 2,
+    defaultSpawnInterval: 25
+  },
+  dragon_cavern: {
+    type: 'dragon_cavern',
+    name: "Dragon's Cavern",
+    width: 5,
+    height: 5,
+    maxHp: 1500,
+    description: 'A titanic volcanic mountain caldera breathing flame and brooding terror.',
+    defaultMonster: 'red_dragon',
+    defaultMaxMonsters: 1,
+    defaultSpawnInterval: 999
+  }
 };
 
 export const HERO_QUIRKS = [

@@ -36,3 +36,16 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #f59e0b;
 }
+
+@keyframes error-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+.animate-error-shake {
+  animation: error-shake 0.35s ease-in-out !important;
+  border-color: #ef4444 !important;
+  background-color: rgba(127, 29, 29, 0.45) !important;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.7) !important;
+}

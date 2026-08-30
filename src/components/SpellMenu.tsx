@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { SovereignSpell } from '../game/types';
 import { Zap, HeartPulse, Eye, Swords, Coins, X } from 'lucide-react';
+import { audioManager } from '../game/engine/Audio';
 
 interface SpellMenuProps {
   spells: SovereignSpell[];
@@ -19,12 +20,29 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
   activeSpellId,
   onSelectSpell
 }) => {
+  const [shakingId, setShakingId] = useState<string | null>(null);
+
   const iconMap: Record<string, React.ElementType> = {
     Zap,
     HeartPulse,
     Eye,
     Swords,
     Coins
+  };
+
+  const handleSpellClick = (spell: SovereignSpell, isSelected: boolean, canAfford: boolean, onCooldown: boolean) => {
+    if (onCooldown) {
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
+    if (!canAfford && !isSelected) {
+      setShakingId(`spell_${spell.id}`);
+      setTimeout(() => setShakingId(null), 450);
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
+    audioManager.playClick();
+    onSelectSpell(isSelected ? null : spell.id);
   };
 
   return (
@@ -49,18 +67,20 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
           const isSelected = activeSpellId === spell.id;
           const onCooldown = spell.currentCooldown > 0;
           const canAfford = treasuryGold >= spell.goldCost && mana >= spell.manaCost && !onCooldown;
+          const isShaking = shakingId === `spell_${spell.id}`;
 
           return (
             <button
               key={spell.id}
-              disabled={!canAfford && !isSelected}
-              onClick={() => onSelectSpell(isSelected ? null : spell.id)}
-              className={`w-full flex items-center justify-between p-2 rounded-lg border text-left transition-all relative overflow-hidden ${
-                isSelected
+              onClick={() => handleSpellClick(spell, isSelected, canAfford, onCooldown)}
+              className={`w-full flex items-center justify-between p-2 rounded-lg border text-left transition-all relative overflow-hidden cursor-pointer ${
+                isShaking
+                  ? 'animate-error-shake'
+                  : isSelected
                   ? 'bg-purple-900/80 border-purple-400 text-white shadow-lg ring-2 ring-purple-400'
                   : canAfford
-                  ? 'bg-slate-900/80 border-purple-950 text-slate-200 hover:bg-purple-950/60 hover:border-purple-600'
-                  : 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
+                  ? 'bg-slate-900/80 border-purple-950 text-slate-200 hover:bg-purple-950/60 hover:border-purple-600 active:scale-95'
+                  : 'bg-slate-900/60 border-rose-900/40 text-slate-400 hover:bg-rose-950/30 hover:border-rose-700/60 active:scale-95'
               }`}
             >
               {/* Cooldown overlay */}
@@ -88,12 +108,12 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
 
               <div className="text-right shrink-0 ml-2">
                 {spell.goldCost > 0 && (
-                  <div className="text-[11px] font-mono font-bold text-amber-300">
+                  <div className={`text-[11px] font-mono font-bold ${treasuryGold >= spell.goldCost ? 'text-amber-300' : 'text-rose-400'}`}>
                     {spell.goldCost}g
                   </div>
                 )}
                 {spell.manaCost > 0 && (
-                  <div className="text-[11px] font-mono font-bold text-purple-400">
+                  <div className={`text-[11px] font-mono font-bold ${mana >= spell.manaCost ? 'text-purple-400' : 'text-rose-400'}`}>
                     {spell.manaCost} MP
                   </div>
                 )}

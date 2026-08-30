@@ -198,8 +198,22 @@ class SoundManager {
     this.playAudioFile('/audio/sfx/building_placed.wav', x, y, 0.9, () => this.synthBuildingPlaced(x, y));
   }
 
+  public playClick(x?: number, y?: number) {
+    this.playAudioFile('/audio/sfx/click.wav', x, y, 0.7);
+  }
+
   public playBuildingDestroyed(x?: number, y?: number) {
-    this.playAudioFile('/audio/sfx/building_destroyed.wav', x, y, 0.95);
+    // 1. Primary loud building destruction collapse crash (with generous kingdom-wide audible presence)
+    this.playAudioFile('/audio/sfx/building_destroyed.wav', x, y, 1.85, () => this.synthBuildingDestroyed(x, y));
+    this.synthBuildingDestroyed(x, y);
+
+    // 2. Secondary heavy stone rubble impact echo
+    setTimeout(() => {
+      this.playAudioFile('/audio/sfx/stone_hit.wav', x, y, 1.4);
+    }, 140);
+    setTimeout(() => {
+      this.playAudioFile('/audio/sfx/body_fall.wav', x, y, 1.2);
+    }, 280);
   }
 
   public playLevelUp(x?: number, y?: number) {
@@ -248,6 +262,11 @@ class SoundManager {
 
   public playDragonDeath(x?: number, y?: number) {
     this.playAudioFile('/audio/sfx/dragon_death.wav', x, y, 0.95);
+  }
+
+  public playInsufficientGoldSound(x?: number, y?: number) {
+    this.playVoice('advisor_treasury_low');
+    this.synthErrorBuzz(x, y);
   }
 
   private voiceCooldowns: Map<string, number> = new Map();
@@ -559,6 +578,85 @@ class SoundManager {
         osc.start(startTime);
         osc.stop(startTime + 0.4);
       });
+    } catch {}
+  }
+
+  private synthBuildingDestroyed(x?: number, y?: number) {
+    if (!this.ctx) return;
+    try {
+      const spatial = this.calculateSpatial(x, y);
+      const now = this.ctx.currentTime;
+      // Kingdom-wide audible presence: maintain at least 0.45 volume even off-screen
+      const effectiveSpatial = Math.max(0.45, spatial.volumeMult);
+
+      // 1. Heavy Low-Frequency Sub-Bass Earthquake Rumble (140Hz -> 28Hz)
+      const subOsc = this.ctx.createOscillator();
+      const subGain = this.ctx.createGain();
+      subOsc.type = 'sawtooth';
+      subOsc.frequency.setValueAtTime(140, now);
+      subOsc.frequency.exponentialRampToValueAtTime(28, now + 1.2);
+      subGain.gain.setValueAtTime(this.volume * 0.95 * effectiveSpatial, now);
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+      subOsc.connect(subGain);
+      subGain.connect(this.ctx.destination);
+      subOsc.start(now);
+      subOsc.stop(now + 1.4);
+
+      // 2. Dense Shattering Masonry Debris Crash (White Noise swept through Low-Pass Filter)
+      const bufferSize = this.ctx.sampleRate * 1.5;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1200, now);
+      filter.frequency.exponentialRampToValueAtTime(150, now + 1.3);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(this.volume * 0.9 * effectiveSpatial, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(this.ctx.destination);
+      noise.start(now);
+
+      // 3. Sharp Timber Splintering Crack
+      const crackOsc = this.ctx.createOscillator();
+      const crackGain = this.ctx.createGain();
+      crackOsc.type = 'square';
+      crackOsc.frequency.setValueAtTime(320, now);
+      crackOsc.frequency.exponentialRampToValueAtTime(80, now + 0.18);
+      crackGain.gain.setValueAtTime(this.volume * 0.75 * effectiveSpatial, now);
+      crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      crackOsc.connect(crackGain);
+      crackGain.connect(this.ctx.destination);
+      crackOsc.start(now);
+      crackOsc.stop(now + 0.2);
+    } catch {}
+  }
+
+  private synthErrorBuzz(x?: number, y?: number) {
+    if (!this.ctx) return;
+    try {
+      const spatial = this.calculateSpatial(x, y);
+      const now = this.ctx.currentTime;
+      for (let b = 0; b < 2; b++) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(160, now + b * 0.12);
+        osc.frequency.setValueAtTime(110, now + b * 0.12 + 0.08);
+        gain.gain.setValueAtTime(this.volume * 0.45 * spatial.volumeMult, now + b * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + b * 0.12 + 0.1);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + b * 0.12);
+        osc.stop(now + b * 0.12 + 0.1);
+      }
     } catch {}
   }
 }
