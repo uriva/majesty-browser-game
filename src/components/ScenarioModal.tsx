@@ -5,6 +5,7 @@ import { SCENARIOS } from '../game/scenarios';
 import { GameState, Scenario } from '../game/types';
 import { Crown, Trophy, Skull, RefreshCw, ArrowRight, ShieldCheck, Flame, Compass, ChevronLeft, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { audioManager } from '../game/engine/Audio';
 
 interface ScenarioModalProps {
   isOpen: boolean;
@@ -54,8 +55,16 @@ export const ScenarioModal: React.FC<ScenarioModalProps> = ({
   const nextScenario = SCENARIOS[nextIdx];
 
   const handleNextScenarioClick = () => {
+    audioManager.stopAll();
+    audioManager.playClick();
     setShowScenarioList(false);
     onSelectScenario(nextScenario);
+  };
+
+  const handleRestartClick = () => {
+    audioManager.stopAll();
+    audioManager.playClick();
+    onRestartScenario();
   };
 
   const isShowingEndSummary = isEndScreen && !showScenarioList;
@@ -109,13 +118,17 @@ export const ScenarioModal: React.FC<ScenarioModalProps> = ({
 
                 <div className="flex flex-wrap gap-3 justify-center pt-2">
                   <button
-                    onClick={onRestartScenario}
+                    onClick={handleRestartClick}
                     className="py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200 font-bold text-xs flex items-center gap-2 transition-all"
                   >
                     <RefreshCw className="w-4 h-4" /> Play Again
                   </button>
                   <button
-                    onClick={() => setShowScenarioList(true)}
+                    onClick={() => {
+                      audioManager.stopAll();
+                      audioManager.playClick();
+                      setShowScenarioList(true);
+                    }}
                     className="py-2.5 px-4 rounded-xl bg-slate-800 border border-amber-700/60 hover:bg-slate-700 text-amber-200 font-bold text-xs flex items-center gap-2 transition-all"
                   >
                     <Compass className="w-4 h-4" /> All Realms
@@ -142,13 +155,17 @@ export const ScenarioModal: React.FC<ScenarioModalProps> = ({
 
                 <div className="flex gap-3 justify-center pt-4">
                   <button
-                    onClick={onRestartScenario}
+                    onClick={handleRestartClick}
                     className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-rose-700 to-red-600 hover:from-rose-600 hover:to-red-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg transition-all"
                   >
                     <RefreshCw className="w-4 h-4" /> Retry Scenario
                   </button>
                   <button
-                    onClick={() => setShowScenarioList(true)}
+                    onClick={() => {
+                      audioManager.stopAll();
+                      audioManager.playClick();
+                      setShowScenarioList(true);
+                    }}
                     className="py-2.5 px-5 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200 font-bold text-xs transition-all flex items-center gap-2"
                   >
                     <Compass className="w-4 h-4" /> Choose Another Realm
@@ -232,6 +249,8 @@ export const ScenarioModal: React.FC<ScenarioModalProps> = ({
 
                       <button
                         onClick={() => {
+                          audioManager.stopAll();
+                          audioManager.playClick();
                           setShowScenarioList(false);
                           onSelectScenario(scen);
                         }}

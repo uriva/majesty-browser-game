@@ -11,6 +11,7 @@ class SoundManager {
   private isMuted: boolean = false;
   private tabBlurred: boolean = false;
   private muteOnBlur: boolean = true;
+  private activeSources: Set<AudioScheduledSourceNode> = new Set();
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -125,6 +126,11 @@ class SoundManager {
           gain.connect(this.ctx.destination);
         }
 
+        this.activeSources.add(source);
+        source.onended = () => {
+          this.activeSources.delete(source);
+        };
+
         source.start(0);
       } catch {
         if (onFallback) onFallback();
@@ -150,6 +156,16 @@ class SoundManager {
       .catch(() => {
         if (onFallback) onFallback();
       });
+  }
+
+  public stopAll() {
+    this.activeSources.forEach((source) => {
+      try {
+        source.stop();
+        source.disconnect();
+      } catch {}
+    });
+    this.activeSources.clear();
   }
 
   // --- BACKGROUND MUSIC ---
@@ -607,6 +623,10 @@ class SoundManager {
         gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
+        this.activeSources.add(osc);
+        osc.onended = () => {
+          this.activeSources.delete(osc);
+        };
         osc.start(startTime);
         osc.stop(startTime + 0.4);
       });

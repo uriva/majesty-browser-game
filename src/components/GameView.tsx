@@ -46,6 +46,7 @@ export const GameView: React.FC = () => {
 
   const [isScenarioModalOpen, setIsScenarioModalOpen] = useState<boolean>(false);
   const [isSaveLoadModalOpen, setIsSaveLoadModalOpen] = useState<boolean>(false);
+  const [saveLoadModalTab, setSaveLoadModalTab] = useState<'save' | 'load'>('load');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [archiveBanner, setArchiveBanner] = useState<{ title: string; message: string; type: 'save' | 'load' | 'delete' } | null>(null);
   const [saveMeta, setSaveMeta] = useState<SaveMeta | null>(() =>
@@ -101,6 +102,7 @@ export const GameView: React.FC = () => {
   }, []);
 
   const initEngine = useCallback((scenario: Scenario) => {
+    audioManager.stopAll();
     attachEngine(new GameEngine(scenario));
   }, [attachEngine]);
 
@@ -118,6 +120,7 @@ export const GameView: React.FC = () => {
   const handleLoadGame = useCallback(() => {
     const raw = getRawSave();
     if (!raw) return;
+    audioManager.stopAll();
     const engine = new GameEngine(engineRef.current?.state.scenario ?? SCENARIOS[0]);
     if (!engine.applySaveData(raw)) {
       engine.addNotification('Load Failed', 'The royal archives are corrupted.', 'danger');
@@ -136,6 +139,7 @@ export const GameView: React.FC = () => {
   }, [attachEngine, triggerArchiveBanner]);
 
   const handleLoadCustomSave = useCallback((raw: string, meta: SaveMeta) => {
+    audioManager.stopAll();
     const engine = new GameEngine(engineRef.current?.state.scenario ?? SCENARIOS[0]);
     if (!engine.applySaveData(raw)) {
       engine.addNotification('Load Failed', 'The royal archives are corrupted.', 'danger');
@@ -151,16 +155,26 @@ export const GameView: React.FC = () => {
     lastHudSyncRef.current = 0;
   }, [attachEngine, triggerArchiveBanner]);
 
+  const handleOpenSaveModal = useCallback(() => {
+    setSaveLoadModalTab('save');
+    setIsSaveLoadModalOpen(true);
+  }, []);
+
+  const handleOpenLoadModal = useCallback(() => {
+    setSaveLoadModalTab('load');
+    setIsSaveLoadModalOpen(true);
+  }, []);
+
   // Ctrl+S / Ctrl+L shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       if (e.key === 's' || e.key === 'S') { e.preventDefault(); handleSaveGame(); }
-      if (e.key === 'l' || e.key === 'L') { e.preventDefault(); handleLoadGame(); }
+      if (e.key === 'l' || e.key === 'L') { e.preventDefault(); handleOpenLoadModal(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleSaveGame, handleLoadGame]);
+  }, [handleSaveGame, handleOpenLoadModal]);
 
   useEffect(() => {
     initEngine(SCENARIOS[0]);
@@ -633,7 +647,8 @@ export const GameView: React.FC = () => {
               onShowAdvisorModal={() => {}}
               onSaveGame={handleSaveGame}
               onLoadGame={handleLoadGame}
-              onOpenSaveLoadModal={() => setIsSaveLoadModalOpen(true)}
+              onOpenSaveModal={handleOpenSaveModal}
+              onOpenLoadModal={handleOpenLoadModal}
               onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
               saveMeta={saveMeta}
             />
@@ -898,6 +913,7 @@ export const GameView: React.FC = () => {
       {/* Royal Archives Save/Load Modal */}
       <SaveLoadModal
         isOpen={isSaveLoadModalOpen}
+        initialTab={saveLoadModalTab}
         engine={engineRef.current}
         onClose={() => setIsSaveLoadModalOpen(false)}
         onLoadSave={handleLoadCustomSave}

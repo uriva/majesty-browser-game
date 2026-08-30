@@ -36,6 +36,8 @@ interface GameHUDProps {
   onShowAdvisorModal: () => void;
   onSaveGame: () => void;
   onLoadGame: () => void;
+  onOpenSaveModal?: () => void;
+  onOpenLoadModal?: () => void;
   onOpenSaveLoadModal?: () => void;
   onOpenSettingsModal?: () => void;
   saveMeta: SaveMeta | null;
@@ -49,6 +51,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onShowAdvisorModal,
   onSaveGame,
   onLoadGame,
+  onOpenSaveModal,
+  onOpenLoadModal,
   onOpenSaveLoadModal,
   onOpenSettingsModal,
   saveMeta
@@ -178,27 +182,35 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Music Player */}
           <MusicPlayer />
 
-          {/* Save / Load / Royal Archives */}
+          {/* Save / Load Royal Archives */}
           <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-800">
             <button
-              onClick={onSaveGame}
+              onClick={() => {
+                if (onOpenSaveModal) {
+                  onOpenSaveModal();
+                } else {
+                  onSaveGame();
+                }
+              }}
               disabled={state.isGameOver}
-              title="Quick Save Kingdom (Ctrl+S)"
+              title="Save Game Archive (Ctrl+S)"
               className="p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 text-slate-300 hover:text-amber-400"
             >
               <Save className="w-4 h-4" />
             </button>
             <button
               onClick={() => {
-                if (onOpenSaveLoadModal) {
+                if (onOpenLoadModal) {
+                  onOpenLoadModal();
+                } else if (onOpenSaveLoadModal) {
                   onOpenSaveLoadModal();
                 } else {
                   onLoadGame();
                 }
               }}
               title={saveMeta
-                ? `Royal Archives — ${saveMeta.scenarioName}, Day ${saveMeta.day}, ${Math.round(saveMeta.treasuryGold)}g`
-                : 'Royal Archives (Save / Load Slots)'}
+                ? `Load Game Archive — ${saveMeta.scenarioName}, Day ${saveMeta.day}, ${Math.round(saveMeta.treasuryGold)}g`
+                : 'Load Game Archive (Ctrl+L)'}
               className="p-1.5 rounded transition-colors hover:bg-slate-800 text-slate-300 hover:text-amber-400"
             >
               <FolderOpen className="w-4 h-4" />

@@ -25,11 +25,13 @@ import {
   CheckCircle2,
   X,
   Sparkles,
-  AlertCircle
+  ArrowRight
 } from 'lucide-react';
+import { audioManager } from '../game/engine/Audio';
 
 interface SaveLoadModalProps {
   isOpen: boolean;
+  initialTab?: 'save' | 'load';
   engine: GameEngine | null;
   onClose: () => void;
   onLoadSave: (rawSave: string, meta: SaveMeta) => void;
@@ -38,13 +40,14 @@ interface SaveLoadModalProps {
 
 export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
   isOpen,
+  initialTab = 'load',
   engine,
   onClose,
   onLoadSave,
   onActionFeedback
 }) => {
   const [slots, setSlots] = useState<SaveSlotInfo[]>([]);
-  const [activeTab, setActiveTab] = useState<'save' | 'load'>('save');
+  const [activeTab, setActiveTab] = useState<'save' | 'load'>(initialTab);
   const [selectedSlotId, setSelectedSlotId] = useState<string>('slot_1');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,18 +58,20 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      setActiveTab(initialTab);
       refreshSlots();
       setActionSuccess(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
 
   const handleSaveToSlot = (slotId: string, customLabel?: string) => {
     if (!engine || engine.state.isGameOver) return;
+    audioManager.playClick();
     const meta = saveGameToSlot(engine, slotId, customLabel);
     refreshSlots();
-    setActionSuccess(`Saved to ${meta.label || slotId}!`);
+    setActionSuccess(`Archived to ${meta.label || slotId}!`);
     onActionFeedback(
       '👑 Kingdom Archived',
       `${meta.scenarioName} (Day ${meta.day}, ${Math.round(meta.treasuryGold)}g) recorded in royal archives.`,
@@ -78,17 +83,18 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
   const handleLoadFromSlot = (slotId: string) => {
     const raw = getRawSaveFromSlot(slotId);
     if (!raw) return;
+    audioManager.playClick();
     try {
       const parsed = JSON.parse(raw);
       const meta: SaveMeta = {
         slotId,
-        savedAt: parsed.savedAt || Date.now(),
+        savedAt: parsed.savedAt || 0,
         scenarioId: parsed.scenarioId,
         scenarioName: parsed.scenarioName,
         day: parsed.day,
         treasuryGold: parsed.state?.treasuryGold || 0,
-        heroCount: parsed.state?.heroes?.filter((h: any) => h.hp > 0).length || 0,
-        buildingCount: parsed.state?.buildings?.filter((b: any) => b.hp > 0).length || 0
+        heroCount: Array.isArray(parsed.state?.heroes) ? parsed.state.heroes.filter((h: { hp?: number }) => (h.hp ?? 0) > 0).length : 0,
+        buildingCount: Array.isArray(parsed.state?.buildings) ? parsed.state.buildings.filter((b: { hp?: number }) => (b.hp ?? 0) > 0).length : 0
       };
       onLoadSave(raw, meta);
       onActionFeedback(
@@ -104,6 +110,7 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
 
   const handleDeleteSlot = (e: React.MouseEvent, slotId: string) => {
     e.stopPropagation();
+    audioManager.playClick();
     if (confirm('Are you sure you want to delete this royal archive?')) {
       deleteSaveSlot(slotId);
       refreshSlots();
@@ -113,8 +120,9 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
 
   const handleExport = (e: React.MouseEvent, slotId: string) => {
     e.stopPropagation();
+    audioManager.playClick();
     exportSaveToFile(slotId);
-    setActionSuccess('Save file downloaded to device!');
+    setActionSuccess('Save file exported to device!');
     setTimeout(() => setActionSuccess(null), 3000);
   };
 
@@ -139,38 +147,42 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
     e.target.value = '';
   };
 
-  const formatRelativeTime = (timestamp: number) => {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (seconds < 60) return 'Just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+  const formatDate = (timestamp: number) => {
+    if (!timestamp) return 'Unknown date';
+    try {
+      const d = new Date(timestamp);
+      return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } catch {
+      return 'Recorded Archive';
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-2xl bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 border-2 border-amber-500/50 rounded-2xl shadow-2xl overflow-hidden text-slate-200">
-        {/* Decorative Header Bar */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-full max-w-2xl bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 border-2 border-amber-500/60 rounded-2xl shadow-2xl overflow-hidden text-slate-200 flex flex-col max-h-[90vh]">
+        {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-slate-950/90 border-b border-amber-500/30">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
-              <FolderOpen className="w-6 h-6" />
+              {activeTab === 'save' ? <Save className="w-6 h-6" /> : <FolderOpen className="w-6 h-6" />}
             </div>
             <div>
               <h2 className="text-xl font-bold font-serif tracking-wide text-amber-300 flex items-center gap-2">
-                Royal Kingdom Archives
+                {activeTab === 'save' ? 'Save Kingdom' : 'Load Kingdom'}
                 <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
               </h2>
               <p className="text-xs text-slate-400 font-sans">
-                Record or restore your sovereign reign across multiple chronicles
+                {activeTab === 'save'
+                  ? 'Record your current reign into the royal archives'
+                  : 'Restore a previously saved realm to continue your campaign'}
               </p>
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              audioManager.playClick();
+              onClose();
+            }}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -178,43 +190,49 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
         </div>
 
         {/* Tab Selection & Feedback */}
-        <div className="flex items-center justify-between px-6 pt-4 pb-2">
+        <div className="flex items-center justify-between px-6 pt-4 pb-2 border-b border-slate-800 bg-slate-950/50">
           <div className="flex gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
             <button
-              onClick={() => setActiveTab('save')}
+              onClick={() => {
+                setActiveTab('save');
+                audioManager.playClick();
+              }}
               disabled={!engine || engine.state.isGameOver}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              className={`flex items-center gap-2 px-5 py-2 text-xs font-serif font-bold rounded-lg transition-all ${
                 activeTab === 'save'
-                  ? 'bg-amber-600 text-white shadow-lg'
+                  ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-slate-950 font-black shadow-lg'
                   : 'text-slate-400 hover:text-slate-200'
               } disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               <Save className="w-4 h-4" />
-              Save Realm
+              Save Game
             </button>
             <button
-              onClick={() => setActiveTab('load')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              onClick={() => {
+                setActiveTab('load');
+                audioManager.playClick();
+              }}
+              className={`flex items-center gap-2 px-5 py-2 text-xs font-serif font-bold rounded-lg transition-all ${
                 activeTab === 'load'
-                  ? 'bg-amber-600 text-white shadow-lg'
+                  ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-slate-950 font-black shadow-lg'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <FolderOpen className="w-4 h-4" />
-              Restore Realm
+              Load Game
             </button>
           </div>
 
           {actionSuccess && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-xs font-semibold rounded-lg animate-fadeIn">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-950/90 border border-emerald-500/60 text-emerald-300 text-xs font-semibold rounded-lg animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               {actionSuccess}
             </div>
           )}
         </div>
 
-        {/* Save Slots List */}
-        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+        {/* Save/Load Slots List */}
+        <div className="p-6 overflow-y-auto space-y-3 flex-1">
           {slots.map((slot) => {
             const hasData = !!slot.meta;
             const isSelected = selectedSlotId === slot.slotId;
@@ -229,41 +247,41 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
                     : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-900/60'
                 }`}
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-3">
                   {/* Left Slot Details */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
                     <div
-                      className={`p-2.5 rounded-lg border mt-0.5 ${
+                      className={`p-2.5 rounded-lg border mt-0.5 shrink-0 ${
                         hasData
                           ? 'bg-amber-950/50 border-amber-600/40 text-amber-400'
                           : 'bg-slate-900 border-slate-800 text-slate-600'
                       }`}
                     >
-                      {hasData ? <Save className="w-5 h-5" /> : <FolderOpen className="w-5 h-5" />}
+                      {activeTab === 'save' ? <Save className="w-5 h-5" /> : <FolderOpen className="w-5 h-5" />}
                     </div>
 
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-sm font-serif text-slate-100">{slot.name}</span>
                         {slot.isQuick && (
                           <span className="px-2 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full">
-                            Quick
+                            Quick Save
                           </span>
                         )}
                         {slot.isAuto && (
                           <span className="px-2 py-0.5 text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded-full">
-                            Auto
+                            Auto Save
                           </span>
                         )}
                       </div>
 
                       {slot.meta ? (
-                        <div className="mt-1 space-y-1">
-                          <p className="text-xs font-semibold text-amber-300">
-                            {slot.meta.scenarioName} — <span className="text-amber-200">Day {slot.meta.day}</span>
+                        <div className="mt-1.5 space-y-1">
+                          <p className="text-xs font-semibold text-amber-300 font-serif">
+                            {slot.meta.scenarioName} — <span className="text-amber-200 font-sans">Day {slot.meta.day}</span>
                           </p>
-                          <div className="flex items-center gap-4 text-[11px] text-slate-400">
-                            <span className="flex items-center gap-1 text-amber-400">
+                          <div className="flex items-center gap-4 text-[11px] text-slate-400 flex-wrap">
+                            <span className="flex items-center gap-1 text-amber-400 font-mono font-bold">
                               <Coins className="w-3.5 h-3.5" />
                               {Math.round(slot.meta.treasuryGold)}g
                             </span>
@@ -281,18 +299,18 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
                             )}
                             <span className="flex items-center gap-1 text-slate-500 ml-auto">
                               <Clock className="w-3.5 h-3.5" />
-                              {formatRelativeTime(slot.meta.savedAt)} ({new Date(slot.meta.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                              {formatDate(slot.meta.savedAt)}
                             </span>
                           </div>
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-500 italic mt-1">Empty Royal Archive Slot</p>
+                        <p className="text-xs text-slate-500 italic mt-1">Empty Archive Slot — No Data</p>
                       )}
                     </div>
                   </div>
 
                   {/* Right Actions */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {activeTab === 'save' ? (
                       <button
                         onClick={(e) => {
@@ -300,7 +318,7 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
                           handleSaveToSlot(slot.slotId);
                         }}
                         disabled={!engine || engine.state.isGameOver}
-                        className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow transition-colors flex items-center gap-1.5"
+                        className="px-4 py-2 text-xs font-serif font-bold rounded-lg bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-slate-950 shadow transition-all flex items-center gap-1.5 disabled:opacity-40"
                       >
                         <Save className="w-3.5 h-3.5" />
                         {hasData ? 'Overwrite' : 'Save Here'}
@@ -312,10 +330,10 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
                           handleLoadFromSlot(slot.slotId);
                         }}
                         disabled={!hasData}
-                        className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-colors flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="px-4 py-2 text-xs font-serif font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-all flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         <FolderOpen className="w-3.5 h-3.5" />
-                        Restore
+                        Load Game
                       </button>
                     )}
 
@@ -323,15 +341,15 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
                       <>
                         <button
                           onClick={(e) => handleExport(e, slot.slotId)}
-                          title="Export Save File (.json)"
-                          className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                          title="Export Save (.json)"
+                          className="p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
                         >
                           <Download className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => handleDeleteSlot(e, slot.slotId)}
                           title="Delete Save Slot"
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -355,20 +373,26 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
               className="hidden"
             />
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                audioManager.playClick();
+                fileInputRef.current?.click();
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-colors"
             >
               <Upload className="w-3.5 h-3.5 text-amber-400" />
               Import File
             </button>
             <span className="text-[11px] text-slate-500 hidden sm:inline">
-              Shortcuts: <span className="font-mono text-amber-400">Ctrl+S</span> (Quick Save), <span className="font-mono text-amber-400">Ctrl+L</span> (Quick Load)
+              Shortcuts: <span className="font-mono text-amber-400">Ctrl+S</span> (Save), <span className="font-mono text-amber-400">Ctrl+L</span> (Load)
             </span>
           </div>
 
           <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors"
+            onClick={() => {
+              audioManager.playClick();
+              onClose();
+            }}
+            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors"
           >
             Close
           </button>
