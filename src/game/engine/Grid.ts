@@ -359,14 +359,14 @@ export class GridManager {
     const centerTile = this.grid[centerTy][centerTx];
 
     // 1. Terrain & Water/Rock checks
-    // If unit center is on a stone bridge (tile 5), it is safely crossing the river roadway
-    const isOnBridge = centerTile === 5;
+    if (centerTile === 2 || centerTile === 4) return false;
 
-    if (!isOnBridge) {
-      if (centerTile === 2 || centerTile === 4) return false;
+    // Bridge tiles (5) and paved road approaches (1) are safe crossing corridors
+    const isOnBridgeOrRoad = centerTile === 5 || centerTile === 1;
 
-      // Test cardinal perimeter sample points of unit body for water & rock collision
-      const r = Math.max(2, unitRadius - 1.5);
+    if (!isOnBridgeOrRoad) {
+      // Check small perimeter radius (3px) only on open wilderness to prevent getting hung up on riverbanks or bridge ramps
+      const r = Math.min(4, Math.max(2, unitRadius * 0.45));
       const samplePoints = [
         { x: px - r, y: py },
         { x: px + r, y: py },
@@ -379,8 +379,7 @@ export class GridManager {
         const ty = Math.floor(pt.y / this.tileSize);
         if (!this.isValid(tx, ty)) return false;
         const tile = this.grid[ty][tx];
-        // If a perimeter sample is on a bridge, that point is safe
-        if (tile === 5) continue;
+        if (tile === 5 || tile === 1) continue; // Bridge and road samples are safe
         if (tile === 2 || tile === 4) return false;
       }
     }
@@ -816,13 +815,13 @@ export class GridManager {
     // Convert tile path to pixel centers
     const rawWaypoints: Position[] = tilePath.map(tp => this.tileToPixel(tp.x, tp.y));
 
-    // String pulling / Line-of-Sight Path Smoothing with generous corner safety cushion
+    // String pulling / Line-of-Sight Path Smoothing with safe corridor clearance
     const smoothPath: Position[] = [rawWaypoints[0]];
     let curIndex = 0;
     while (curIndex < rawWaypoints.length - 1) {
       let furthest = curIndex + 1;
       for (let j = rawWaypoints.length - 1; j > curIndex + 1; j--) {
-        if (this.hasLineOfSight(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId, 10.5)) {
+        if (this.hasLineOfSight(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId, 5.0)) {
           furthest = j;
           break;
         }
@@ -832,7 +831,7 @@ export class GridManager {
     }
 
     // Replace final destination with exact destination coordinate if line of sight is clear
-    if (this.hasLineOfSight(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId, 8.5)) {
+    if (this.hasLineOfSight(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId, 5.0)) {
       smoothPath[smoothPath.length - 1] = { x: endPx, y: endPy };
     } else {
       smoothPath.push({ x: endPx, y: endPy });

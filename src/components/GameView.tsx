@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GameEngine } from '../game/engine/GameEngine';
 import { ThreeRenderer } from '../game/engine/ThreeRenderer';
-import { getRawSave, readSaveMeta, saveGameToLocalStorage } from '../game/engine/SaveLoad';
+import { getRawSave, readSaveMeta, saveGameToLocalStorage, listAllSaveSlots, getRawSaveFromSlot, SaveSlotInfo } from '../game/engine/SaveLoad';
 import { SCENARIOS } from '../game/scenarios';
 import { BuildingType, FlagType, GameState, Hero, HeroClass, SaveMeta, Scenario } from '../game/types';
 import { GameHUD } from './GameHUD';
@@ -21,6 +21,7 @@ import { HeroRosterBar } from './HeroRosterBar';
 import { ScenarioModal } from './ScenarioModal';
 import { SaveLoadModal } from './SaveLoadModal';
 import { SettingsModal } from './SettingsModal';
+import { WelcomePromptModal } from './WelcomePromptModal';
 import { Hammer, Coins, Zap, Eye, RotateCw, Video, Crown, Sparkles, CheckCircle2 } from 'lucide-react';
 import { audioManager } from '../game/engine/Audio';
 import { ModelRegistry } from '../game/engine/ModelRegistry';
@@ -48,6 +49,8 @@ export const GameView: React.FC = () => {
   const [isSaveLoadModalOpen, setIsSaveLoadModalOpen] = useState<boolean>(false);
   const [saveLoadModalTab, setSaveLoadModalTab] = useState<'save' | 'load'>('load');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isWelcomePromptOpen, setIsWelcomePromptOpen] = useState<boolean>(false);
+  const [welcomeSaveSlot, setWelcomeSaveSlot] = useState<SaveSlotInfo | null>(null);
   const [archiveBanner, setArchiveBanner] = useState<{ title: string; message: string; type: 'save' | 'load' | 'delete' } | null>(null);
   const [saveMeta, setSaveMeta] = useState<SaveMeta | null>(() =>
     typeof window !== 'undefined' ? readSaveMeta() : null
@@ -163,6 +166,29 @@ export const GameView: React.FC = () => {
   const handleOpenLoadModal = useCallback(() => {
     setSaveLoadModalTab('load');
     setIsSaveLoadModalOpen(true);
+  }, []);
+
+  const handleLoadRecentSave = useCallback(() => {
+    if (!welcomeSaveSlot) return;
+    const raw = getRawSaveFromSlot(welcomeSaveSlot.slotId);
+    if (raw && welcomeSaveSlot.meta) {
+      handleLoadCustomSave(raw, welcomeSaveSlot.meta);
+    }
+    setIsWelcomePromptOpen(false);
+  }, [welcomeSaveSlot, handleLoadCustomSave]);
+
+  // Check on startup if player has existing saved games in royal archives
+  useEffect(() => {
+    try {
+      const allSlots = listAllSaveSlots().filter(s => s.meta !== null);
+      if (allSlots.length > 0) {
+        allSlots.sort((a, b) => (b.meta?.savedAt || 0) - (a.meta?.savedAt || 0));
+        setWelcomeSaveSlot(allSlots[0]);
+        setIsWelcomePromptOpen(true);
+      }
+    } catch (e) {
+      console.warn('Startup save check error:', e);
+    }
   }, []);
 
   // Ctrl+S / Ctrl+L shortcuts
@@ -934,6 +960,22 @@ export const GameView: React.FC = () => {
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+      />
+
+      {/* Startup Welcome / Continue Saved Game Modal */}
+      <WelcomePromptModal
+        isOpen={isWelcomePromptOpen}
+        recentSave={welcomeSaveSlot}
+        onLoadRecent={handleLoadRecentSave}
+        onOpenSaveLoadModal={() => {
+          setIsWelcomePromptOpen(false);
+          handleOpenLoadModal();
+        }}
+        onStartNewGame={() => setIsWelcomePromptOpen(false)}
+        onOpenScenarioModal={() => {
+          setIsWelcomePromptOpen(false);
+          setIsScenarioModalOpen(true);
+        }}
       />
 
       {/* Scenario / Victory / Defeat Modal */}

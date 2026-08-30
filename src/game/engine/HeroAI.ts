@@ -877,7 +877,7 @@ export class HeroAIManager {
 
     if (!hasReached) {
       const speedMult = hero.traits.quirk === 'Gold Hungry' || hero.heroClass === 'rogue' ? 1.2 : 1.0;
-      const reached = this.moveTowards(hero, targetX, targetY, delta, buildings, lairs, speedMult, flag.targetEntityType === 'lair' ? flag.targetEntityId : undefined);
+      const reached = this.moveTowards(hero, targetX, targetY, delta, buildings, lairs, speedMult);
       if (!reached && Math.hypot(targetX - hero.x, targetY - hero.y) > 24) {
         return;
       }
@@ -965,8 +965,8 @@ export class HeroAIManager {
     } else if (hero.targetEntityType === 'lair') {
       const targetLair = lairs.find(l => l.id === hero.targetEntityId);
       if (targetLair && targetLair.hp > 0) {
-        // Calculate nearest point on exterior perimeter of the lair!
-        const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, targetLair, buildings, lairs, 8);
+        // Calculate nearest point on exterior perimeter of the lair (safe distance outside lair boundary)
+        const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, targetLair, buildings, lairs, 16);
         targetX = targetPos.x;
         targetY = targetPos.y;
         targetAlive = true;
@@ -982,7 +982,7 @@ export class HeroAIManager {
     const dist = Math.hypot(targetX - hero.x, targetY - hero.y);
 
     if (dist > hero.attackRange + 2) {
-      this.moveTowards(hero, targetX, targetY, delta, buildings, lairs, 1.0, hero.targetEntityType === 'lair' ? hero.targetEntityId : undefined);
+      this.moveTowards(hero, targetX, targetY, delta, buildings, lairs, 1.0);
     } else {
       // In attack range! Stop moving and face target
       hero.path = undefined;
