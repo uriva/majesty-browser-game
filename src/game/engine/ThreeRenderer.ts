@@ -76,7 +76,8 @@ export class ThreeRenderer {
   private projectilesMap: Map<string, THREE.Group> = new Map();
   private floatingTextsMap: Map<string, THREE.Sprite> = new Map();
   private heroLabelsMap: Map<string, { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; sprite: THREE.Sprite; lastHp: number; lastLevel: number }> = new Map();
-  private sleepingSpritesMap: Map<string, { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; sprite: THREE.Sprite }> = new Map();
+  private sleepingSpritesMap: Map<string, THREE.Sprite> = new Map();
+  private sharedSleepTexture: THREE.CanvasTexture | null = null;
 
   // Selection & Placement Highlights
   private selectionGroup: THREE.Group;
@@ -179,7 +180,8 @@ export class ThreeRenderer {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     container.appendChild(this.renderer.domElement);
 
@@ -460,8 +462,8 @@ export class ThreeRenderer {
         const stoneW = blockW - 6;
         const stoneH = blockH - 6;
 
-        // Rich high-contrast ashlar stone brick palette
-        const stoneColors = ['#f1f5f9', '#cbd5e1', '#94a3b8', '#e2e8f0', '#64748b', '#e2e8f0'];
+        // Rich authentic granite & fortress ashlar stone palette (natural stone hues)
+        const stoneColors = ['#64748b', '#475569', '#334155', '#4b5563', '#6b7280', '#52525b'];
         const baseColor = stoneColors[(x * 7 + y * 11) % stoneColors.length];
 
         ctx.fillStyle = baseColor;
@@ -469,19 +471,19 @@ export class ThreeRenderer {
         ctx.roundRect(stoneX, stoneY, stoneW, stoneH, 2);
         ctx.fill();
 
-        // 3D Chiseled top & left bevel highlight in crisp white
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-        ctx.fillRect(stoneX, stoneY, stoneW, 3);
-        ctx.fillRect(stoneX, stoneY, 3, stoneH);
+        // 3D Chiseled top & left bevel highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.fillRect(stoneX, stoneY, stoneW, 2.5);
+        ctx.fillRect(stoneX, stoneY, 2.5, stoneH);
 
         // Deep 3D bottom & right shadow in dark slate
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(stoneX, stoneY + stoneH - 3, stoneW, 3);
-        ctx.fillRect(stoneX + stoneW - 3, stoneY, 3, stoneH);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillRect(stoneX, stoneY + stoneH - 2.5, stoneW, 2.5);
+        ctx.fillRect(stoneX + stoneW - 2.5, stoneY, 2.5, stoneH);
 
         // Weathering chiseling specks & texture grain
-        for (let s = 0; s < 6; s++) {
-          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.3)';
+        for (let s = 0; s < 5; s++) {
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.3)';
           ctx.fillRect(stoneX + Math.random() * (stoneW - 6) + 3, stoneY + Math.random() * (stoneH - 6) + 3, 2, 2);
         }
       }
@@ -4259,11 +4261,11 @@ export class ThreeRenderer {
     }
 
     if (b.type === 'palace') {
-      // Sovereign Castle Fortress (High-Contrast Ashlar Bricks, Crenellations, Royal Pennants & Throne Keep)
+      // Sovereign Castle Fortress (Authentic Granite Ashlar Bricks, Crenellations, Royal Pennants & Throne Keep)
       const stoneWallMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
+        color: 0x94a3b8,
         map: this.royalCastleWallTexture,
-        roughness: 0.65
+        roughness: 0.8
       });
       const roofSlateMat = new THREE.MeshStandardMaterial({
         color: 0xdc2626,
@@ -4271,7 +4273,7 @@ export class ThreeRenderer {
         roughness: 0.6
       });
       const tudorMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
+        color: 0xd1d5db,
         map: this.tudorWallTexture,
         roughness: 0.8
       });
@@ -6966,7 +6968,15 @@ export class ThreeRenderer {
     const entry = this.heroLabelsMap.get(hero.id);
     if (!entry) return;
 
-    if (Math.abs(entry.lastHp - hero.hp) > 2 || entry.lastLevel !== hero.level) {
+    // Throttle nameplate redraws to significant HP shifts (> 4% HP), full health recovery, or level up
+    const hpDiff = Math.abs(entry.lastHp - hero.hp);
+    const maxHp = hero.maxHp || 100;
+    const isLevelChanged = entry.lastLevel !== hero.level;
+    const isMajorHpChange = hpDiff >= Math.max(6, maxHp * 0.04);
+    const isFullRecovery = hero.hp >= maxHp && entry.lastHp < maxHp;
+    const isZeroHp = hero.hp <= 0 && entry.lastHp > 0;
+
+    if (isMajorHpChange || isLevelChanged || isFullRecovery || isZeroHp) {
       entry.lastHp = hero.hp;
       entry.lastLevel = hero.level;
       const ctx = entry.canvas.getContext('2d');
@@ -9051,7 +9061,43 @@ export class ThreeRenderer {
     return sprite;
   }
 
-  // --- 3D SLEEPING "ZZZ" DRIFTING ANIMATION SYSTEM ---
+  // --- 3D SLEEPING "ZZZ" DRIFTING ANIMATION SYSTEM (HIGH-PERFORMANCE GPU FLOATING) ---
+  private getOrCreateSleepTexture(): THREE.CanvasTexture {
+    if (this.sharedSleepTexture) return this.sharedSleepTexture;
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+
+    // Soft celestial glow shadow
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 10;
+
+    // Dark outline for readability
+    ctx.strokeStyle = '#030712';
+    ctx.lineWidth = 4.5;
+
+    // Draw 3 ascending Z's
+    const zList = [
+      { char: 'z', size: 20, x: 38, y: 92, color: '#38bdf8' },
+      { char: 'Z', size: 28, x: 58, y: 64, color: '#7dd3fc' },
+      { char: 'Z', size: 36, x: 84, y: 34, color: '#e0f2fe' }
+    ];
+
+    for (const item of zList) {
+      ctx.font = `bold ${item.size}px "Comic Sans MS", "Segoe UI", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeText(item.char, item.x, item.y);
+      ctx.fillStyle = item.color;
+      ctx.fillText(item.char, item.x, item.y);
+    }
+
+    this.sharedSleepTexture = new THREE.CanvasTexture(canvas);
+    this.sharedSleepTexture.minFilter = THREE.LinearFilter;
+    return this.sharedSleepTexture;
+  }
+
   private updateSleepingAnimations(state: GameState, delta: number) {
     const activeSleepingIds = new Set<string>();
     const time = Date.now() * 0.001;
@@ -9081,94 +9127,47 @@ export class ThreeRenderer {
     }
 
     // Clean up inactive sleep sprites
-    for (const [id, entry] of this.sleepingSpritesMap.entries()) {
+    for (const [id, sprite] of this.sleepingSpritesMap.entries()) {
       if (!activeSleepingIds.has(id)) {
-        this.scene.remove(entry.sprite);
-        entry.texture.dispose();
-        entry.sprite.material.dispose();
+        this.scene.remove(sprite);
+        sprite.material.dispose();
         this.sleepingSpritesMap.delete(id);
       }
     }
   }
 
   private renderUnitSleepZzz(id: string, worldX: number, worldY: number, baseHeight: number, time: number, isVisible: boolean) {
-    let entry = this.sleepingSpritesMap.get(id);
-    if (!entry) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 128;
-      canvas.height = 128;
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearFilter;
+    let sprite = this.sleepingSpritesMap.get(id);
+    if (!sprite) {
+      const texture = this.getOrCreateSleepTexture();
       const spriteMat = new THREE.SpriteMaterial({
         map: texture,
         transparent: true,
         depthWrite: false
       });
-      const sprite = new THREE.Sprite(spriteMat);
-      sprite.scale.set(13, 13, 1);
+      sprite = new THREE.Sprite(spriteMat);
       sprite.renderOrder = 1000;
       this.scene.add(sprite);
-      entry = { canvas, texture, sprite };
-      this.sleepingSpritesMap.set(id, entry);
+      this.sleepingSpritesMap.set(id, sprite);
     }
 
-    entry.sprite.visible = isVisible;
+    sprite.visible = isVisible;
     if (!isVisible) return;
 
-    // Draw animated drifting Zzz on canvas
-    const ctx = entry.canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, 128, 128);
+    // Smooth GPU-side floating animation (0 CPU redraws, 0 texture uploads!)
+    const loopPhase = (time * 0.6) % 1.0;
+    const driftX = Math.sin(time * 2.2) * 2.5;
+    const floatY = loopPhase * 7.0;
+    const pulseOpacity = Math.sin(loopPhase * Math.PI) * 0.95;
+    const scale = 11 + Math.sin(time * 2.0) * 1.0;
 
-      // Loop cycle: 0.0 to 1.0 every 1.8 seconds
-      const phase = (time * 0.55) % 1.0;
-
-      // 3 ascending, floating Z's with sinusoidal drift
-      const zItems = [
-        { char: 'z', size: 18, delay: 0.0, baseX: 45, baseY: 95 },
-        { char: 'Z', size: 24, delay: 0.33, baseX: 60, baseY: 70 },
-        { char: 'Z', size: 32, delay: 0.66, baseX: 78, baseY: 42 }
-      ];
-
-      for (let i = 0; i < zItems.length; i++) {
-        const item = zItems[i];
-        const itemPhase = (phase + item.delay) % 1.0;
-        const driftX = Math.sin(time * 2.5 + i * 1.5) * 8;
-        const floatY = -itemPhase * 28;
-        const alpha = Math.sin(itemPhase * Math.PI); // fades in at start, peaks mid, fades at end
-
-        if (alpha > 0.01) {
-          ctx.save();
-          ctx.globalAlpha = Math.max(0, Math.min(1, alpha * 0.95));
-          ctx.font = `bold ${item.size}px "Comic Sans MS", "Segoe UI", sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-
-          const posX = item.baseX + driftX;
-          const posY = item.baseY + floatY;
-
-          // Soft night glow shadow
-          ctx.shadowColor = '#38bdf8';
-          ctx.shadowBlur = 8;
-
-          // Dark outline for high readability
-          ctx.strokeStyle = '#030712';
-          ctx.lineWidth = 4;
-          ctx.strokeText(item.char, posX, posY);
-
-          // Glowing cyan-celestial fill
-          ctx.fillStyle = i === 2 ? '#e0f2fe' : (i === 1 ? '#7dd3fc' : '#38bdf8');
-          ctx.fillText(item.char, posX, posY);
-          ctx.restore();
-        }
-      }
-
-      entry.texture.needsUpdate = true;
+    sprite.scale.set(scale, scale, 1);
+    if (sprite.material) {
+      sprite.material.opacity = Math.max(0, Math.min(1, pulseOpacity));
     }
 
     const terrainH = this.getTerrainHeight(worldX, worldY);
-    const bob = Math.sin(time * 2.0) * 1.2;
-    entry.sprite.position.set(worldX + 2, terrainH + baseHeight + bob, worldY);
+    sprite.position.set(worldX + 3 + driftX, terrainH + baseHeight + floatY, worldY);
   }
 
   // Screen to 3D World Raycasting

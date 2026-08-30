@@ -187,11 +187,13 @@ export class ModelRegistry {
             child.castShadow = true;
             child.receiveShadow = true;
             if (child.material) {
-              if (Array.isArray(child.material)) {
-                child.material.forEach((m) => { m.side = THREE.DoubleSide; });
-              } else {
-                child.material.side = THREE.DoubleSide;
-              }
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((m) => {
+                m.side = THREE.DoubleSide;
+                if (m.map) {
+                  m.map.colorSpace = THREE.SRGBColorSpace;
+                }
+              });
             }
           }
         });
@@ -223,11 +225,13 @@ export class ModelRegistry {
             child.receiveShadow = true;
             child.frustumCulled = false;
             if (child.material) {
-              if (Array.isArray(child.material)) {
-                child.material.forEach((m) => { m.side = THREE.DoubleSide; });
-              } else {
-                child.material.side = THREE.DoubleSide;
-              }
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((m) => {
+                m.side = THREE.DoubleSide;
+                if (m.map) {
+                  m.map.colorSpace = THREE.SRGBColorSpace;
+                }
+              });
             }
           }
         });

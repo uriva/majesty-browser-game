@@ -387,10 +387,9 @@ export class GridManager {
 
     const ts = this.tileSize;
 
-    // 2. Check solid buildings (Marketplace & Statue are open plazas heroes can walk through)
+    // 2. Check solid buildings
     for (const b of buildings) {
       if (b.hp <= 0) continue;
-      if (b.type === 'marketplace' || b.type === 'statue_king') continue;
       if (excludeBuildingId && b.id === excludeBuildingId) continue;
 
       const bx = b.x * ts;
@@ -440,7 +439,6 @@ export class GridManager {
     const ts = this.tileSize;
     for (const b of buildings) {
       if (b.hp <= 0) continue;
-      if (b.type === 'marketplace' || b.type === 'statue_king') continue;
       if (excludeBuildingId && b.id === excludeBuildingId) continue;
 
       const bx = b.x * ts;
@@ -509,7 +507,7 @@ export class GridManager {
 
     for (const b of buildings) {
       if (b.hp <= 0) continue;
-      if (b.type === 'marketplace' || b.type === 'statue_king') continue;
+      if (excludeBuildingId && b.id === excludeBuildingId) continue;
       if (tx >= b.x && tx < b.x + b.width && ty >= b.y && ty < b.y + b.height) {
         return true;
       }
@@ -517,6 +515,7 @@ export class GridManager {
 
     for (const l of lairs) {
       if (l.hp <= 0) continue;
+      if (excludeBuildingId && l.id === excludeBuildingId) continue;
       if (tx >= l.x && tx < l.x + l.width && ty >= l.y && ty < l.y + l.height) {
         return true;
       }
@@ -538,8 +537,8 @@ export class GridManager {
     const dist = Math.hypot(endX - startX, endY - startY);
     if (dist < 3) return true;
 
-    // High resolution sampling to prevent corner clipping
-    const step = 2.5;
+    // Fast multi-sample line check: samples every 8px (or 1/4 tile) for high throughput & precision
+    const step = Math.max(8, this.tileSize * 0.3);
     const steps = Math.ceil(dist / step);
     const dx = (endX - startX) / steps;
     const dy = (endY - startY) / steps;
@@ -657,7 +656,7 @@ export class GridManager {
       return [{ x: endPx, y: endPy }];
     }
 
-    // A* Pathfinding with Min-Heap
+    // High-performance A* Pathfinding with Binary Min-Heap Priority Queue
     interface AStarNode {
       x: number;
       y: number;
@@ -667,7 +666,50 @@ export class GridManager {
       parent?: AStarNode;
     }
 
-    const openList: AStarNode[] = [];
+    class MinHeap {
+      private heap: AStarNode[] = [];
+      push(node: AStarNode) {
+        this.heap.push(node);
+        this.bubbleUp(this.heap.length - 1);
+      }
+      pop(): AStarNode | undefined {
+        const top = this.heap[0];
+        const bottom = this.heap.pop();
+        if (this.heap.length > 0 && bottom !== undefined) {
+          this.heap[0] = bottom;
+          this.bubbleDown(0);
+        }
+        return top;
+      }
+      get length() { return this.heap.length; }
+      private bubbleUp(idx: number) {
+        while (idx > 0) {
+          const parentIdx = (idx - 1) >> 1;
+          if (this.heap[idx].f >= this.heap[parentIdx].f) break;
+          const temp = this.heap[idx];
+          this.heap[idx] = this.heap[parentIdx];
+          this.heap[parentIdx] = temp;
+          idx = parentIdx;
+        }
+      }
+      private bubbleDown(idx: number) {
+        const len = this.heap.length;
+        while (true) {
+          let smallest = idx;
+          const left = (idx << 1) + 1;
+          const right = (idx << 1) + 2;
+          if (left < len && this.heap[left].f < this.heap[smallest].f) smallest = left;
+          if (right < len && this.heap[right].f < this.heap[smallest].f) smallest = right;
+          if (smallest === idx) break;
+          const temp = this.heap[idx];
+          this.heap[idx] = this.heap[smallest];
+          this.heap[smallest] = temp;
+          idx = smallest;
+        }
+      }
+    }
+
+    const openHeap = new MinHeap();
     const closedSet = new Uint8Array(this.width * this.height);
     const gScores = new Float32Array(this.width * this.height).fill(Infinity);
 
@@ -686,7 +728,7 @@ export class GridManager {
       f: heuristic(startTile.x, startTile.y, endTile.x, endTile.y)
     };
 
-    openList.push(startNode);
+    openHeap.push(startNode);
     gScores[getIndex(startTile.x, startTile.y)] = 0;
 
     let targetNode: AStarNode | null = null;
@@ -705,16 +747,11 @@ export class GridManager {
     ];
 
     let iterations = 0;
-    while (openList.length > 0 && iterations < 3000) {
+    while (openHeap.length > 0 && iterations < 1800) {
       iterations++;
-      let lowestIdx = 0;
-      for (let i = 1; i < openList.length; i++) {
-        if (openList[i].f < openList[lowestIdx].f) {
-          lowestIdx = i;
-        }
-      }
-      const current = openList.splice(lowestIdx, 1)[0];
+      const current = openHeap.pop()!;
       const currentIdx = getIndex(current.x, current.y);
+      if (closedSet[currentIdx]) continue;
       closedSet[currentIdx] = 1;
 
       if (current.x === endTile.x && current.y === endTile.y) {
@@ -759,13 +796,7 @@ export class GridManager {
             f: tentativeG + h,
             parent: current
           };
-
-          const existingIdx = openList.findIndex(n => n.x === nx && n.y === ny);
-          if (existingIdx >= 0) {
-            openList[existingIdx] = neighborNode;
-          } else {
-            openList.push(neighborNode);
-          }
+          openHeap.push(neighborNode);
         }
       }
     }
