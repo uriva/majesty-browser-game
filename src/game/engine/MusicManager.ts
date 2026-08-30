@@ -1,3 +1,5 @@
+import { getGameSettings, subscribeGameSettings } from '../settings';
+
 export interface MusicTrack {
   id: string;
   title: string;
@@ -53,6 +55,8 @@ class MusicManager {
   public isShuffle: boolean = true;
   public volume: number = 0.45;
   public muted: boolean = false;
+  private tabBlurred: boolean = false;
+  private muteOnBlur: boolean = true;
   private hasUserInteracted: boolean = false;
   private preMasterMuteState: boolean | null = null;
   private listeners: ((state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean; isShuffle: boolean }) => void)[] = [];
@@ -62,9 +66,20 @@ class MusicManager {
     this.currentTrackIndex = Math.floor(Math.random() * MUSIC_TRACKS.length);
 
     if (typeof window !== 'undefined') {
+      const initialSettings = getGameSettings();
+      this.muteOnBlur = initialSettings.muteOnBlur;
+      this.volume = initialSettings.musicVolume;
+
+      subscribeGameSettings((settings) => {
+        this.muteOnBlur = settings.muteOnBlur;
+        this.volume = settings.musicVolume;
+        this.applyEffectiveVolume();
+        this.notify();
+      });
+
       this.audioElement = new Audio();
       this.audioElement.loop = false;
-      this.audioElement.volume = this.volume;
+      this.audioElement.volume = this.isEffectiveMuted() ? 0 : this.volume;
 
       this.audioElement.addEventListener('ended', () => {
         this.nextTrack(true);
@@ -73,6 +88,20 @@ class MusicManager {
       this.audioElement.addEventListener('error', (e) => {
         console.warn('Audio playback error, falling back or advancing track:', e);
       });
+
+      // Track window/tab focus & visibility state
+      const updateFocus = () => {
+        const isFocused = typeof document !== 'undefined' && !document.hidden && (typeof document.hasFocus === 'function' ? document.hasFocus() : true);
+        this.tabBlurred = !isFocused;
+        this.applyEffectiveVolume();
+      };
+
+      window.addEventListener('focus', updateFocus);
+      window.addEventListener('blur', updateFocus);
+      document.addEventListener('visibilitychange', updateFocus);
+
+      // Initial check
+      updateFocus();
 
       // Try autoplay immediately
       this.tryPlay();
@@ -96,11 +125,21 @@ class MusicManager {
     }
   }
 
+  public isEffectiveMuted(): boolean {
+    return this.muted || (this.muteOnBlur && this.tabBlurred);
+  }
+
+  private applyEffectiveVolume() {
+    if (this.audioElement) {
+      this.audioElement.volume = this.isEffectiveMuted() ? 0 : this.volume;
+    }
+  }
+
   private tryPlay() {
     const track = MUSIC_TRACKS[this.currentTrackIndex];
     if (track.type === 'file' && this.audioElement && track.url) {
       this.audioElement.src = track.url;
-      this.audioElement.volume = this.muted ? 0 : this.volume;
+      this.audioElement.volume = this.isEffectiveMuted() ? 0 : this.volume;
       this.audioElement.play().catch(() => {
         // Will start on first user interaction via listener
       });
@@ -150,7 +189,7 @@ class MusicManager {
       this.stopSynthBard();
       if (this.audioElement && track.url) {
         this.audioElement.src = track.url;
-        this.audioElement.volume = this.muted ? 0 : this.volume;
+        this.applyEffectiveVolume();
         this.audioElement.play().catch(() => {
           // Autoplay policy prevented immediate playback until interaction
         });
@@ -219,9 +258,7 @@ class MusicManager {
 
   public setVolume(vol: number) {
     this.volume = Math.max(0, Math.min(1, vol));
-    if (this.audioElement) {
-      this.audioElement.volume = this.muted ? 0 : this.volume;
-    }
+    this.applyEffectiveVolume();
     this.notify();
   }
 
@@ -231,9 +268,7 @@ class MusicManager {
 
   public setMuted(m: boolean) {
     this.muted = m;
-    if (this.audioElement) {
-      this.audioElement.volume = this.muted ? 0 : this.volume;
-    }
+    this.applyEffectiveVolume();
     this.notify();
   }
 
@@ -274,7 +309,7 @@ class MusicManager {
 
     let step = 0;
     this.synthInterval = setInterval(() => {
-      if (!this.isPlaying || this.muted || !this.audioCtx) return;
+      if (!this.isPlaying || this.isEffectiveMuted() || !this.audioCtx) return;
 
       const chord = bassChords[Math.floor(step / 8) % bassChords.length];
       const now = this.audioCtx.currentTime;

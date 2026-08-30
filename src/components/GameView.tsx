@@ -20,9 +20,11 @@ import { FlagInspector } from './FlagInspector';
 import { HeroRosterBar } from './HeroRosterBar';
 import { ScenarioModal } from './ScenarioModal';
 import { SaveLoadModal } from './SaveLoadModal';
+import { SettingsModal } from './SettingsModal';
 import { Hammer, Coins, Zap, Eye, RotateCw, Video, Crown, Sparkles, CheckCircle2 } from 'lucide-react';
 import { audioManager } from '../game/engine/Audio';
 import { ModelRegistry } from '../game/engine/ModelRegistry';
+import { getGameSettings, subscribeGameSettings, GameSettings } from '../game/settings';
 
 export const GameView: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -30,6 +32,9 @@ export const GameView: React.FC = () => {
   const threeRendererRef = useRef<ThreeRenderer | null>(null);
   const requestRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
+  const bgIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastBgTimeRef = useRef<number>(0);
+  const settingsRef = useRef<GameSettings>(getGameSettings());
 
   const [assetsReady, setAssetsReady] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -41,6 +46,7 @@ export const GameView: React.FC = () => {
 
   const [isScenarioModalOpen, setIsScenarioModalOpen] = useState<boolean>(false);
   const [isSaveLoadModalOpen, setIsSaveLoadModalOpen] = useState<boolean>(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [archiveBanner, setArchiveBanner] = useState<{ title: string; message: string; type: 'save' | 'load' | 'delete' } | null>(null);
   const [saveMeta, setSaveMeta] = useState<SaveMeta | null>(() =>
     typeof window !== 'undefined' ? readSaveMeta() : null
@@ -160,6 +166,53 @@ export const GameView: React.FC = () => {
     initEngine(SCENARIOS[0]);
   }, [initEngine]);
 
+  // Subscribe to game settings
+  useEffect(() => {
+    return subscribeGameSettings((newSettings) => {
+      settingsRef.current = newSettings;
+    });
+  }, []);
+
+  // Handle visibility / background execution
+  useEffect(() => {
+    const handleVisibility = () => {
+      const isHidden = typeof document !== 'undefined' && document.hidden;
+      if (isHidden) {
+        // If tab goes to background and runInBackground is enabled, start background interval ticker
+        if (settingsRef.current.runInBackground) {
+          if (!bgIntervalRef.current) {
+            lastBgTimeRef.current = performance.now();
+            bgIntervalRef.current = setInterval(() => {
+              const engine = engineRef.current;
+              if (engine && !engine.state.isGameOver && !engine.state.isPaused) {
+                const now = performance.now();
+                const delta = Math.min((now - lastBgTimeRef.current) / 1000, 0.2);
+                lastBgTimeRef.current = now;
+                engine.update(delta);
+              }
+            }, 100);
+          }
+        }
+      } else {
+        // Returned to tab / foreground: clear background interval and reset loop timestamp
+        if (bgIntervalRef.current) {
+          clearInterval(bgIntervalRef.current);
+          bgIntervalRef.current = null;
+        }
+        lastTimeRef.current = performance.now();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (bgIntervalRef.current) {
+        clearInterval(bgIntervalRef.current);
+        bgIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   // Main 60 FPS Render & Simulation Loop (HUD state sync is throttled separately)
   useEffect(() => {
     const loop = (timestamp: number) => {
@@ -169,6 +222,14 @@ export const GameView: React.FC = () => {
 
       const engine = engineRef.current;
       const renderer = threeRendererRef.current;
+
+      const isHidden = typeof document !== 'undefined' && document.hidden;
+
+      // If document is hidden and background execution is disabled, don't update
+      if (isHidden && !settingsRef.current.runInBackground) {
+        requestRef.current = requestAnimationFrame(loop);
+        return;
+      }
 
       if (engine) {
         if (!engine.state.isGameOver) {
@@ -573,6 +634,7 @@ export const GameView: React.FC = () => {
               onSaveGame={handleSaveGame}
               onLoadGame={handleLoadGame}
               onOpenSaveLoadModal={() => setIsSaveLoadModalOpen(true)}
+              onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
               saveMeta={saveMeta}
             />
           </div>
@@ -840,6 +902,12 @@ export const GameView: React.FC = () => {
         onClose={() => setIsSaveLoadModalOpen(false)}
         onLoadSave={handleLoadCustomSave}
         onActionFeedback={triggerArchiveBanner}
+      />
+
+      {/* Kingdom Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
       />
 
       {/* Scenario / Victory / Defeat Modal */}

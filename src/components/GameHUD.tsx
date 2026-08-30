@@ -24,7 +24,8 @@ import {
   Scroll,
   Info,
   Save,
-  FolderOpen
+  FolderOpen,
+  Settings
 } from 'lucide-react';
 
 interface GameHUDProps {
@@ -36,6 +37,7 @@ interface GameHUDProps {
   onSaveGame: () => void;
   onLoadGame: () => void;
   onOpenSaveLoadModal?: () => void;
+  onOpenSettingsModal?: () => void;
   saveMeta: SaveMeta | null;
 }
 
@@ -48,6 +50,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onSaveGame,
   onLoadGame,
   onOpenSaveLoadModal,
+  onOpenSettingsModal,
   saveMeta
 }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -202,7 +205,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </button>
           </div>
 
-          {/* Sound & Notifications */}
+          {/* Sound & Settings */}
           <button
             onClick={toggleSound}
             title={soundEnabled ? 'Mute Sound' : 'Enable Sound'}
@@ -210,6 +213,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-amber-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
           </button>
+
+          {onOpenSettingsModal && (
+            <button
+              onClick={onOpenSettingsModal}
+              title="Kingdom Settings (Background Simulation, Audio, Controls)"
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-amber-400 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
 
           <button
             onClick={() => setShowLog(!showLog)}

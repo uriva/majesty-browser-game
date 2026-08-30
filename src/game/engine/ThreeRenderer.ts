@@ -4041,8 +4041,167 @@ export class ThreeRenderer {
       return group;
     }
 
-    // Try loading the high-quality KayKit 3D GLTF building model from ModelRegistry (palace uses custom tiered model)
-    if (b.type !== 'palace') {
+    // Try loading the high-quality KayKit 3D GLTF building model from ModelRegistry
+    if (b.type === 'palace') {
+      const gltfCastle = ModelRegistry.getInstance().getBuildingModel('palace');
+      if (gltfCastle) {
+        const box = new THREE.Box3().setFromObject(gltfCastle);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+
+        const level = b.level || 1;
+        const isUpgrading = (b.researchQueue && b.researchQueue.some(r => r.isBuildingUpgrade)) || false;
+
+        // Scale KayKit castle to fit the 4x4 footprint nicely
+        const maxDim = Math.max(size.x, size.z);
+        const baseDim = Math.min(w, h);
+        const targetDim = baseDim * (level === 1 ? 0.90 : (level === 2 ? 0.96 : 1.02));
+        const scale = maxDim > 0 ? targetDim / maxDim : 1.0;
+
+        // Raised Courtyard Cobblestone Foundation Plinth
+        const plinthH = level === 1 ? 1.8 : (level === 2 ? 2.6 : 3.4);
+        const plinthScale = level === 1 ? 0.94 : (level === 2 ? 0.98 : 1.02);
+        const plinthGeo = new THREE.BoxGeometry(w * plinthScale, plinthH, h * plinthScale);
+        const plinthMat = new THREE.MeshStandardMaterial({
+          color: 0x475569,
+          map: this.cobbleTexture,
+          roughness: 0.85
+        });
+        const plinth = new THREE.Mesh(plinthGeo, plinthMat);
+        plinth.position.y = plinthH / 2;
+        plinth.receiveShadow = true;
+        group.add(plinth);
+
+        // Position the KayKit GLTF Castle atop the plinth
+        gltfCastle.scale.set(scale, scale, scale);
+        gltfCastle.position.set(-center.x * scale, -box.min.y * scale + plinthH + 0.05, -center.z * scale);
+        group.add(gltfCastle);
+
+        // Materials for royal decorations
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.85, roughness: 0.2 });
+        const roofSlateMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.6 });
+        const flameMat = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xf59e0b, emissiveIntensity: 1.8 });
+        const torchGeo = new THREE.BoxGeometry(1.2, 2.5, 1.2);
+
+        // Entrance Gate Torches (Flanking front south gate)
+        const gateZ = h * 0.44;
+        const torchL = new THREE.Mesh(torchGeo, flameMat);
+        torchL.position.set(-14, plinthH + 6, gateZ);
+        group.add(torchL);
+
+        const torchR = new THREE.Mesh(torchGeo, flameMat);
+        torchR.position.set(14, plinthH + 6, gateZ);
+        group.add(torchR);
+
+        // Level 2 & Level 3 Grand Royal Enhancements
+        if (level >= 2) {
+          // Flanking Royal Pennant Flagpoles
+          const flagpoleGeo = new THREE.CylinderGeometry(0.35, 0.35, 18, 6);
+          const pennantGeo = new THREE.BoxGeometry(6.0, 3.5, 0.2);
+
+          const flagCorners = [
+            [-w * 0.42, h * 0.42],
+            [w * 0.42, h * 0.42],
+            [-w * 0.42, -h * 0.42],
+            [w * 0.42, -h * 0.42]
+          ];
+
+          flagCorners.forEach(([fx, fz]) => {
+            const pole = new THREE.Mesh(flagpoleGeo, goldMat);
+            pole.position.set(fx, plinthH + 9, fz);
+            group.add(pole);
+
+            const pennant = new THREE.Mesh(pennantGeo, roofSlateMat);
+            pennant.position.set(fx + (fx > 0 ? 3.2 : -3.2), plinthH + 15, fz);
+            group.add(pennant);
+          });
+
+          // Sovereign Golden Crown Spire atop Keep
+          const crownGeo = new THREE.CylinderGeometry(3.5, 5, 8, 8);
+          const crown = new THREE.Mesh(crownGeo, goldMat);
+          crown.position.set(0, size.y * scale + plinthH + 4, 0);
+          group.add(crown);
+
+          // Glowing Sovereign Mana Beacon Crystal
+          const beaconGeo = new THREE.OctahedronGeometry(level === 3 ? 4.0 : 2.8, 0);
+          const beaconMat = new THREE.MeshStandardMaterial({
+            color: 0xfacc15,
+            emissive: 0xf59e0b,
+            emissiveIntensity: level === 3 ? 2.0 : 1.4,
+            roughness: 0.1
+          });
+          const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+          beacon.position.set(0, size.y * scale + plinthH + (level === 3 ? 12 : 9), 0);
+          group.add(beacon);
+        }
+
+        // Active Upgrade Scaffolding & Animated Construction Crane
+        if (isUpgrading) {
+          const postMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+          const plankMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 });
+
+          const scafPositions = [
+            [-w * 0.35, h * 0.25],
+            [w * 0.35, -h * 0.25]
+          ];
+
+          scafPositions.forEach(([sx, sz]) => {
+            const scafPostGeo = new THREE.CylinderGeometry(0.8, 0.8, 36, 6);
+            const sp1 = new THREE.Mesh(scafPostGeo, postMat); sp1.position.set(sx - 4, 18, sz - 4); group.add(sp1);
+            const sp2 = new THREE.Mesh(scafPostGeo, postMat); sp2.position.set(sx + 4, 18, sz - 4); group.add(sp2);
+            const sp3 = new THREE.Mesh(scafPostGeo, postMat); sp3.position.set(sx - 4, 18, sz + 4); group.add(sp3);
+            const sp4 = new THREE.Mesh(scafPostGeo, postMat); sp4.position.set(sx + 4, 18, sz + 4); group.add(sp4);
+
+            [10, 20, 30].forEach((py) => {
+              const platGeo = new THREE.BoxGeometry(10, 1.2, 10);
+              const plat = new THREE.Mesh(platGeo, plankMat);
+              plat.position.set(sx, py, sz);
+              group.add(plat);
+            });
+          });
+
+          // Animated Wooden Construction Crane atop East Wall
+          const craneBase = new THREE.Group();
+          craneBase.position.set(w * 0.36, 26, 0);
+
+          const mastGeo = new THREE.CylinderGeometry(1.2, 1.4, 20, 6);
+          const mast = new THREE.Mesh(mastGeo, postMat);
+          mast.position.y = 10;
+          craneBase.add(mast);
+
+          const craneArm = new THREE.Group();
+          craneArm.name = 'craneArm';
+          craneArm.position.y = 19;
+
+          const jibGeo = new THREE.BoxGeometry(22, 1.4, 1.4);
+          const jib = new THREE.Mesh(jibGeo, plankMat);
+          jib.position.x = 8;
+          craneArm.add(jib);
+
+          const cableGeo = new THREE.CylinderGeometry(0.1, 0.1, 14, 4);
+          const cableMat = new THREE.MeshBasicMaterial({ color: 0x1e293b });
+          const cable = new THREE.Mesh(cableGeo, cableMat);
+          cable.position.set(16, -7, 0);
+          craneArm.add(cable);
+
+          const bucketGeo = new THREE.BoxGeometry(3.5, 3.5, 3.5);
+          const bucket = new THREE.Mesh(bucketGeo, postMat);
+          bucket.name = 'hoistBucket';
+          bucket.position.set(16, -14, 0);
+          craneArm.add(bucket);
+
+          craneBase.add(craneArm);
+          group.add(craneBase);
+        }
+
+        // Palace Keep Chimney & Animated Smoke
+        group.add(this.createSmokeEmitter(6, size.y * scale + plinthH + 2, -6, false, 5));
+
+        return group;
+      }
+    } else {
       const gltfBuilding = ModelRegistry.getInstance().getBuildingModel(b.type);
       if (gltfBuilding) {
         const box = new THREE.Box3().setFromObject(gltfBuilding);

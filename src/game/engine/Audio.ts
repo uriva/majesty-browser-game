@@ -1,3 +1,5 @@
+import { getGameSettings, subscribeGameSettings } from '../settings';
+
 class SoundManager {
   private ctx: AudioContext | null = null;
   public enabled: boolean = true;
@@ -7,6 +9,36 @@ class SoundManager {
   private currentTrackName: string | null = null;
   private audioBufferCache: Map<string, AudioBuffer> = new Map();
   private isMuted: boolean = false;
+  private tabBlurred: boolean = false;
+  private muteOnBlur: boolean = true;
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      const initialSettings = getGameSettings();
+      this.muteOnBlur = initialSettings.muteOnBlur;
+      this.volume = initialSettings.soundVolume;
+
+      subscribeGameSettings((settings) => {
+        this.muteOnBlur = settings.muteOnBlur;
+        this.volume = settings.soundVolume;
+      });
+
+      const updateFocus = () => {
+        const isFocused = typeof document !== 'undefined' && !document.hidden && (typeof document.hasFocus === 'function' ? document.hasFocus() : true);
+        this.tabBlurred = !isFocused;
+      };
+
+      window.addEventListener('focus', updateFocus);
+      window.addEventListener('blur', updateFocus);
+      document.addEventListener('visibilitychange', updateFocus);
+
+      updateFocus();
+    }
+  }
+
+  public isEffectivelyMuted(): boolean {
+    return !this.enabled || this.isMuted || (this.muteOnBlur && this.tabBlurred);
+  }
 
   // Spatial Listener World Position (synchronized to 3D Camera Target)
   public listenerX: number = 960;
@@ -62,7 +94,7 @@ class SoundManager {
 
   // Play an authentic extracted WAV sound effect file with 3D spatial attenuation & stereo panning
   private playAudioFile(path: string, eventX?: number, eventY?: number, volumeMult = 1.0, onFallback?: () => void) {
-    if (!this.enabled || this.isMuted || typeof window === 'undefined') return;
+    if (this.isEffectivelyMuted() || typeof window === 'undefined') return;
     this.initCtx();
 
     if (!this.ctx) {
