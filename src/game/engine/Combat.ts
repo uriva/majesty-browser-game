@@ -115,7 +115,8 @@ export class CombatManager {
             const actualDamage = Math.max(1, Math.round(p.damage - m.defense));
             m.hp -= actualDamage;
             if (ownerHero) {
-              ownerHero.xp += Math.max(3, Math.round(actualDamage * 0.35));
+              const hitXp = Math.max(1, Math.round((actualDamage / (m.maxHp || 50)) * (m.xpReward * 0.25)));
+              ownerHero.xp += hitXp;
             }
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
@@ -137,7 +138,8 @@ export class CombatManager {
           const actualDamage = Math.max(1, Math.round(p.damage - targetMonster.defense));
           targetMonster.hp -= actualDamage;
           if (ownerHero) {
-            ownerHero.xp += Math.max(3, Math.round(actualDamage * 0.4));
+            const hitXp = Math.max(1, Math.round((actualDamage / (targetMonster.maxHp || 50)) * (targetMonster.xpReward * 0.25)));
+            ownerHero.xp += hitXp;
           }
           floatingTexts.push({
             id: `ft_${Date.now()}_${Math.random()}`,
@@ -156,9 +158,6 @@ export class CombatManager {
           if (targetLair) {
             const dmg = Math.round(p.damage);
             targetLair.hp -= dmg;
-            if (ownerHero) {
-              ownerHero.xp += Math.max(2, Math.round(dmg * 0.25));
-            }
             floatingTexts.push({
               id: `ft_${Date.now()}_${Math.random()}`,
               text: `-${dmg}`,

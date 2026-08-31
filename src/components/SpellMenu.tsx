@@ -29,7 +29,9 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
     HeartPulse,
     Eye,
     Swords,
-    Coins
+    Coins,
+    Sparkles,
+    Crosshair
   };
 
   const handleSpellClick = (spell: SovereignSpell, isSelected: boolean, canAfford: boolean, onCooldown: boolean) => {

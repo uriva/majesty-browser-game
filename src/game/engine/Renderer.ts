@@ -1003,6 +1003,12 @@ export class CanvasRenderer {
       ctx.fillRect(6, 4, 2, 2);
       ctx.fillRect(-8, 6, 2, 2);
     } else if (c.type === 'hero') {
+      // Golden divine aura around fallen hero graves
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.2)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 14, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
       // Grave cross
       ctx.fillStyle = '#78350f';
       ctx.fillRect(-2, -10, 4, 20);

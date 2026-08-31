@@ -1,4 +1,4 @@
-import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, LAIR_DEFINITIONS, LAIR_NAMES, MAP_CONFIG, MONSTER_DEFINITIONS, SOVEREIGN_SPELLS } from '../constants';
+import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, LAIR_DEFINITIONS, LAIR_NAMES, MAP_CONFIG, MONSTER_DEFINITIONS, SOVEREIGN_SPELLS, getXpRequiredForLevel, getResurrectionCost } from '../constants';
 import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, MonsterType, NotificationItem, Peasant, Projectile, SaveData, Scenario, SovereignSpell, Treasure } from '../types';
 import { SCENARIOS } from '../scenarios';
 import { audioManager } from './Audio';
@@ -357,7 +357,7 @@ export class GameEngine {
         const classDef = HERO_CLASS_DEFINITIONS[hero.heroClass];
         this.addNotification('Hero Fallen', `${hero.title} the Level ${hero.level} ${classDef.name} has fallen in battle (${hero.kills} kills). A grave marks their resting place.`, 'danger', { x: hero.x, y: hero.y });
 
-        // Permanent gravestone so the kingdom remembers its fallen
+        // Permanent gravestone so the kingdom remembers its fallen and can resurrect them
         this.state.corpses.push({
           id: `grave_${Date.now()}_${hero.id}`,
           type: 'hero',
@@ -367,7 +367,8 @@ export class GameEngine {
           y: hero.y,
           rotation: Math.random() * Math.PI * 2,
           createdAt: Date.now(),
-          lifetime: 900.0
+          lifetime: 1800.0,
+          heroData: { ...hero }
         });
 
         // Fallen heroes drop their purse — brave souls may recover it!
@@ -464,7 +465,7 @@ export class GameEngine {
           // Assisting heroes
           for (let k = 1; k < nearbyHeroes.length; k++) {
             const assistHero = nearbyHeroes[k];
-            const assistXp = Math.round(monster.xpReward * 0.5);
+            const assistXp = Math.round(monster.xpReward * 0.35);
             assistHero.xp += assistXp;
             this.addFloatingText(`+${assistXp} XP (Assist)`, assistHero.x, assistHero.y - 20, '#38bdf8');
           }
@@ -1582,7 +1583,7 @@ export class GameEngine {
       heroClass,
       level: 1,
       xp: 0,
-      xpToNextLevel: 100,
+      xpToNextLevel: getXpRequiredForLevel(1),
       x: safeSpawn.x,
       y: safeSpawn.y,
       hp: classDef.baseHp,
@@ -1893,6 +1894,24 @@ export class GameEngine {
         }
         break;
 
+      case 'resurrection': {
+        const grave = this.state.corpses.find(
+          c => c.type === 'hero' && c.heroData && Math.hypot(c.x - targetX, c.y - targetY) < 85
+        );
+        if (!grave) {
+          // Refund cost if no grave targeted
+          this.state.treasuryGold += spell.goldCost;
+          this.state.mana += spell.manaCost;
+          spell.currentCooldown = 0;
+          this.addNotification('No Fallen Hero', 'Target a hero’s grave marker to cast Resurrection.', 'warning');
+          return false;
+        }
+
+        audioManager.playHealSound();
+        this.resurrectHero(grave.id, true);
+        break;
+      }
+
       case 'far_sight':
         audioManager.playSpellCast();
         const tile = this.gridManager.pixelToTile(targetX, targetY);
@@ -1916,6 +1935,94 @@ export class GameEngine {
     }
 
     this.state.activePlacement = null;
+    return true;
+  }
+
+  public resurrectHero(corpseId: string, freeCost = false): boolean {
+    const corpseIndex = this.state.corpses.findIndex(c => c.id === corpseId && c.type === 'hero' && c.heroData);
+    if (corpseIndex === -1) {
+      this.addNotification('Grave Not Found', 'The tombstone has decayed or been removed.', 'warning');
+      return false;
+    }
+
+    const corpse = this.state.corpses[corpseIndex];
+    const heroData = corpse.heroData!;
+    const cost = getResurrectionCost(heroData.level);
+
+    if (!freeCost && this.state.treasuryGold < cost) {
+      this.addNotification('Insufficient Gold', `Resurrecting ${heroData.title} requires ${cost} Gold.`, 'warning');
+      return false;
+    }
+
+    if (!freeCost) {
+      this.state.treasuryGold -= cost;
+      this.state.stats.goldSpent += cost;
+    }
+
+    const homeGuild = this.state.buildings.find(b => b.id === heroData.homeGuildId && b.hp > 0 && !b.isConstructing);
+    if (homeGuild) {
+      if (!homeGuild.recruitedHeroIds) homeGuild.recruitedHeroIds = [];
+      if (!homeGuild.recruitedHeroIds.includes(heroData.id)) {
+        homeGuild.recruitedHeroIds.push(heroData.id);
+      }
+    }
+
+    const revivedHero: Hero = {
+      ...heroData,
+      isDead: false,
+      hp: heroData.maxHp,
+      mp: heroData.maxMp,
+      x: corpse.x,
+      y: corpse.y,
+      state: 'idle',
+      stateTimer: 0.5,
+      currentCooldown: 0,
+      targetEntityId: undefined,
+      targetEntityType: undefined,
+      targetFlagId: undefined,
+      currentThought: 'Restored to life by divine grace!'
+    };
+
+    // Remove grave corpse
+    this.state.corpses.splice(corpseIndex, 1);
+    this.state.heroes.push(revivedHero);
+
+    // Audio & visuals
+    audioManager.playLevelUp();
+    audioManager.playVoice(`${revivedHero.heroClass}_ready`);
+
+    // Divine golden particle shower
+    for (let p = 0; p < 24; p++) {
+      const angle = Math.random() * Math.PI * 2;
+      const spd = Math.random() * 50 + 20;
+      this.state.particles.push({
+        id: `p_res_${Date.now()}_${p}`,
+        x: corpse.x,
+        y: corpse.y,
+        vx: Math.cos(angle) * spd,
+        vy: Math.sin(angle) * spd - 35,
+        color: '#facc15',
+        size: Math.random() * 4 + 2,
+        alpha: 1.0,
+        life: 0.8,
+        maxLife: 0.8,
+        type: 'gold_sparkle'
+      });
+    }
+
+    this.addFloatingText('RESURRECTED!', corpse.x, corpse.y - 24, '#facc15');
+    this.addNotification(
+      'Hero Resurrected!',
+      `${revivedHero.title} (Level ${revivedHero.level}) has risen from the dead and returned to the kingdom!`,
+      'success',
+      { x: corpse.x, y: corpse.y }
+    );
+
+    // If corpse was selected, switch selection to revived hero
+    if (this.state.selectedEntity?.type === 'corpse' && this.state.selectedEntity.id === corpseId) {
+      this.state.selectedEntity = { type: 'hero', id: revivedHero.id };
+    }
+
     return true;
   }
 

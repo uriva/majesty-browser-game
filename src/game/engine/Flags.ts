@@ -37,7 +37,7 @@ export class FlagManager {
 
           if (closestHero) {
             closestHero.gold += flag.goldReward;
-            closestHero.xp += 40;
+            closestHero.xp += 25;
             if (onBountyClaimed) onBountyClaimed(flag, closestHero, flag.goldReward);
             floatingTexts.push({
               id: `ft_bounty_${Date.now()}`,
@@ -90,7 +90,7 @@ export class FlagManager {
             for (const h of nearbyHeroes) {
               h.gold += splitGold;
               h.kills += 1;
-              h.xp += 50;
+              h.xp += 25;
               if (onBountyClaimed) onBountyClaimed(flag, h, splitGold);
               floatingTexts.push({
                 id: `ft_bounty_split_${Date.now()}_${h.id}`,

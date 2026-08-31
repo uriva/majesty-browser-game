@@ -281,6 +281,7 @@ export interface Corpse {
   lifetime: number; // in seconds (e.g. 35s or 180s for ruins)
   width?: number;
   height?: number;
+  heroData?: Hero;
 }
 
 export interface Treasure {
@@ -447,7 +448,7 @@ export interface GameState {
   notifications: NotificationItem[];
   stats: GameStats;
   selectedEntity: {
-    type: 'hero' | 'building' | 'monster' | 'lair' | 'flag' | 'tax_collector' | 'peasant';
+    type: 'hero' | 'building' | 'monster' | 'lair' | 'flag' | 'tax_collector' | 'peasant' | 'corpse';
     id: string;
   } | null;
   camera: {

@@ -18,6 +18,7 @@ import { TaxCollectorInspector } from './TaxCollectorInspector';
 import { PeasantInspector } from './PeasantInspector';
 import { FlagInspector } from './FlagInspector';
 import { HeroRosterBar } from './HeroRosterBar';
+import { TombstoneInspector } from './TombstoneInspector';
 import { ScenarioModal } from './ScenarioModal';
 import { SaveLoadModal } from './SaveLoadModal';
 import { SettingsModal } from './SettingsModal';
@@ -482,6 +483,12 @@ export const GameView: React.FC = () => {
       return;
     }
 
+    const clickedCorpse = engine.state.corpses.find(c => c.type === 'hero' && c.heroData && Math.hypot(c.x - world.x, c.y - world.y) < 22);
+    if (clickedCorpse) {
+      engine.state.selectedEntity = { type: 'corpse', id: clickedCorpse.id };
+      return;
+    }
+
     const clickedMonster = engine.state.monsters.find(m => m.hp > 0 && Math.hypot(m.x - world.x, m.y - world.y) < 24);
     if (clickedMonster) {
       engine.state.selectedEntity = { type: 'monster', id: clickedMonster.id };
@@ -623,6 +630,10 @@ export const GameView: React.FC = () => {
     ? gameState.peasants.find(p => p.id === gameState.selectedEntity?.id)
     : null;
 
+  const selectedCorpse = gameState?.selectedEntity?.type === 'corpse'
+    ? gameState.corpses.find(c => c.id === gameState.selectedEntity?.id && c.type === 'hero')
+    : null;
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none">
       {/* Royal Sovereign Loading Screen while 3D Models & Animations Preload */}
@@ -705,13 +716,26 @@ export const GameView: React.FC = () => {
         <div className="absolute top-16 left-4 z-20 pointer-events-none">
           <HeroRosterBar
             heroes={gameState.heroes}
+            corpses={gameState.corpses}
             selectedHeroId={gameState.selectedEntity?.type === 'hero' ? gameState.selectedEntity.id : null}
+            selectedCorpseId={gameState.selectedEntity?.type === 'corpse' ? gameState.selectedEntity.id : null}
             onSelectHero={(hero) => {
               if (engineRef.current) {
                 engineRef.current.state.selectedEntity = { type: 'hero', id: hero.id };
                 engineRef.current.state.camera.x = hero.x;
                 engineRef.current.state.camera.y = hero.y;
                 trackingHeroIdRef.current = hero.id;
+              }
+            }}
+            onSelectCorpse={(corpse) => {
+              if (engineRef.current) {
+                engineRef.current.state.selectedEntity = { type: 'corpse', id: corpse.id };
+                engineRef.current.state.camera.x = corpse.x;
+                engineRef.current.state.camera.y = corpse.y;
+                trackingHeroIdRef.current = null;
+              }
+              if (threeRendererRef.current) {
+                threeRendererRef.current.cameraTarget.set(corpse.x, 0, corpse.y);
               }
             }}
           />
@@ -864,6 +888,7 @@ export const GameView: React.FC = () => {
             allBuildings={gameState.buildings}
             heroes={gameState.heroes}
             heroesCount={gameState.heroes.filter(h => !h.isDead).length}
+            corpses={gameState.corpses}
             treasuryGold={gameState.treasuryGold}
             onClose={() => {
               if (engineRef.current) engineRef.current.state.selectedEntity = null;
@@ -881,6 +906,42 @@ export const GameView: React.FC = () => {
                 engineRef.current.state.camera.y = hero.y;
               }
               setCameraPreset('follow');
+            }}
+            onResurrectHero={(corpseId) => {
+              engineRef.current?.resurrectHero(corpseId);
+            }}
+            onTrackPosition={(x, y) => {
+              if (engineRef.current) {
+                engineRef.current.state.camera.x = x;
+                engineRef.current.state.camera.y = y;
+                trackingHeroIdRef.current = null;
+              }
+              if (threeRendererRef.current) {
+                threeRendererRef.current.cameraTarget.set(x, 0, y);
+              }
+            }}
+          />
+        )}
+
+        {selectedCorpse && gameState && (
+          <TombstoneInspector
+            corpse={selectedCorpse}
+            treasuryGold={gameState.treasuryGold}
+            onClose={() => {
+              if (engineRef.current) engineRef.current.state.selectedEntity = null;
+            }}
+            onResurrect={(corpseId) => {
+              engineRef.current?.resurrectHero(corpseId);
+            }}
+            onTrackGrave={(x, y) => {
+              if (engineRef.current) {
+                engineRef.current.state.camera.x = x;
+                engineRef.current.state.camera.y = y;
+                trackingHeroIdRef.current = null;
+              }
+              if (threeRendererRef.current) {
+                threeRendererRef.current.cameraTarget.set(x, 0, y);
+              }
             }}
           />
         )}

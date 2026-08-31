@@ -1,4 +1,4 @@
-import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
+import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS, getXpRequiredForLevel } from '../constants';
 import { Building, Flag, Hero, Monster, MonsterLair, Treasure } from '../types';
 import { audioManager } from './Audio';
 import { GridManager } from './Grid';
@@ -609,7 +609,7 @@ export class HeroAIManager {
     if (shouldClaim) {
       // Pick up treasure!
       hero.gold += treasure.goldAmount;
-      hero.xp += 25;
+      hero.xp += 10;
 
       if (onFloatingText) {
         onFloatingText(`+${treasure.goldAmount}g Loot!`, hero.x, hero.y - 18, '#fbbf24');
@@ -810,10 +810,10 @@ export class HeroAIManager {
       hero.isAttackingAnimation = 0.3;
       const healAmount = 45 + hero.level * 8;
       ally.hp = Math.min(ally.maxHp, ally.hp + healAmount);
-      hero.xp += 15;
+      hero.xp += 6;
       if (onFloatingText) {
         onFloatingText(`+${healAmount} HP`, ally.x, ally.y - 15, '#22c55e');
-        onFloatingText('Healed Ally (+15 XP)', hero.x, hero.y - 25, '#c084fc');
+        onFloatingText('Healed Ally (+6 XP)', hero.x, hero.y - 25, '#c084fc');
       }
       hero.state = 'idle';
     }
@@ -1053,7 +1053,7 @@ export class HeroAIManager {
               m.hp -= actualDamage;
               audioManager.playSwordClash(m.x, m.y);
               // Award hit combat XP
-              const hitXp = Math.max(3, Math.round(actualDamage * 0.4));
+              const hitXp = Math.max(1, Math.round((actualDamage / (m.maxHp || 50)) * (m.xpReward * 0.25)));
               hero.xp += hitXp;
 
               if (onFloatingText) {
@@ -1066,7 +1066,6 @@ export class HeroAIManager {
               const dmg = Math.round(totalDamage);
               l.hp -= dmg;
               audioManager.playSwordClash(targetX, targetY);
-              hero.xp += Math.max(2, Math.round(dmg * 0.25));
               if (onFloatingText) onFloatingText(`-${dmg}`, targetX, targetY - 12, '#fbbf24');
             }
           }
@@ -1112,7 +1111,7 @@ export class HeroAIManager {
     const def = HERO_CLASS_DEFINITIONS[hero.heroClass];
     hero.level += 1;
     hero.xp -= hero.xpToNextLevel;
-    hero.xpToNextLevel = Math.round(hero.xpToNextLevel * 1.5);
+    hero.xpToNextLevel = getXpRequiredForLevel(hero.level);
     hero.maxHp = Math.round(hero.maxHp + def.hpPerLevel);
     hero.hp = hero.maxHp;
     hero.maxMp = Math.round(hero.maxMp + def.mpPerLevel);

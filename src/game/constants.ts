@@ -275,6 +275,27 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
   }
 };
 
+export function getXpRequiredForLevel(level: number): number {
+  const table: Record<number, number> = {
+    1: 500,
+    2: 1100,
+    3: 2000,
+    4: 3200,
+    5: 4800,
+    6: 6800,
+    7: 9500,
+    8: 13000,
+    9: 17500,
+    10: 23000,
+  };
+  if (table[level]) return table[level];
+  return Math.round(23000 + (level - 10) * 8000);
+}
+
+export function getResurrectionCost(heroLevel: number): number {
+  return 120 + Math.max(1, heroLevel) * 40;
+}
+
 export interface HeroClassDef {
   name: string;
   baseHp: number;
@@ -480,7 +501,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 36,
     attackRange: 22,
     attackCooldown: 1.2,
-    xpReward: 25,
+    xpReward: 15,
     goldBountyReward: 2,
     color: '#78716c'
   },
@@ -492,7 +513,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 28,
     attackRange: 26,
     attackCooldown: 1.5,
-    xpReward: 45,
+    xpReward: 30,
     goldBountyReward: 4,
     color: '#e7e5e4'
   },
@@ -504,7 +525,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 20,
     attackRange: 24,
     attackCooldown: 2.0,
-    xpReward: 65,
+    xpReward: 40,
     goldBountyReward: 6,
     color: '#4d7c0f'
   },
@@ -516,7 +537,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 36,
     attackRange: 30,
     attackCooldown: 1.2,
-    xpReward: 40,
+    xpReward: 25,
     goldBountyReward: 5,
     color: '#84cc16'
   },
@@ -529,7 +550,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     attackRange: 130,
     attackCooldown: 2.1,
     isRanged: true,
-    xpReward: 85,
+    xpReward: 50,
     goldBountyReward: 12,
     color: '#a855f7'
   },
@@ -541,7 +562,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 42,
     attackRange: 26,
     attackCooldown: 1.2,
-    xpReward: 70,
+    xpReward: 45,
     goldBountyReward: 6,
     color: '#52525b'
   },
@@ -553,7 +574,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 22,
     attackRange: 30,
     attackCooldown: 2.0,
-    xpReward: 190,
+    xpReward: 140,
     goldBountyReward: 28,
     color: '#65a30d'
   },
@@ -565,7 +586,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 46,
     attackRange: 26,
     attackCooldown: 1.1,
-    xpReward: 60,
+    xpReward: 35,
     goldBountyReward: 9,
     isFlying: true,
     color: '#e879f9'
@@ -578,7 +599,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 50,
     attackRange: 26,
     attackCooldown: 1.0,
-    xpReward: 140,
+    xpReward: 120,
     goldBountyReward: 16,
     color: '#92400e'
   },
@@ -590,7 +611,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 30,
     attackRange: 34,
     attackCooldown: 1.8,
-    xpReward: 250,
+    xpReward: 240,
     goldBountyReward: 40,
     color: '#b91c1c'
   },
@@ -604,7 +625,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     attackCooldown: 1.8,
     isRanged: true,
     isBoss: true,
-    xpReward: 550,
+    xpReward: 500,
     goldBountyReward: 80,
     color: '#4c1d95'
   },
@@ -617,7 +638,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     attackRange: 30,
     attackCooldown: 1.4,
     isBoss: true,
-    xpReward: 1000,
+    xpReward: 900,
     goldBountyReward: 140,
     color: '#7f1d1d'
   },
@@ -660,6 +681,17 @@ export const SOVEREIGN_SPELLS: SovereignSpell[] = [
     currentCooldown: 0,
     targetType: 'position',
     icon: 'HeartPulse'
+  },
+  {
+    id: 'resurrection',
+    name: 'Resurrection',
+    description: 'Channels holy divine power upon a fallen hero’s tombstone, restoring them to life with full level and equipment.',
+    goldCost: 150,
+    manaCost: 50,
+    cooldown: 12,
+    currentCooldown: 0,
+    targetType: 'position',
+    icon: 'Sparkles'
   },
   {
     id: 'far_sight',

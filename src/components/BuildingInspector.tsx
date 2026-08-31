@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Building, Hero, HeroClass } from '../game/types';
-import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS } from '../game/constants';
+import { Building, Corpse, Hero, HeroClass } from '../game/types';
+import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, getResurrectionCost } from '../game/constants';
 import { audioManager } from '../game/engine/Audio';
 import { 
   Building as BuildingIcon, 
@@ -13,7 +13,9 @@ import {
   X, 
   Lock, 
   Users,
-  ShieldAlert
+  ShieldAlert,
+  Skull,
+  Locate
 } from 'lucide-react';
 
 interface BuildingInspectorProps {
@@ -21,11 +23,14 @@ interface BuildingInspectorProps {
   allBuildings: Building[];
   heroes?: Hero[];
   heroesCount?: number;
+  corpses?: Corpse[];
   treasuryGold: number;
   onClose: () => void;
   onRecruitHero: (buildingId: string, heroClass: HeroClass) => void;
   onResearchUpgrade: (buildingId: string, upgradeId: string) => void;
   onSelectHero?: (hero: Hero) => void;
+  onResurrectHero?: (corpseId: string) => void;
+  onTrackPosition?: (x: number, y: number) => void;
 }
 
 export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
@@ -33,15 +38,26 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
   allBuildings,
   heroes = [],
   heroesCount,
+  corpses = [],
   treasuryGold,
   onClose,
   onRecruitHero,
   onResearchUpgrade,
-  onSelectHero
+  onSelectHero,
+  onResurrectHero,
+  onTrackPosition
 }) => {
   const [shakingId, setShakingId] = useState<string | null>(null);
   const bDef = BUILDING_DEFINITIONS[building.type];
   const hpPercent = Math.max(0, Math.min(100, (building.hp / building.maxHp) * 100));
+
+  // Fallen heroes associated with this building or kingdom-wide if Cleric Temple
+  const isClericTemple = building.type === 'cleric_temple';
+  const relevantFallenHeroCorpses = (corpses || []).filter(c => {
+    if (c.type !== 'hero' || !c.heroData) return false;
+    if (isClericTemple) return true; // Temple of Dauros can resurrect ANY fallen hero in the realm!
+    return c.heroData.homeGuildId === building.id;
+  });
 
   // Living heroes currently affiliated with this guild
   const livingGuildHeroes = heroes.filter(
@@ -339,6 +355,88 @@ export const BuildingInspector: React.FC<BuildingInspectorProps> = ({
           </div>
         );
       })()}
+
+      {/* Fallen Champions Resurrect / Buy-Back Section */}
+      {relevantFallenHeroCorpses.length > 0 && (
+        <div className="mb-4 bg-slate-900/80 p-2.5 rounded-lg border border-amber-800/60">
+          <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center justify-between mb-2">
+            <span className="flex items-center gap-1.5">
+              <Skull className="w-3.5 h-3.5 text-amber-500" />
+              {isClericTemple ? 'Kingdom Fallen Champions' : 'Fallen Guild Champions'}
+            </span>
+            <span className="text-[10px] text-slate-400 font-normal">
+              {relevantFallenHeroCorpses.length} fallen
+            </span>
+          </div>
+          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+            {relevantFallenHeroCorpses.map((corpse) => {
+              const fallenHero = corpse.heroData!;
+              const classDef = HERO_CLASS_DEFINITIONS[fallenHero.heroClass];
+              const cost = getResurrectionCost(fallenHero.level);
+              const canAfford = treasuryGold >= cost;
+              const isShaking = shakingId === `resurrect_${corpse.id}`;
+
+              return (
+                <div
+                  key={corpse.id}
+                  className="p-2 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-7 h-7 rounded text-xs font-bold font-serif flex items-center justify-center text-white shrink-0"
+                      style={{ backgroundColor: classDef.accentColor }}
+                    >
+                      {fallenHero.heroClass[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-amber-200 truncate">
+                        {fallenHero.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Lvl {fallenHero.level} {classDef.name} • {fallenHero.kills} kills
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {onTrackPosition && (
+                      <button
+                        onClick={() => onTrackPosition(corpse.x, corpse.y)}
+                        title="Locate Grave"
+                        className="p-1.5 rounded bg-slate-900 border border-slate-700 text-slate-300 hover:text-amber-300 transition-colors"
+                      >
+                        <Locate className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (!canAfford) {
+                          setShakingId(`resurrect_${corpse.id}`);
+                          setTimeout(() => setShakingId(null), 450);
+                          audioManager.playInsufficientGoldSound();
+                          return;
+                        }
+                        if (onResurrectHero) onResurrectHero(corpse.id);
+                      }}
+                      className={`px-2 py-1 rounded text-xs font-serif font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        isShaking
+                          ? 'animate-error-shake bg-rose-900 border border-rose-500 text-rose-200'
+                          : canAfford
+                          ? 'bg-amber-600 hover:bg-amber-500 text-slate-950 shadow hover:shadow-amber-500/20 active:scale-95'
+                          : 'bg-slate-800 border border-rose-900 text-slate-400 hover:bg-rose-950/40 active:scale-95'
+                      }`}
+                      title={canAfford ? `Resurrect for ${cost}g` : `Need ${cost}g to resurrect`}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Resurrect</span>
+                      <span className="font-mono text-[10px] ml-0.5">({cost}g)</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Researched & Available Upgrades */}
       {bDef.upgrades && bDef.upgrades.length > 0 && (

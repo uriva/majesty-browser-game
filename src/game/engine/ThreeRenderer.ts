@@ -3518,6 +3518,13 @@ export class ThreeRenderer {
       entityZ = p.y;
       colorHex = 0xf59e0b;
       radius = 4.2;
+    } else if (state.selectedEntity.type === 'corpse') {
+      const c = state.corpses.find(corpse => corpse.id === state.selectedEntity?.id);
+      if (!c) return;
+      entityX = c.x;
+      entityZ = c.y;
+      colorHex = 0xf59e0b;
+      radius = 5.2;
     }
 
     const groundY = this.getTerrainHeight(entityX, entityZ);
@@ -8876,7 +8883,7 @@ export class ThreeRenderer {
 
       return group;
     } else if (c.type === 'hero') {
-      // Wooden Grave Cross with Fallen Iron Helmet & Sword
+      // Wooden Grave Cross with Fallen Iron Helmet, Sword & Divine Memorial Glow
       const crossVGeo = new THREE.BoxGeometry(1.2, 8, 1.2);
       const crossHGeo = new THREE.BoxGeometry(5, 1.2, 1.2);
       const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
@@ -8895,6 +8902,13 @@ export class ThreeRenderer {
       const helm = new THREE.Mesh(helmGeo, helmMat);
       helm.position.set(2.5, 1.5, 2);
       group.add(helm);
+
+      // Holy memorial candle / subtle golden aura
+      const auraGeo = new THREE.CylinderGeometry(4.5, 4.5, 0.2, 12);
+      const auraMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.22 });
+      const aura = new THREE.Mesh(auraGeo, auraMat);
+      aura.position.y = 0.1;
+      group.add(aura);
     } else if (c.type === 'monster') {
       if (c.subType === 'giant_rat') {
         // Slumped Rat Carcass
