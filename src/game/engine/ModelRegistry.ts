@@ -25,6 +25,7 @@ export class ModelRegistry {
   public isReady: boolean = false;
   private totalExpected: number = 0;
   private totalLoaded: number = 0;
+  private preloadStarted: boolean = false;
 
   public static getInstance(): ModelRegistry {
     if (!ModelRegistry.instance) {
@@ -58,6 +59,12 @@ export class ModelRegistry {
 
   public preloadAll() {
     if (typeof window === 'undefined') return;
+    // Guard against re-entry: a new ThreeRenderer is constructed on every
+    // save/load, and each one calls preloadAll(). Restarting the counters
+    // while the first batch is still in flight stalls isReady/notify and can
+    // leave buildings stuck in fallback state after a welcome-prompt load.
+    if (this.preloadStarted) return;
+    this.preloadStarted = true;
 
     const buildingModels: Record<string, string> = {
       'palace': '/models/building_castle_blue.gltf',
