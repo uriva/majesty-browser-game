@@ -22,7 +22,10 @@ const CREATURE_MODELS: Record<string, string> = {
   'creature_wolf': '/models/creatures/wolf.glb',
   'creature_rat': '/models/creatures/rat.glb',
   'creature_zombie': '/models/creatures/zombie.glb',
-  'creature_goblin': '/models/creatures/goblin.glb'
+  'creature_goblin': '/models/creatures/goblin.glb',
+  'creature_golem': '/models/creatures/golem.glb',
+  'creature_bat': '/models/creatures/bat.glb',
+  'creature_bull': '/models/creatures/bull.glb'
 };
 
 export class ModelRegistry {
@@ -584,6 +587,18 @@ export class ModelRegistry {
       creature_goblin: {
         idle: ['idle'], walk: ['walk'], run: ['run'],
         attack: ['attack'], hammer: ['idle'], death: ['death']
+      },
+      creature_golem: {
+        idle: ['flying_idle', 'idle'], walk: ['fast_flying', 'walk'], run: ['fast_flying', 'run'],
+        attack: ['punch', 'headbutt'], hammer: ['punch'], death: ['death']
+      },
+      creature_bat: {
+        idle: ['bat_flying', 'flying'], walk: ['bat_flying', 'flying'], run: ['bat_flying', 'flying'],
+        attack: ['bat_attack', 'bat_attack2', 'attack'], hammer: ['bat_flying'], death: ['bat_death', 'death']
+      },
+      creature_bull: {
+        idle: ['idle', 'idle_2', 'idle_headlow'], walk: ['walk'], run: ['gallop', 'run'],
+        attack: ['attack_headbutt', 'attack_kick'], hammer: ['idle'], death: ['death']
       }
     };
     const words = vocab[creatureKey] || {
@@ -688,6 +703,9 @@ export class ModelRegistry {
     if (monsterType === 'goblin_spearman' || monsterType === 'goblin_archer' || monsterType === 'goblin_shaman') {
       return this.createEmbeddedCreature('creature_goblin');
     }
+    if (monsterType === 'troll') return this.createEmbeddedCreature('creature_golem');
+    if (monsterType === 'harpy') return this.createEmbeddedCreature('creature_bat');
+    if (monsterType === 'minotaur') return this.createEmbeddedCreature('creature_bull');
 
     let key: string | null = null;
     switch (monsterType) {
@@ -702,8 +720,6 @@ export class ModelRegistry {
         key = 'necromancer';
         break;
       case 'orc':
-      case 'troll':
-      case 'minotaur':
         key = 'orc_raider';
         break;
       case 'werewolf':
@@ -711,7 +727,6 @@ export class ModelRegistry {
         break;
       case 'vampire_lord':
       case 'vampire':
-      case 'harpy':
         key = 'vampire';
         break;
       default:

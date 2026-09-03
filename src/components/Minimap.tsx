@@ -67,6 +67,30 @@ export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
       }
     }
 
+    // Draw Points of Interest (Shrines, Mines, Vaults)
+    if (state.pointsOfInterest) {
+      for (const poi of state.pointsOfInterest) {
+        if (state.exploredMap[Math.floor(poi.y)]?.[Math.floor(poi.x)]) {
+          const px = (poi.x + poi.width / 2) * scaleX;
+          const py = (poi.y + poi.height / 2) * scaleY;
+          if (poi.type === 'healing_shrine') {
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (poi.type === 'gold_mine') {
+            ctx.fillStyle = poi.isClaimed ? '#facc15' : '#ca8a04';
+            ctx.fillRect(px - 3, py - 3, 6, 6);
+          } else if (poi.type === 'ancient_vault') {
+            ctx.fillStyle = poi.isClaimed ? '#94a3b8' : '#a855f7';
+            ctx.beginPath();
+            ctx.arc(px, py, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
     // Draw Treasures
     for (const t of state.treasures) {
       const tx = Math.floor(t.x / state.tileSize);

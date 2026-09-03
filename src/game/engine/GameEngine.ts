@@ -1,5 +1,5 @@
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, HERO_NAMES, HERO_QUIRKS, LAIR_DEFINITIONS, LAIR_NAMES, MAP_CONFIG, MONSTER_DEFINITIONS, SOVEREIGN_SPELLS, getXpRequiredForLevel, getResurrectionCost } from '../constants';
-import { Building, BuildingType, Corpse, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, MonsterType, NotificationItem, Peasant, Projectile, SaveData, Scenario, SovereignSpell, Treasure } from '../types';
+import { Building, BuildingType, Corpse, DilemmaChoice, Flag, FlagType, GameState, Hero, HeroClass, Monster, MonsterLair, MonsterType, NotificationItem, Peasant, PointOfInterest, Projectile, RoyalDilemma, SaveData, Scenario, SovereignSpell, Treasure } from '../types';
 import { SCENARIOS } from '../scenarios';
 import { audioManager } from './Audio';
 import { CombatManager } from './Combat';
@@ -10,6 +10,7 @@ import { HeroAIManager } from './HeroAI';
 import { MonsterAIManager } from './MonsterAI';
 import { bossIdFor, evaluateObjective, getQuestChain, initQuestsForScenario } from '../quests';
 import { QuestBossSpawn } from '../types';
+import { getRandomDilemma } from '../dilemmas';
 
 export class GameEngine {
   public state: GameState;
@@ -25,6 +26,7 @@ export class GameEngine {
   private warPartyTimer: number = 140.0;
   private randomEventTimer: number = 80.0;
   private treasureRespawnTimer: number = 45.0;
+  private dilemmaTimer: number = 95.0;
 
   private onStateChangeCallback?: (state: GameState) => void;
   // Fog-of-war visibility changes slowly; recomputing it every tick is pure waste.
@@ -104,10 +106,14 @@ export class GameEngine {
         grid: this.gridManager.grid,
         fogOfWar: this.gridManager.visible,
         exploredMap: this.gridManager.explored,
-        // Migrate older saves (v1) that predate quests / bounty stats
+        // Migrate older saves (v1) that predate quests / bounty stats / POIs
         quests: Array.isArray((data.state as GameState).quests) && (data.state as GameState).quests.length > 0
           ? (data.state as GameState).quests
-          : initQuestsForScenario(scenario.id)
+          : initQuestsForScenario(scenario.id),
+        pointsOfInterest: Array.isArray((data.state as GameState).pointsOfInterest)
+          ? (data.state as GameState).pointsOfInterest
+          : this.createInitialPOIs(scenario),
+        activeDilemma: null
       };
       this.state.stats.bountiesPlaced = this.state.stats.bountiesPlaced ?? 0;
       this.cottageSproutTimer = data.timers.cottageSproutTimer;
@@ -146,6 +152,7 @@ export class GameEngine {
       monsters: [],
       buildings: [],
       lairs: [],
+      pointsOfInterest: [],
       flags: [],
       taxCollectors: [],
       peasants: [],
@@ -179,8 +186,28 @@ export class GameEngine {
         pitch: 0.82
       },
       activePlacement: null,
+      activeDilemma: null,
       dayPhase: 'day'
     };
+  }
+
+  private createInitialPOIs(scenario: Scenario): PointOfInterest[] {
+    if (!scenario.initialPOIs) return [];
+    return scenario.initialPOIs.map((pDef, idx) => ({
+      id: `poi_${idx}_${pDef.type}`,
+      type: pDef.type,
+      name: pDef.name,
+      x: pDef.x,
+      y: pDef.y,
+      width: 3,
+      height: 3,
+      description: pDef.description || '',
+      isDiscovered: false,
+      isClaimed: false,
+      tributeTimer: 25.0,
+      tributeInterval: 25.0,
+      tributeAmount: pDef.tributeAmount || 35
+    }));
   }
 
   private initWorld() {
@@ -309,6 +336,12 @@ export class GameEngine {
       this.gridManager.clearRoadsUnderBuilding(lair);
     }
 
+    // Seed initial Points of Interest (Ancient Shrines, Mines, Vaults)
+    this.state.pointsOfInterest = this.createInitialPOIs(scenario);
+    for (const poi of this.state.pointsOfInterest) {
+      this.gridManager.clearRoadsUnderBuilding(poi);
+    }
+
     // Seed hidden ancient treasure chests in uncharted wilderness
     const numWildChests = Math.max(6, Math.floor((scenario.mapWidth * scenario.mapHeight) / 800));
     for (let c = 0; c < numWildChests; c++) {
@@ -359,6 +392,9 @@ export class GameEngine {
 
     // 4.6 Quests: scenario plot objectives polled from live state
     this.updateQuests(delta);
+
+    // 4.7 Points of Interest: shrines, mines, and ancient vaults
+    this.updatePointsOfInterest(delta);
 
     // 5. Update Monster Lairs
     for (const lair of this.state.lairs) {
@@ -781,6 +817,93 @@ export class GameEngine {
     return true;
   }
 
+  // --- POINTS OF INTEREST: shrines, mines, and ancient vaults ---
+  private poiCheckTimer: number = 0;
+
+  private updatePointsOfInterest(delta: number) {
+    if (!this.state.pointsOfInterest || this.state.pointsOfInterest.length === 0) return;
+    const ts = this.state.tileSize;
+
+    // Throttle hero proximity checks (~4Hz)
+    this.poiCheckTimer -= delta;
+    const shouldCheckProximity = this.poiCheckTimer <= 0;
+    if (shouldCheckProximity) this.poiCheckTimer = 0.25;
+
+    for (const poi of this.state.pointsOfInterest) {
+      const cx = (poi.x + poi.width / 2) * ts;
+      const cy = (poi.y + poi.height / 2) * ts;
+
+      // Handle periodic mine tributes
+      if (poi.type === 'gold_mine' && poi.isClaimed) {
+        poi.tributeTimer = (poi.tributeTimer || 25.0) - delta;
+        if (poi.tributeTimer <= 0) {
+          poi.tributeTimer = poi.tributeInterval || 25.0;
+          const tribute = poi.tributeAmount || 35;
+          this.state.treasuryGold += tribute;
+          this.state.stats.goldEarned += tribute;
+          this.addFloatingText(`+${tribute}g Tribute`, cx, cy - 10, '#facc15');
+          audioManager.playCoinSound(cx, cy);
+        }
+      }
+
+      if (!shouldCheckProximity) continue;
+
+      // Proximity checks against heroes
+      for (const h of this.state.heroes) {
+        if (h.isDead) continue;
+        const dist = Math.hypot(h.x - cx, h.y - cy);
+        if (dist > 75) continue;
+
+        if (!poi.isDiscovered) {
+          poi.isDiscovered = true;
+          this.addNotification(`Discovered: ${poi.name}`, poi.description, 'success', { x: cx, y: cy });
+          audioManager.playAdvisorChime(cx, cy);
+        }
+
+        if (poi.type === 'healing_shrine') {
+          if (h.hp < h.maxHp * 0.95 || h.mp < h.maxMp * 0.95) {
+            h.hp = h.maxHp;
+            h.mp = h.maxMp;
+            h.currentThought = 'Blessed by the sacred waters of the shrine!';
+            this.addFloatingText('Blessed! +HP +MP', h.x, h.y - 12, '#38bdf8');
+            audioManager.playHealSound(h.x, h.y);
+            for (let p = 0; p < 8; p++) {
+              this.state.particles.push({
+                id: `heal_${Date.now()}_${p}`,
+                x: h.x + (Math.random() - 0.5) * 16,
+                y: h.y + (Math.random() - 0.5) * 16,
+                vx: (Math.random() - 0.5) * 12,
+                vy: -Math.random() * 18 - 8,
+                color: '#38bdf8',
+                size: 2.5,
+                alpha: 1.0,
+                life: 0.6,
+                maxLife: 0.6,
+                type: 'heal_sparkle'
+              });
+            }
+          }
+        } else if (poi.type === 'gold_mine' && !poi.isClaimed) {
+          poi.isClaimed = true;
+          this.addNotification('Mine Secured for the Crown!', `${h.name} secured ${poi.name}! Now paying +${poi.tributeAmount || 35}g royal tribute to your treasury.`, 'success', { x: cx, y: cy });
+          this.addFloatingText('Mine Secured!', cx, cy - 10, '#facc15');
+          audioManager.playAdvisorChime(cx, cy);
+        } else if (poi.type === 'ancient_vault' && !poi.isClaimed) {
+          poi.isClaimed = true;
+          const reward = 400;
+          this.state.treasuryGold += reward;
+          this.state.stats.goldEarned += reward;
+          h.equipment.weaponLevel = Math.min(4, h.equipment.weaponLevel + 1);
+          h.attackPower += 8;
+          h.currentThought = 'Armed with ancient titan-forged steel!';
+          this.addNotification('Ancient Vault Breached!', `${h.name} unsealed ${poi.name}! Recovered ${reward}g in royal relics and mastercraft steel weapons (+8 Atk)!`, 'quest', { x: cx, y: cy });
+          this.addFloatingText(`+${reward}g VAULT LOOT!`, cx, cy - 14, '#f59e0b');
+          audioManager.playVictoryFanfare();
+        }
+      }
+    }
+  }
+
   // --- EVENT DIRECTOR: keeps the wilds dangerous & the kingdom's story moving ---
   private updateEventsDirector(delta: number) {
     const difficulty = this.state.scenario.difficulty;
@@ -801,6 +924,15 @@ export class GameEngine {
       this.triggerRandomEvent();
     }
 
+    // ROYAL DILEMMAS: narrative dilemma popups giving players meaningful choices
+    if (!this.state.activeDilemma) {
+      this.dilemmaTimer -= delta;
+      if (this.dilemmaTimer <= 0) {
+        this.dilemmaTimer = (110 + Math.random() * 70) * paceMult;
+        this.triggerRandomDilemma();
+      }
+    }
+
     // WILDS REFILL: hidden treasure respawns so exploration stays rewarding
     this.treasureRespawnTimer -= delta;
     if (this.treasureRespawnTimer <= 0) {
@@ -808,6 +940,109 @@ export class GameEngine {
       const targetTreasures = Math.ceil((this.state.mapWidth * this.state.mapHeight) / 950);
       if (this.state.treasures.length < targetTreasures) this.spawnWildTreasure();
     }
+  }
+
+  public triggerRandomDilemma() {
+    if (this.state.isGameOver || this.state.activeDilemma) return;
+    const dilemma = getRandomDilemma();
+    if (!dilemma) return;
+    this.state.activeDilemma = dilemma;
+    audioManager.playAdvisorChime();
+    this.addNotification(`Royal Decree: ${dilemma.title}`, dilemma.description.slice(0, 70) + '...', 'quest');
+  }
+
+  public resolveDilemma(choice: DilemmaChoice) {
+    if (!this.state.activeDilemma) return;
+
+    if (choice.goldCost) {
+      this.state.treasuryGold = Math.max(0, this.state.treasuryGold - choice.goldCost);
+      this.state.stats.goldSpent += choice.goldCost;
+    }
+    if (choice.goldGain) {
+      this.state.treasuryGold += choice.goldGain;
+      this.state.stats.goldEarned += choice.goldGain;
+      audioManager.playCoinSound();
+    }
+    if (choice.manaCost) {
+      this.state.mana = Math.max(0, this.state.mana - choice.manaCost);
+    }
+    if (choice.manaGain) {
+      this.state.mana = Math.min(this.state.maxMana, this.state.mana + choice.manaGain);
+      audioManager.playSpellCast();
+    }
+
+    // Specific action consequence hooks
+    if (choice.actionId === 'sponsor_paladin') {
+      const palace = this.state.buildings.find(b => b.type === 'palace' && b.hp > 0);
+      const ts = this.state.tileSize;
+      const px = palace ? (palace.x + palace.width / 2) * ts : this.state.camera.x;
+      const py = palace ? (palace.y + palace.height + 1) * ts : this.state.camera.y;
+      const knightDef = HERO_CLASS_DEFINITIONS['warrior'];
+      const hero: Hero = {
+        id: `hero_paladin_${Date.now()}`,
+        name: 'Sir Galahault',
+        heroClass: 'warrior',
+        level: 3,
+        xp: 350,
+        xpToNextLevel: 700,
+        x: px,
+        y: py,
+        hp: knightDef.baseHp + 60,
+        maxHp: knightDef.baseHp + 60,
+        mp: 30,
+        maxMp: 30,
+        gold: 80,
+        kills: 12,
+        speed: knightDef.speed,
+        attackPower: knightDef.baseAttack + 12,
+        defense: knightDef.baseDefense + 8,
+        attackRange: knightDef.attackRange,
+        attackCooldown: knightDef.attackCooldown,
+        currentCooldown: 0,
+        state: 'idle',
+        stateTimer: 2,
+        homeGuildId: palace?.id || 'palace',
+        equipment: {
+          weaponLevel: 2,
+          armorLevel: 2,
+          hasHealingPotion: true,
+          hasSpeedPotion: false,
+          hasAmulet: true
+        },
+        traits: {
+          bravery: 95,
+          greed: 25,
+          explorationUrge: 65,
+          loyalty: 95,
+          quirk: 'Holy Paladin'
+        },
+        currentThought: 'My blade defends the realm and the throne!',
+        title: 'Sir Galahault the Pious',
+        direction: 'down',
+        isAttackingAnimation: 0
+      };
+      this.state.heroes.push(hero);
+      this.state.stats.heroesRecruited += 1;
+      this.addNotification('Sir Galahault Enlists!', 'The holy knight has sworn his blade to your service!', 'success', { x: px, y: py });
+      audioManager.playLevelUp(px, py);
+    } else if (choice.actionId === 'bribe_rogues' || choice.actionId === 'quicksilver') {
+      for (const h of this.state.heroes) {
+        h.speed = Math.round(h.speed * 1.25);
+        h.currentThought = 'Energized by royal elixir and bounty coins!';
+      }
+      this.addNotification('Heroes Quicksilvered!', 'All heroes gained +25% move speed!', 'success');
+      audioManager.playPotionSound();
+    } else if (choice.actionId === 'fund_mine') {
+      const haul = 350;
+      this.state.treasuryGold += haul;
+      this.state.stats.goldEarned += haul;
+      this.addNotification('Deep Gold Seam!', `Master Ironfoot struck a rich vein! +${haul}g added to treasury!`, 'success');
+      audioManager.playVictoryFanfare();
+    } else if (choice.actionId === 'spurn_dwarves') {
+      this.addNotification('Royal Rebuff', 'The guildmaster cursed into his beard and stormed away into the hills.', 'warning');
+    }
+
+    this.state.activeDilemma = null;
   }
 
   private spawnRaidMonster(type: MonsterType, x: number, y: number, raidTargetId?: string): Monster {

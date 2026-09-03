@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS, MONSTER_DEFINITIONS } from '../constants';
-import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, Projectile, TaxCollector, Treasure } from '../types';
+import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, PointOfInterest, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 import { CharacterAnimationController, ModelRegistry } from './ModelRegistry';
 
@@ -11,6 +11,7 @@ export class ThreeRenderer {
   public camera: THREE.PerspectiveCamera;
   public renderer: THREE.WebGLRenderer;
   private gridManager: GridManager;
+  public scenarioId: string;
 
   // Character Skeletal Animation Controllers
   private animControllers: Map<string, CharacterAnimationController> = new Map();
@@ -74,6 +75,7 @@ export class ThreeRenderer {
   private taxCollectorsMap: Map<string, THREE.Group> = new Map();
   private peasantsMap: Map<string, THREE.Group> = new Map();
   private treasuresMap: Map<string, THREE.Group> = new Map();
+  private poisMap: Map<string, THREE.Group> = new Map();
   private corpsesMap: Map<string, THREE.Group> = new Map();
   private flagsMap: Map<string, THREE.Group> = new Map();
   private projectilesMap: Map<string, THREE.Group> = new Map();
@@ -118,9 +120,10 @@ export class ThreeRenderer {
   public cameraMode: 'isometric' | 'free' | 'top_down' | 'follow' = 'isometric';
   private lastRenderTime: number = performance.now();
 
-  constructor(container: HTMLDivElement, gridManager: GridManager) {
+  constructor(container: HTMLDivElement, gridManager: GridManager, scenarioId: string = 'goblin_borderlands') {
     this.container = container;
     this.gridManager = gridManager;
+    this.scenarioId = scenarioId;
 
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
@@ -170,10 +173,21 @@ export class ThreeRenderer {
     this.fogTexture.minFilter = THREE.LinearFilter;
     this.fogTexture.magFilter = THREE.LinearFilter;
 
-    // 1. Scene Setup
+    // 1. Scene Setup & Biome Atmosphere
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#0284c7');
-    this.scene.fog = new THREE.FogExp2('#38bdf8', 0.00035);
+    if (this.scenarioId === 'cursed_graveyards') {
+      this.scene.background = new THREE.Color('#151022');
+      this.scene.fog = new THREE.FogExp2('#2e1f42', 0.00045);
+    } else if (this.scenarioId === 'dragon_caldor') {
+      this.scene.background = new THREE.Color('#2e1206');
+      this.scene.fog = new THREE.FogExp2('#52270e', 0.00040);
+    } else if (this.scenarioId === 'vampire_coast') {
+      this.scene.background = new THREE.Color('#0b1d22');
+      this.scene.fog = new THREE.FogExp2('#15323a', 0.00042);
+    } else {
+      this.scene.background = new THREE.Color('#0284c7');
+      this.scene.fog = new THREE.FogExp2('#38bdf8', 0.00035);
+    }
 
     // 2. Camera Setup
     this.camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
@@ -1324,8 +1338,15 @@ export class ThreeRenderer {
       const vy = this.getTerrainHeight(vx, vz);
       posAttr.setY(i, vy);
 
-      // Base lush meadow vertex tone (normalized 1.0)
+      // Base biome vertex tone (adapts to scenario realm)
       let r = 1.0, g = 1.0, b = 1.0;
+      if (this.scenarioId === 'cursed_graveyards') {
+        r = 0.72; g = 0.65; b = 0.82; // ashen misty moorland
+      } else if (this.scenarioId === 'dragon_caldor') {
+        r = 1.25; g = 0.72; b = 0.58; // scorched volcanic basalt
+      } else if (this.scenarioId === 'vampire_coast') {
+        r = 0.68; g = 0.82; b = 0.72; // murky peat marsh
+      }
 
       // Elevation tint (Hills and rocky crags are warmer/sunnier or rockier)
       if (vy > 3.0) {
@@ -1415,9 +1436,15 @@ export class ThreeRenderer {
     this.roadsMesh.receiveShadow = true;
     this.scene.add(this.roadsMesh);
 
-    // 3. Continuous Shimmering Azure Rivers
+    // 3. Continuous Scenario-Specific Shimmering Rivers
+    const waterColor = this.scenarioId === 'dragon_caldor'
+      ? 0xf97316 // Volcanic molten runoff / lava-amber
+      : (this.scenarioId === 'cursed_graveyards'
+          ? 0x2e1065 // Dark cursed night-purple
+          : (this.scenarioId === 'vampire_coast' ? 0x064e3b : 0x0284c7));
+
     const waterMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
+      color: waterColor,
       roughness: 0.1,
       metalness: 0.35,
       map: this.riverTexture,
@@ -3483,6 +3510,7 @@ export class ThreeRenderer {
 
     this.updateBuildings(state);
     this.updateLairs(state);
+    this.updatePointsOfInterest(state);
     this.updateTreasures(state);
     this.updateFlags(state);
     this.updateTaxCollectors(state, delta);
@@ -6540,6 +6568,165 @@ export class ThreeRenderer {
     return group;
   }
 
+  // --- 3D POINTS OF INTEREST (SHRINES, GOLD MINES, ANCIENT VAULTS) ---
+  private updatePointsOfInterest(state: GameState) {
+    if (!state.pointsOfInterest) return;
+    const activeIds = new Set<string>();
+    const time = Date.now() * 0.003;
+
+    for (const poi of state.pointsOfInterest) {
+      activeIds.add(poi.id);
+      let group = this.poisMap.get(poi.id);
+
+      if (!group) {
+        group = this.create3DPOIMesh(poi);
+        this.scene.add(group);
+        this.poisMap.set(poi.id, group);
+      }
+
+      const ts = this.gridManager.tileSize;
+      const px = (poi.x + poi.width / 2) * ts;
+      const pz = (poi.y + poi.height / 2) * ts;
+      const groundY = this.getTerrainHeight(px, pz);
+
+      group.position.set(px, groundY, pz);
+      group.visible = this.gridManager.isPixelExplored(px, pz);
+
+      // Animate hovering shrine crystal or rune glow
+      const crystal = group.getObjectByName('shrineCrystal');
+      if (crystal) {
+        crystal.rotation.y = time * 1.5;
+        crystal.position.y = 12.0 + Math.sin(time * 2.0) * 1.2;
+      }
+      const runeLight = group.getObjectByName('vaultRuneLight');
+      if (runeLight && runeLight instanceof THREE.Mesh && runeLight.material instanceof THREE.MeshStandardMaterial) {
+        runeLight.material.emissiveIntensity = 1.0 + Math.sin(time * 3.0) * 0.5;
+      }
+    }
+
+    for (const [id, group] of this.poisMap.entries()) {
+      if (!activeIds.has(id)) {
+        this.scene.remove(group);
+        this.poisMap.delete(id);
+      }
+    }
+  }
+
+  private create3DPOIMesh(poi: PointOfInterest): THREE.Group {
+    const group = new THREE.Group();
+    const ts = this.gridManager.tileSize;
+    const w = poi.width * ts;
+    const h = poi.height * ts;
+
+    if (poi.type === 'healing_shrine') {
+      // Holy Colonnade Fountain: circular marble plinth, 4 columns, blue holy water pool, floating cyan crystal
+      const marbleMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.35 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.85, roughness: 0.2 });
+      const waterMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.8, roughness: 0.1 });
+
+      const plinth = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.42, w * 0.46, 2.0, 16), marbleMat);
+      plinth.position.y = 1.0;
+      plinth.receiveShadow = true;
+      group.add(plinth);
+
+      const pool = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.32, w * 0.32, 0.4, 16), waterMat);
+      pool.position.y = 2.1;
+      group.add(pool);
+
+      const numCols = 4;
+      for (let i = 0; i < numCols; i++) {
+        const ang = (i / numCols) * Math.PI * 2 + Math.PI / 4;
+        const cx = Math.cos(ang) * (w * 0.34);
+        const cz = Math.sin(ang) * (h * 0.34);
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 11, 8), marbleMat);
+        col.position.set(cx, 6.5, cz);
+        col.castShadow = true;
+        group.add(col);
+
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.0, 3.0), goldMat);
+        cap.position.set(cx, 12.5, cz);
+        group.add(cap);
+      }
+
+      // Floating Sacred Cyan Healing Crystal
+      const crystalGeo = new THREE.OctahedronGeometry(3.2, 0);
+      const crystalMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x0ea5e9,
+        emissiveIntensity: 1.8,
+        roughness: 0.15
+      });
+      const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+      crystal.name = 'shrineCrystal';
+      crystal.position.y = 12.0;
+      group.add(crystal);
+
+      return group;
+    }
+
+    if (poi.type === 'gold_mine') {
+      // Abandoned Gold Mine: Uses KayKit mine model or timber frame + gold ore piles
+      const gltfMine = ModelRegistry.getInstance().getBuildingModel('dwarf_settlement');
+      if (gltfMine) {
+        const box = new THREE.Box3().setFromObject(gltfMine);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.z);
+        const scale = maxDim > 0 ? (w * 0.85) / maxDim : 1.0;
+        gltfMine.scale.set(scale, scale, scale);
+        gltfMine.position.set(0, -box.min.y * scale + 0.1, 0);
+        group.add(gltfMine);
+      } else {
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x543310, roughness: 0.9 });
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(w * 0.6, 12, h * 0.6), woodMat);
+        frame.position.y = 6;
+        group.add(frame);
+      }
+
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.2 });
+      for (let g = 0; g < 5; g++) {
+        const ang = (g / 5) * Math.PI * 2;
+        const nugget = new THREE.Mesh(new THREE.DodecahedronGeometry(1.6, 0), goldMat);
+        nugget.position.set(Math.cos(ang) * (w * 0.32), 1.0, Math.sin(ang) * (h * 0.32));
+        nugget.castShadow = true;
+        group.add(nugget);
+      }
+
+      return group;
+    }
+
+    // Default / ancient_vault / sanctuary_altar
+    const gltfCrypt = ModelRegistry.getInstance().cloneModel('crypt') || ModelRegistry.getInstance().cloneModel('ruins');
+    if (gltfCrypt) {
+      const box = new THREE.Box3().setFromObject(gltfCrypt);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.z);
+      const scale = maxDim > 0 ? (w * 0.88) / maxDim : 1.0;
+      gltfCrypt.scale.set(scale, scale, scale);
+      gltfCrypt.position.set(0, -box.min.y * scale + 0.2, 0);
+      group.add(gltfCrypt);
+    } else {
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 });
+      const crypt = new THREE.Mesh(new THREE.BoxGeometry(w * 0.65, 14, h * 0.65), stoneMat);
+      crypt.position.y = 7;
+      group.add(crypt);
+    }
+
+    const runeMat = new THREE.MeshStandardMaterial({
+      color: 0xc084fc,
+      emissive: 0x9333ea,
+      emissiveIntensity: 1.5,
+      roughness: 0.2
+    });
+    const rune = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.5, 8), runeMat);
+    rune.name = 'vaultRuneLight';
+    rune.position.set(0, 5, h * 0.36);
+    group.add(rune);
+
+    return group;
+  }
+
   // --- 3D TREASURES (GOLD SACKS & CHESTS) ---
   private updateTreasures(state: GameState) {
     const activeIds = new Set<string>();
@@ -7482,7 +7669,9 @@ export class ThreeRenderer {
         else if (m.type === 'dire_wolf') targetHeight = 15.0;
         else if (m.type === 'vampire_lord') targetHeight = 18.0;
         else if (m.type === 'necromancer') targetHeight = 14.0;
-        else if (m.type === 'troll') targetHeight = 17.0;
+        else if (m.type === 'troll') targetHeight = 18.0;
+        else if (m.type === 'minotaur') targetHeight = 17.0;
+        else if (m.type === 'harpy') targetHeight = 12.0;
         else if (m.type === 'red_dragon') targetHeight = 24.0;
         else if (m.type === 'giant_rat') targetHeight = 7.0;
         else if (m.type === 'zombie') targetHeight = 13.0;

@@ -19,6 +19,7 @@ import { PeasantInspector } from './PeasantInspector';
 import { FlagInspector } from './FlagInspector';
 import { HeroRosterBar } from './HeroRosterBar';
 import { QuestTracker } from './QuestTracker';
+import { DilemmaModal } from './DilemmaModal';
 import { TombstoneInspector } from './TombstoneInspector';
 import { ScenarioModal } from './ScenarioModal';
 import { SaveLoadModal } from './SaveLoadModal';
@@ -98,13 +99,16 @@ export const GameView: React.FC = () => {
   // Initialize Game Engine & 3D Three.js Renderer
   const attachEngine = useCallback((engine: GameEngine) => {
     engineRef.current = engine;
+    if (typeof window !== 'undefined') {
+      (window as any).__majesty_engine = engine;
+    }
 
     if (containerRef.current) {
       if (threeRendererRef.current) {
         threeRendererRef.current.renderer.dispose();
         containerRef.current.innerHTML = '';
       }
-      threeRendererRef.current = new ThreeRenderer(containerRef.current, engine.gridManager);
+      threeRendererRef.current = new ThreeRenderer(containerRef.current, engine.gridManager, engine.state.scenario.id);
     }
     setGameState({ ...engine.state });
   }, []);
@@ -314,7 +318,10 @@ export const GameView: React.FC = () => {
             monsters: [...engine.state.monsters],
             lairs: [...engine.state.lairs],
             treasures: [...engine.state.treasures],
-            taxCollectors: [...engine.state.taxCollectors]
+            taxCollectors: [...engine.state.taxCollectors],
+            pointsOfInterest: [...engine.state.pointsOfInterest],
+            quests: [...engine.state.quests],
+            activeDilemma: engine.state.activeDilemma
           });
         }
       }
@@ -1049,6 +1056,20 @@ export const GameView: React.FC = () => {
           setIsScenarioModalOpen(true);
         }}
       />
+
+      {/* Royal Dilemma Modal */}
+      {gameState?.activeDilemma && (
+        <DilemmaModal
+          dilemma={gameState.activeDilemma}
+          treasuryGold={gameState.treasuryGold}
+          mana={gameState.mana}
+          onResolve={(choice) => {
+            if (engineRef.current) {
+              engineRef.current.resolveDilemma(choice);
+            }
+          }}
+        />
+      )}
 
       {/* Scenario / Victory / Defeat Modal */}
       <ScenarioModal

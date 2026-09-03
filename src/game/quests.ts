@@ -104,6 +104,270 @@ export const QUEST_CHAINS: Record<string, QuestDef[]> = {
         }
       ]
     }
+  ],
+
+  cursed_graveyards: [
+    {
+      id: 'graveyards_consecration',
+      name: 'Consecration of the Valley',
+      act: 'Act I — Holy Fire',
+      description: 'The dead do not sleep in these misty moors. Found a Cleric Temple or Warrior Guild, muster faithful champions, and withstand the nightly terrors.',
+      stages: [
+        {
+          id: 'holy_hearth',
+          title: 'Consecrate the Ground',
+          introText: 'The living need holy ground. Build a Cleric Temple, Warrior Guild, or Guard Tower.',
+          objectives: [
+            { kind: 'construct', description: 'Build a sanctuary', count: 1, buildingTypes: ['cleric_temple', 'warrior_guild', 'guard_tower'] }
+          ],
+          rewardGold: 150,
+          rewardMana: 50
+        },
+        {
+          id: 'muster_faithful',
+          title: 'Muster the Faithful',
+          introText: 'Recruit four champions to patrol the parish boundaries and guard the commonfolk.',
+          objectives: [{ kind: 'recruit', description: 'Recruit champions', count: 4 }],
+          rewardGold: 150,
+          rewardMana: 50
+        },
+        {
+          id: 'survive_night',
+          title: 'Survive the Witching Hour',
+          introText: 'Hold the settlement through dusk and darkness until dawn breaks on Day 2.',
+          objectives: [{ kind: 'reach_day', description: 'Survive to Day 2', day: 2 }],
+          rewardGold: 120
+        }
+      ]
+    },
+    {
+      id: 'graveyards_howling',
+      name: 'The Howling Crypts',
+      act: 'Act II — Purge the Tombs',
+      description: 'Barrow wolves and flesh-eaters prowl the fog. Break into the ancient mausoleums and bring down Alpha Grimfang before his pack overwhelms the town.',
+      stages: [
+        {
+          id: 'purge_mausoleums',
+          title: 'Purge Three Crypts',
+          introText: 'Shatter three graveyards or cursed mausoleums across the moor.',
+          objectives: [{ kind: 'destroy_lairs', description: 'Destroy graveyards', count: 3, lairType: 'graveyard' }],
+          rewardGold: 220,
+          rewardMana: 60
+        },
+        {
+          id: 'slay_grimfang',
+          title: 'Slay Alpha Grimfang',
+          introText: 'The cursed werewolf Alpha stalks the outskirts! Post a royal bounty on the beast.',
+          objectives: [{ kind: 'slay_boss', description: 'Slay Alpha Grimfang' }],
+          rewardGold: 320,
+          rewardMana: 80,
+          spawnBoss: {
+            monsterType: 'werewolf',
+            name: 'Alpha Grimfang',
+            title: 'Dread Werewolf of the Barrow',
+            hpMult: 3.5,
+            attackMult: 1.6,
+            nearLairType: 'dark_castle',
+            introText: 'Alpha Grimfang lets out a bloodcurdling howl and stalks toward your settlement!'
+          }
+        }
+      ]
+    },
+    {
+      id: 'graveyards_banishing',
+      name: 'Banish the Darkness',
+      act: 'Act III — The Necromancer Falls',
+      description: 'The valley groans under eternal night. Slay Lord Morpheus the Dark Necromancer in his ancient ruin.',
+      stages: [
+        {
+          id: 'banish_lich',
+          title: 'Slay the Dark Necromancer',
+          introText: 'Burn every remaining crypt and strike down the Dark Necromancer.',
+          objectives: [{ kind: 'raze_all', description: 'Raze every cursed lair (0 remain)' }],
+          rewardGold: 500,
+          rewardMana: 150
+        }
+      ]
+    },
+    {
+      id: 'graveyards_saint_chalice',
+      name: 'The Saint’s Relic',
+      act: 'Side Contract',
+      description: 'The ancient abbey chronicles speak of Saint Judis’ holy chalice, sealed within the ruined barrows.',
+      side: true,
+      stages: [
+        {
+          id: 'find_chalice',
+          title: 'Recover the Sacred Relic',
+          introText: 'Unseal the ancient tomb of Saint Judis in the eastern wilderness.',
+          objectives: [{ kind: 'treasury', description: 'Accumulate 1500g in royal treasury', gold: 1500 }],
+          rewardGold: 200,
+          rewardMana: 80
+        }
+      ]
+    }
+  ],
+
+  dragon_caldor: [
+    {
+      id: 'caldor_bastion',
+      name: 'Bastion of Fire',
+      act: 'Act I — Fortify Against the Flame',
+      description: 'Fryre the Red has reduced kingdoms to cinders. Construct a Blacksmith, reinforce towers, and equip your heroes in fire-tempered steel.',
+      stages: [
+        {
+          id: 'blacksmith_tower',
+          title: 'Forge & Watchtower',
+          introText: 'Build a Blacksmith to temper steel and a Guard Tower to watch the volcanic peaks.',
+          objectives: [
+            { kind: 'construct', description: 'Build a Blacksmith or Guard Tower', count: 1, buildingTypes: ['blacksmith', 'guard_tower'] }
+          ],
+          rewardGold: 160
+        },
+        {
+          id: 'expeditionary_force',
+          title: 'Muster the Expedition',
+          introText: 'Recruit five brave champions across your guilds to spearhead the mountain assault.',
+          objectives: [{ kind: 'recruit', description: 'Recruit heroes', count: 5 }],
+          rewardGold: 180,
+          rewardMana: 60
+        }
+      ]
+    },
+    {
+      id: 'caldor_titans',
+      name: 'Toll of the Titans',
+      act: 'Act II — Break the Mountain Passes',
+      description: 'Stone trolls have fortified the gorges. Smash the toll bridges and bring down Gorgar Stonefist, the volcanic colossus.',
+      stages: [
+        {
+          id: 'smash_bridges',
+          title: 'Smash Two Troll Bridges',
+          introText: 'Sever the trolls’ mountain hold. Raze two troll bridges in the ravines.',
+          objectives: [{ kind: 'destroy_lairs', description: 'Destroy troll bridges', count: 2, lairType: 'troll_bridge' }],
+          rewardGold: 250
+        },
+        {
+          id: 'slay_gorgar',
+          title: 'Slay Gorgar Stonefist',
+          introText: 'The mountain titan Gorgar Stonefist descends from the volcanic ridge!',
+          objectives: [{ kind: 'slay_boss', description: 'Slay Gorgar Stonefist' }],
+          rewardGold: 380,
+          rewardMana: 100,
+          spawnBoss: {
+            monsterType: 'troll',
+            name: 'Gorgar Stonefist',
+            title: 'Volcanic Mountain Colossus',
+            hpMult: 4.0,
+            attackMult: 1.8,
+            nearLairType: 'ancient_ruins',
+            introText: 'The ground quakes! Gorgar Stonefist the colossal mountain troll marches on your gates!'
+          }
+        }
+      ]
+    },
+    {
+      id: 'caldor_dragonslayer',
+      name: 'Dragonslayer',
+      act: 'Act III — Extinguish the Drake',
+      description: 'The ancient Red Dragon Fryre circles overhead. Place a king’s bounty, weather his breath, and end his thousand-year reign.',
+      stages: [
+        {
+          id: 'slay_fryre',
+          title: 'Slay Red Dragon Fryre',
+          introText: 'Assault the northern dragon peak. Slay the dragon and shatter his cavern.',
+          objectives: [{ kind: 'slay_boss', description: 'Slay Red Dragon Fryre' }],
+          rewardGold: 600,
+          rewardMana: 200
+        }
+      ]
+    },
+    {
+      id: 'caldor_mithril',
+      name: 'The Lost Mithril Lode',
+      act: 'Side Contract',
+      description: 'Dwarven lore tells of a rich vein of raw mithril in the northern crags. Secure it for steady tribute.',
+      side: true,
+      stages: [
+        {
+          id: 'secure_mine',
+          title: 'Secure the Deep Vein',
+          introText: 'Amass 2200g in the treasury to fund a permanent royal mining expedition.',
+          objectives: [{ kind: 'treasury', description: 'Hold 2200g in treasury', gold: 2200 }],
+          rewardGold: 300,
+          rewardMana: 100
+        }
+      ]
+    }
+  ],
+
+  vampire_coast: [
+    {
+      id: 'coast_foothold',
+      name: 'The Drowned Haven',
+      act: 'Act I — Coastal Haven',
+      description: 'Shipwrecks litter the salt-fens. Establish a tavern, recruit rogue smugglers, and clear the harpy flock from the sea-cliffs.',
+      stages: [
+        {
+          id: 'coastal_haven',
+          title: 'Establish a Coastal Guild',
+          introText: 'Found a Royal Inn, Rogue Guild, or Marketplace on the salt flats.',
+          objectives: [
+            { kind: 'construct', description: 'Build coastal structure', count: 1, buildingTypes: ['royal_inn', 'rogue_guild', 'marketplace'] }
+          ],
+          rewardGold: 160
+        },
+        {
+          id: 'clear_harpies',
+          title: 'Shatter the Harpy Roosts',
+          introText: 'The winged scavengers drown our sailors. Destroy two harpy roosts.',
+          objectives: [{ kind: 'destroy_lairs', description: 'Destroy harpy roosts', count: 2, lairType: 'harpy_roost' }],
+          rewardGold: 220,
+          rewardMana: 60
+        }
+      ]
+    },
+    {
+      id: 'coast_bloodmoon',
+      name: 'The Blood Moon Hunt',
+      act: 'Act II — The Werewolf Baron',
+      description: 'At the blood tide, Baron Vane leads his sea-wolf pack to sack the harbors. Send him to the depths.',
+      stages: [
+        {
+          id: 'slay_baron',
+          title: 'Slay Baron Vane',
+          introText: 'Baron Vane the Corsair Werewolf marches from the drowned keep!',
+          objectives: [{ kind: 'slay_boss', description: 'Slay Baron Vane' }],
+          rewardGold: 350,
+          rewardMana: 80,
+          spawnBoss: {
+            monsterType: 'werewolf',
+            name: 'Baron Vane',
+            title: 'Corsair Werewolf of the Fens',
+            hpMult: 3.6,
+            attackMult: 1.7,
+            nearLairType: 'dark_castle',
+            introText: 'Baron Vane the dread werewolf corsair lands on your shores!'
+          }
+        }
+      ]
+    },
+    {
+      id: 'coast_malachar',
+      name: 'Heart of the Vampire',
+      act: 'Act III — End the Eternal Night',
+      description: 'Vampire Lord Malachar waits in his sunken castle. Purge every unholy den and slay the vampire lord.',
+      stages: [
+        {
+          id: 'slay_malachar',
+          title: 'Slay Vampire Lord Malachar',
+          introText: 'Storm Malachar’s fortress and purge every lair on the coast.',
+          objectives: [{ kind: 'raze_all', description: 'Raze every hostile lair (0 remain)' }],
+          rewardGold: 600,
+          rewardMana: 200
+        }
+      ]
+    }
   ]
 };
 

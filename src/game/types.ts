@@ -368,6 +368,42 @@ export type QuestObjectiveKind =
   | 'raze_all'       // no live lairs remain (finale)
   | 'slay_boss';     // slay the stage's spawned boss
 
+export interface DilemmaChoice {
+  text: string;
+  effectDescription: string;
+  goldCost?: number;
+  goldGain?: number;
+  manaCost?: number;
+  manaGain?: number;
+  actionId: string;
+}
+
+export interface RoyalDilemma {
+  id: string;
+  title: string;
+  sender: string;
+  description: string;
+  choices: DilemmaChoice[];
+}
+
+export type POIType = 'healing_shrine' | 'ancient_vault' | 'gold_mine' | 'sanctuary_altar';
+
+export interface PointOfInterest {
+  id: string;
+  type: POIType;
+  name: string;
+  x: number; // tile coordinate
+  y: number;
+  width: number;
+  height: number;
+  description: string;
+  isDiscovered: boolean;
+  isClaimed: boolean;
+  tributeTimer?: number;
+  tributeInterval?: number;
+  tributeAmount?: number;
+}
+
 export interface QuestObjective {
   kind: QuestObjectiveKind;
   description: string;
@@ -436,6 +472,7 @@ export interface Scenario {
   mapWidth: number;
   mapHeight: number;
   initialLairs: { type: LairType; x: number; y: number; monsterType: MonsterType; maxMonsters: number; spawnInterval: number }[];
+  initialPOIs?: { type: POIType; x: number; y: number; name: string; description?: string; tributeAmount?: number }[];
   winCondition: (state: GameState) => boolean;
   lossCondition: (state: GameState) => boolean;
 }
@@ -503,6 +540,7 @@ export interface GameState {
   monsters: Monster[];
   buildings: Building[];
   lairs: MonsterLair[];
+  pointsOfInterest: PointOfInterest[];
   flags: Flag[];
   taxCollectors: TaxCollector[];
   peasants: Peasant[];
@@ -531,5 +569,6 @@ export interface GameState {
     subType: string;
     bountyAmount?: number;
   } | null;
+  activeDilemma: RoyalDilemma | null;
   dayPhase: 'day' | 'dusk' | 'night' | 'dawn';
 }
