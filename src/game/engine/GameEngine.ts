@@ -27,6 +27,7 @@ export class GameEngine {
   private randomEventTimer: number = 80.0;
   private treasureRespawnTimer: number = 45.0;
   private dilemmaTimer: number = 95.0;
+  public wasPausedBeforeDilemma: boolean = false;
 
   private onStateChangeCallback?: (state: GameState) => void;
   // Fog-of-war visibility changes slowly; recomputing it every tick is pure waste.
@@ -364,7 +365,7 @@ export class GameEngine {
   }
 
   public update(rawDelta: number) {
-    if (this.state.isPaused || this.state.isGameOver) return;
+    if (this.state.isPaused || this.state.isGameOver || this.state.activeDilemma) return;
 
     // Apply speed multiplier (1x, 2x, 4x, 8x)
     const delta = Math.min(rawDelta * this.state.gameSpeed, 0.25);
@@ -739,6 +740,17 @@ export class GameEngine {
         this.addNotification('New Objective', `${def.name} — ${stage.title}: ${stage.introText}`, 'quest');
         if (stage.spawnBoss) {
           progress.bossSpawned = this.spawnQuestBoss(def.id, progress.stageIndex, stage.spawnBoss);
+          const bossId = bossIdFor(def.id, progress.stageIndex);
+          const bossMonster = this.state.monsters.find(m => m.id === bossId);
+          const bossPos = bossMonster ? { x: bossMonster.x, y: bossMonster.y } : undefined;
+          this.triggerStoryDispatch(
+            `${stage.spawnBoss.name} Marches!`,
+            stage.spawnBoss.title || 'Royal War Council',
+            stage.spawnBoss.introText,
+            def.act,
+            bossPos,
+            bossId
+          );
         }
       }
 
@@ -771,6 +783,12 @@ export class GameEngine {
           if (np && np.status === 'locked') {
             np.status = 'active';
             this.addNotification('New Quest', `${next.name} (${next.act}): ${next.description}`, 'quest');
+            this.triggerStoryDispatch(
+              next.name,
+              'Royal High Chancellor',
+              next.description,
+              next.act
+            );
           }
         }
       }
@@ -924,14 +942,7 @@ export class GameEngine {
       this.triggerRandomEvent();
     }
 
-    // ROYAL DILEMMAS: narrative dilemma popups giving players meaningful choices
-    if (!this.state.activeDilemma) {
-      this.dilemmaTimer -= delta;
-      if (this.dilemmaTimer <= 0) {
-        this.dilemmaTimer = (110 + Math.random() * 70) * paceMult;
-        this.triggerRandomDilemma();
-      }
-    }
+    // (Generic random dilemmas removed in favor of live on-screen scenario plot milestones)
 
     // WILDS REFILL: hidden treasure respawns so exploration stays rewarding
     this.treasureRespawnTimer -= delta;
@@ -942,10 +953,44 @@ export class GameEngine {
     }
   }
 
+  public triggerStoryDispatch(
+    title: string,
+    sender: string,
+    description: string,
+    act?: string,
+    targetPos?: { x: number; y: number },
+    targetEntityId?: string
+  ) {
+    if (this.state.isGameOver || this.state.activeDilemma) return;
+    this.wasPausedBeforeDilemma = this.state.isPaused;
+    this.state.isPaused = true;
+    this.state.activeDilemma = {
+      id: `story_${Date.now()}`,
+      title,
+      sender,
+      description,
+      act,
+      isStoryDispatch: true,
+      targetLocation: targetPos,
+      targetEntityId,
+      choices: [
+        {
+          text: targetPos ? 'Survey Threat & Rally Realm' : 'To Arms, Sovereign!',
+          effectDescription: targetPos ? 'Focuses the royal gaze upon the emerging threat and resumes reign.' : 'Acknowledge royal dispatch and resume reign.',
+          actionId: 'rally_realm'
+        }
+      ]
+    };
+    audioManager.playAdvisorChime();
+    this.addNotification(`Royal Dispatch: ${title}`, description.slice(0, 75) + '...', 'quest', targetPos);
+  }
+
   public triggerRandomDilemma() {
     if (this.state.isGameOver || this.state.activeDilemma) return;
     const dilemma = getRandomDilemma();
     if (!dilemma) return;
+    this.wasPausedBeforeDilemma = this.state.isPaused;
+    this.state.isPaused = true;
     this.state.activeDilemma = dilemma;
     audioManager.playAdvisorChime();
     this.addNotification(`Royal Decree: ${dilemma.title}`, dilemma.description.slice(0, 70) + '...', 'quest');
@@ -1043,6 +1088,9 @@ export class GameEngine {
     }
 
     this.state.activeDilemma = null;
+    if (!this.wasPausedBeforeDilemma) {
+      this.state.isPaused = false;
+    }
   }
 
   private spawnRaidMonster(type: MonsterType, x: number, y: number, raidTargetId?: string): Monster {
@@ -2207,6 +2255,17 @@ export class GameEngine {
     const spell = this.state.spells.find(s => s.id === spellId);
     if (!spell || spell.currentCooldown > 0) return false;
 
+    // Verify technological requirement (spells unlock progressively with kingdom institutions)
+    if (spell.requiredBuilding) {
+      const hasBuilding = this.state.buildings.some(
+        b => b.type === spell.requiredBuilding && !b.isConstructing && b.hp > 0
+      );
+      if (!hasBuilding) {
+        this.addNotification('Spell Locked', `Requires an operational ${spell.requiredBuildingName || 'guild'} to cast.`, 'warning');
+        return false;
+      }
+    }
+
     if (this.state.treasuryGold < spell.goldCost) {
       this.addNotification('Treasury Low', `Spell requires ${spell.goldCost}g.`, 'warning');
       return false;
@@ -2277,24 +2336,6 @@ export class GameEngine {
         }
         break;
 
-      case 'resurrection': {
-        const grave = this.state.corpses.find(
-          c => c.type === 'hero' && c.heroData && Math.hypot(c.x - targetX, c.y - targetY) < 85
-        );
-        if (!grave) {
-          // Refund cost if no grave targeted
-          this.state.treasuryGold += spell.goldCost;
-          this.state.mana += spell.manaCost;
-          spell.currentCooldown = 0;
-          this.addNotification('No Fallen Hero', 'Target a hero’s grave marker to cast Resurrection.', 'warning');
-          return false;
-        }
-
-        audioManager.playHealSound();
-        this.resurrectHero(grave.id, true);
-        break;
-      }
-
       case 'far_sight':
         audioManager.playSpellCast();
         const tile = this.gridManager.pixelToTile(targetX, targetY);
@@ -2331,6 +2372,14 @@ export class GameEngine {
     const corpse = this.state.corpses[corpseIndex];
     const heroData = corpse.heroData!;
     const cost = getResurrectionCost(heroData.level);
+
+    if (!freeCost) {
+      const hasClericTemple = this.state.buildings.some(b => b.type === 'cleric_temple' && !b.isConstructing && b.hp > 0);
+      if (!hasClericTemple) {
+        this.addNotification('Temple Required', 'Resurrection requires an operational Cleric Temple in the realm.', 'warning');
+        return false;
+      }
+    }
 
     if (!freeCost && this.state.treasuryGold < cost) {
       this.addNotification('Insufficient Gold', `Resurrecting ${heroData.title} requires ${cost} Gold.`, 'warning');

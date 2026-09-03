@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GameEngine } from '../game/engine/GameEngine';
 import { ThreeRenderer } from '../game/engine/ThreeRenderer';
-import { getRawSave, readSaveMeta, saveGameToLocalStorage, listAllSaveSlots, getRawSaveFromSlot, SaveSlotInfo } from '../game/engine/SaveLoad';
+import { getRawSave, readSaveMeta, saveGameToLocalStorage, saveGameToSlot, listAllSaveSlots, getRawSaveFromSlot, SaveSlotInfo } from '../game/engine/SaveLoad';
 import { SCENARIOS } from '../game/scenarios';
 import { BuildingType, FlagType, GameState, Hero, HeroClass, SaveMeta, Scenario } from '../game/types';
 import { GameHUD } from './GameHUD';
@@ -53,6 +53,7 @@ export const GameView: React.FC = () => {
   const [saveLoadModalTab, setSaveLoadModalTab] = useState<'save' | 'load'>('load');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isWelcomePromptOpen, setIsWelcomePromptOpen] = useState<boolean>(false);
+  const [isChronicleOpen, setIsChronicleOpen] = useState<boolean>(false);
   const [welcomeSaveSlot, setWelcomeSaveSlot] = useState<SaveSlotInfo | null>(null);
   const [archiveBanner, setArchiveBanner] = useState<{ title: string; message: string; type: 'save' | 'load' | 'delete' } | null>(null);
   const [saveMeta, setSaveMeta] = useState<SaveMeta | null>(() =>
@@ -66,6 +67,36 @@ export const GameView: React.FC = () => {
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const trackingHeroIdRef = useRef<string | null>(null);
   const lastHudSyncRef = useRef<number>(0);
+
+  // Consolidated Dialog Pause Coordinator
+  const isAnyDialogOpen = Boolean(
+    gameState?.activeDilemma ||
+    isScenarioModalOpen ||
+    isSaveLoadModalOpen ||
+    isSettingsModalOpen ||
+    isWelcomePromptOpen ||
+    isChronicleOpen
+  );
+  const prevAnyDialogOpenRef = useRef<boolean>(false);
+  const wasPausedBeforeAnyDialogRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    if (isAnyDialogOpen && !prevAnyDialogOpenRef.current) {
+      const wasPaused = (gameState?.activeDilemma && engine.wasPausedBeforeDilemma !== undefined)
+        ? engine.wasPausedBeforeDilemma
+        : engine.state.isPaused;
+      wasPausedBeforeAnyDialogRef.current = wasPaused;
+      engine.state.isPaused = true;
+    } else if (!isAnyDialogOpen && prevAnyDialogOpenRef.current) {
+      if (!wasPausedBeforeAnyDialogRef.current) {
+        engine.state.isPaused = false;
+      }
+    }
+    prevAnyDialogOpenRef.current = isAnyDialogOpen;
+  }, [isAnyDialogOpen, gameState?.activeDilemma]);
 
   // Track asset readiness (with honest progress for the loading veil)
   const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 1, percent: 0, label: 'Waking the scribes…', deferred: false });
@@ -588,14 +619,22 @@ export const GameView: React.FC = () => {
       const engine = engineRef.current;
 
       if (e.code === 'Space') {
+        if (isAnyDialogOpen) return;
         engine.state.isPaused = !engine.state.isPaused;
       } else if (e.code === 'Digit1') {
+        if (isAnyDialogOpen) return;
         engine.state.gameSpeed = 1;
       } else if (e.code === 'Digit2') {
+        if (isAnyDialogOpen) return;
         engine.state.gameSpeed = 2;
       } else if (e.code === 'Digit3' || e.code === 'Digit4') {
+        if (isAnyDialogOpen) return;
         engine.state.gameSpeed = 4;
       } else if (e.code === 'Escape') {
+        if (isChronicleOpen) { setIsChronicleOpen(false); return; }
+        if (isSettingsModalOpen) { setIsSettingsModalOpen(false); return; }
+        if (isSaveLoadModalOpen) { setIsSaveLoadModalOpen(false); return; }
+        if (isScenarioModalOpen && !gameState?.isGameOver) { setIsScenarioModalOpen(false); return; }
         setActiveBuildingType(null);
         setActiveFlagType(null);
         setActiveSpellId(null);
@@ -606,7 +645,7 @@ export const GameView: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isAnyDialogOpen, isChronicleOpen, isSettingsModalOpen, isSaveLoadModalOpen, isScenarioModalOpen, gameState?.isGameOver]);
 
   const handlePanTo = (worldX: number, worldY: number) => {
     if (engineRef.current) {
@@ -691,14 +730,17 @@ export const GameView: React.FC = () => {
           <div className="pointer-events-auto">
             <GameHUD
               state={gameState}
+              isAnyDialogOpen={isAnyDialogOpen}
+              isChronicleOpen={isChronicleOpen}
+              onToggleChronicle={() => setIsChronicleOpen(prev => !prev)}
               onSetGameSpeed={(speed) => {
-                if (engineRef.current) engineRef.current.state.gameSpeed = speed;
+                if (!isAnyDialogOpen && engineRef.current) engineRef.current.state.gameSpeed = speed;
               }}
               onTogglePause={() => {
-                if (engineRef.current) engineRef.current.state.isPaused = !engineRef.current.state.isPaused;
+                if (!isAnyDialogOpen && engineRef.current) engineRef.current.state.isPaused = !engineRef.current.state.isPaused;
               }}
               onSelectScenarioModal={() => setIsScenarioModalOpen(true)}
-              onShowAdvisorModal={() => {}}
+              onShowAdvisorModal={() => setIsChronicleOpen(prev => !prev)}
               onSaveGame={handleSaveGame}
               onLoadGame={handleLoadGame}
               onOpenSaveModal={handleOpenSaveModal}
@@ -852,6 +894,7 @@ export const GameView: React.FC = () => {
           <div className="pointer-events-auto">
             <SpellMenu
               spells={gameState.spells}
+              buildings={gameState.buildings}
               treasuryGold={gameState.treasuryGold}
               mana={gameState.mana}
               activeSpellId={activeSpellId}
@@ -945,6 +988,7 @@ export const GameView: React.FC = () => {
           <TombstoneInspector
             corpse={selectedCorpse}
             treasuryGold={gameState.treasuryGold}
+            hasClericTemple={gameState.buildings.some(b => b.type === 'cleric_temple' && !b.isConstructing && b.hp > 0)}
             onClose={() => {
               if (engineRef.current) engineRef.current.state.selectedEntity = null;
             }}
@@ -1029,7 +1073,8 @@ export const GameView: React.FC = () => {
       <SaveLoadModal
         isOpen={isSaveLoadModalOpen}
         initialTab={saveLoadModalTab}
-        engine={engineRef.current}
+        isGameOver={gameState?.isGameOver}
+        onSaveToSlot={(slotId, label) => (engineRef.current ? saveGameToSlot(engineRef.current, slotId, label) : null)}
         onClose={() => setIsSaveLoadModalOpen(false)}
         onLoadSave={handleLoadCustomSave}
         onActionFeedback={triggerArchiveBanner}
@@ -1057,13 +1102,24 @@ export const GameView: React.FC = () => {
         }}
       />
 
-      {/* Royal Dilemma Modal */}
+      {/* Royal Story & Plot Event Modal */}
       {gameState?.activeDilemma && (
         <DilemmaModal
           dilemma={gameState.activeDilemma}
           treasuryGold={gameState.treasuryGold}
           mana={gameState.mana}
           onResolve={(choice) => {
+            const loc = gameState.activeDilemma?.targetLocation;
+            if (loc) {
+              if (engineRef.current) {
+                engineRef.current.state.camera.x = loc.x;
+                engineRef.current.state.camera.y = loc.y;
+                trackingHeroIdRef.current = null;
+              }
+              if (threeRendererRef.current) {
+                threeRendererRef.current.cameraTarget.set(loc.x, 0, loc.y);
+              }
+            }
             if (engineRef.current) {
               engineRef.current.resolveDilemma(choice);
             }

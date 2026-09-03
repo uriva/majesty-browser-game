@@ -347,6 +347,8 @@ export interface SovereignSpell {
   currentCooldown: number;
   targetType: 'position' | 'entity' | 'global';
   icon: string;
+  requiredBuilding?: BuildingType;
+  requiredBuildingName?: string;
 }
 
 export interface NotificationItem {
@@ -384,6 +386,10 @@ export interface RoyalDilemma {
   sender: string;
   description: string;
   choices: DilemmaChoice[];
+  act?: string;
+  isStoryDispatch?: boolean;
+  targetLocation?: { x: number; y: number };
+  targetEntityId?: string;
 }
 
 export type POIType = 'healing_shrine' | 'ancient_vault' | 'gold_mine' | 'sanctuary_altar';

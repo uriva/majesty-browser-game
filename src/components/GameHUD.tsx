@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { GameState, NotificationItem, SaveMeta } from '../game/types';
+import { GameState, SaveMeta } from '../game/types';
 import { audioManager } from '../game/engine/Audio';
 import { musicManager } from '../game/engine/MusicManager';
 import { MusicPlayer } from './MusicPlayer';
@@ -15,18 +15,13 @@ import {
   Sunrise, 
   Play, 
   Pause, 
-  FastForward, 
   Volume2, 
   VolumeX, 
-  Bell, 
-  HelpCircle,
-  ShieldAlert,
-  Scroll,
-  Info,
-  Save,
-  FolderOpen,
-  Settings,
-  Check
+  Scroll, 
+  Save, 
+  FolderOpen, 
+  Settings, 
+  Check 
 } from 'lucide-react';
 
 interface GameHUDProps {
@@ -42,6 +37,9 @@ interface GameHUDProps {
   onOpenSaveLoadModal?: () => void;
   onOpenSettingsModal?: () => void;
   saveMeta: SaveMeta | null;
+  isChronicleOpen?: boolean;
+  onToggleChronicle?: () => void;
+  isAnyDialogOpen?: boolean;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -56,10 +54,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onOpenLoadModal,
   onOpenSaveLoadModal,
   onOpenSettingsModal,
-  saveMeta
+  saveMeta,
+  isChronicleOpen,
+  onToggleChronicle,
+  isAnyDialogOpen
 }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [showLog, setShowLog] = useState(false);
+  const [showLogInternal, setShowLogInternal] = useState(false);
+  const showLog = isChronicleOpen !== undefined ? isChronicleOpen : showLogInternal;
+  const handleToggleLog = onToggleChronicle || (() => setShowLogInternal(prev => !prev));
   const [justSaved, setJustSaved] = useState(false);
 
   const handleQuickSave = () => {
@@ -162,13 +165,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Speed Controls */}
           <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg border border-slate-800">
             <button
-              onClick={onTogglePause}
-              title="Pause Game (Space)"
+              onClick={() => {
+                if (!isAnyDialogOpen) onTogglePause();
+              }}
+              disabled={isAnyDialogOpen}
+              title={isAnyDialogOpen ? 'Simulation paused while royal dialog is open' : (state.isPaused ? 'Resume Game (Space)' : 'Pause Game (Space)')}
               className={`p-1.5 rounded transition-colors ${
                 state.isPaused
                   ? 'bg-amber-600 text-slate-950 font-bold'
                   : 'hover:bg-slate-800 text-slate-300'
-              }`}
+              } ${isAnyDialogOpen ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {state.isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4" />}
             </button>
@@ -176,12 +182,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             {[1, 2, 4].map((spd) => (
               <button
                 key={spd}
-                onClick={() => onSetGameSpeed(spd)}
+                disabled={isAnyDialogOpen}
+                onClick={() => {
+                  if (!isAnyDialogOpen) onSetGameSpeed(spd);
+                }}
                 className={`px-2 py-1 text-xs font-mono font-bold rounded transition-colors ${
                   state.gameSpeed === spd && !state.isPaused
                     ? 'bg-amber-600 text-slate-950'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
+                } ${isAnyDialogOpen ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 {spd}x
               </button>
@@ -244,7 +253,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           )}
 
           <button
-            onClick={() => setShowLog(!showLog)}
+            onClick={handleToggleLog}
             title="Royal Advisor Chronicle"
             className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-amber-400 relative transition-colors"
           >
@@ -285,7 +294,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <Scroll className="w-4 h-4" /> Kingdom Chronicle & Advisor Log
             </h3>
             <button
-              onClick={() => setShowLog(false)}
+              onClick={handleToggleLog}
               className="text-xs text-slate-400 hover:text-slate-200 px-2 py-0.5 rounded bg-slate-900"
             >
               Close

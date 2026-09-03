@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SovereignSpell } from '../game/types';
-import { Zap, HeartPulse, Eye, Swords, Coins, X, Sparkles, Crosshair } from 'lucide-react';
+import { Building, SovereignSpell } from '../game/types';
+import { Zap, HeartPulse, Eye, Swords, Coins, X, Sparkles, Crosshair, Lock } from 'lucide-react';
 import { audioManager } from '../game/engine/Audio';
 
 interface SpellMenuProps {
   spells: SovereignSpell[];
+  buildings?: Building[];
   treasuryGold: number;
   mana: number;
   activeSpellId: string | null;
@@ -16,6 +17,7 @@ interface SpellMenuProps {
 
 export const SpellMenu: React.FC<SpellMenuProps> = ({
   spells,
+  buildings = [],
   treasuryGold,
   mana,
   activeSpellId,
@@ -34,7 +36,13 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
     Crosshair
   };
 
-  const handleSpellClick = (spell: SovereignSpell, isSelected: boolean, canAfford: boolean, onCooldown: boolean) => {
+  const handleSpellClick = (spell: SovereignSpell, isUnlocked: boolean, isSelected: boolean, canAfford: boolean, onCooldown: boolean) => {
+    if (!isUnlocked) {
+      setShakingId(`spell_${spell.id}`);
+      setTimeout(() => setShakingId(null), 450);
+      audioManager.playInsufficientGoldSound();
+      return;
+    }
     if (onCooldown) {
       audioManager.playInsufficientGoldSound();
       return;
@@ -79,18 +87,23 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
         {spells.map((spell) => {
           const Icon = iconMap[spell.icon] || Zap;
           const isSelected = activeSpellId === spell.id;
+          const isUnlocked = !spell.requiredBuilding || buildings.some(
+            b => b.type === spell.requiredBuilding && !b.isConstructing && b.hp > 0
+          );
           const onCooldown = spell.currentCooldown > 0;
-          const canAfford = treasuryGold >= spell.goldCost && mana >= spell.manaCost && !onCooldown;
+          const canAfford = isUnlocked && treasuryGold >= spell.goldCost && mana >= spell.manaCost && !onCooldown;
           const isShaking = shakingId === `spell_${spell.id}`;
           const isInstant = spell.targetType === 'global';
 
           return (
             <button
               key={spell.id}
-              onClick={() => handleSpellClick(spell, isSelected, canAfford, onCooldown)}
+              onClick={() => handleSpellClick(spell, isUnlocked, isSelected, canAfford, onCooldown)}
               className={`w-full flex items-center justify-between p-2 rounded-lg border text-left transition-all relative overflow-hidden cursor-pointer ${
                 isShaking
                   ? 'animate-error-shake'
+                  : !isUnlocked
+                  ? 'bg-slate-950/70 border-slate-800/80 text-slate-500 hover:border-slate-700'
                   : isSelected
                   ? 'bg-purple-900/80 border-purple-400 text-white shadow-lg ring-2 ring-purple-400'
                   : canAfford
@@ -99,7 +112,7 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
               }`}
             >
               {/* Cooldown overlay */}
-              {onCooldown && (
+              {isUnlocked && onCooldown && (
                 <div 
                   className="absolute inset-0 bg-slate-950/85 flex items-center justify-center font-mono font-bold text-xs text-purple-300 z-10 backdrop-blur-[1px]"
                 >
@@ -108,15 +121,23 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
               )}
 
               <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                <div className="w-7 h-7 rounded bg-purple-950 border border-purple-700/60 flex items-center justify-center text-purple-300 shrink-0">
-                  <Icon className="w-4 h-4" />
+                <div className={`w-7 h-7 rounded border flex items-center justify-center shrink-0 ${
+                  !isUnlocked
+                    ? 'bg-slate-900 border-slate-800 text-slate-600'
+                    : 'bg-purple-950 border-purple-700/60 text-purple-300'
+                }`}>
+                  {!isUnlocked ? <Lock className="w-3.5 h-3.5 text-slate-500" /> : <Icon className="w-4 h-4" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-bold text-xs text-purple-200 leading-tight">
+                    <span className={`font-bold text-xs leading-tight ${isUnlocked ? 'text-purple-200' : 'text-slate-400'}`}>
                       {spell.name}
                     </span>
-                    {isInstant ? (
+                    {!isUnlocked ? (
+                      <span className="px-1.5 py-0.2 rounded bg-amber-950/40 border border-amber-800/50 text-amber-400 text-[9px] font-medium flex items-center gap-0.5">
+                        <Lock className="w-2.5 h-2.5" /> Requires {spell.requiredBuildingName}
+                      </span>
+                    ) : isInstant ? (
                       <span className="px-1.5 py-0.2 rounded bg-purple-950/80 border border-purple-600/60 text-purple-300 text-[9px] font-bold flex items-center gap-0.5">
                         <Sparkles className="w-2.5 h-2.5 text-amber-400" /> Instant
                       </span>
@@ -133,15 +154,23 @@ export const SpellMenu: React.FC<SpellMenuProps> = ({
               </div>
 
               <div className="text-right shrink-0 ml-2">
-                {spell.goldCost > 0 && (
-                  <div className={`text-[11px] font-mono font-bold ${treasuryGold >= spell.goldCost ? 'text-amber-300' : 'text-rose-400'}`}>
-                    {spell.goldCost}g
-                  </div>
-                )}
-                {spell.manaCost > 0 && (
-                  <div className={`text-[11px] font-mono font-bold ${mana >= spell.manaCost ? 'text-purple-400' : 'text-rose-400'}`}>
-                    {spell.manaCost} MP
-                  </div>
+                {isUnlocked ? (
+                  <>
+                    {spell.goldCost > 0 && (
+                      <div className={`text-[11px] font-mono font-bold ${treasuryGold >= spell.goldCost ? 'text-amber-300' : 'text-rose-400'}`}>
+                        {spell.goldCost}g
+                      </div>
+                    )}
+                    {spell.manaCost > 0 && (
+                      <div className={`text-[11px] font-mono font-bold ${mana >= spell.manaCost ? 'text-purple-400' : 'text-rose-400'}`}>
+                        {spell.manaCost} MP
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-[10px] font-sans font-semibold text-slate-500 uppercase">
+                    Locked
+                  </span>
                 )}
               </div>
             </button>

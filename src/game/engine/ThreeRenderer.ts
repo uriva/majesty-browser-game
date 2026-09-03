@@ -33,6 +33,8 @@ export class ThreeRenderer {
   private royalCastleRoofTexture: THREE.CanvasTexture;
   private tudorWallTexture: THREE.CanvasTexture;
   private timberLogTexture: THREE.CanvasTexture;
+  private woodPlankTexture: THREE.CanvasTexture;
+  private burlapTarpTexture: THREE.CanvasTexture;
   private stainedGlassTexture: THREE.CanvasTexture;
   private blueprintTexture: THREE.CanvasTexture;
   private tentTexture: THREE.CanvasTexture;
@@ -139,6 +141,8 @@ export class ThreeRenderer {
     this.royalCastleRoofTexture = this.createRoyalCastleRoofTexture();
     this.tudorWallTexture = this.createTudorWallTexture();
     this.timberLogTexture = this.createTimberLogTexture();
+    this.woodPlankTexture = this.createWoodPlankTexture();
+    this.burlapTarpTexture = this.createBurlapTarpTexture();
     this.stainedGlassTexture = this.createStainedGlassTexture();
     this.blueprintTexture = this.createBlueprintTexture();
     this.tentTexture = this.createTentTexture();
@@ -210,6 +214,8 @@ export class ThreeRenderer {
     this.grassTexture.anisotropy = maxAniso;
     this.grassBumpTexture.anisotropy = maxAniso;
     this.cobbleTexture.anisotropy = maxAniso;
+    this.woodPlankTexture.anisotropy = maxAniso;
+    this.burlapTarpTexture.anisotropy = maxAniso;
 
     // 4. Lighting
     this.ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
@@ -762,6 +768,108 @@ export class ThreeRenderer {
       ctx.fillStyle = '#1c0d02';
       ctx.fillRect(0, y, 512, 2);
     }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  private createWoodPlankTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+
+    // Rich warm oak timber background
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(0, 0, 512, 512);
+
+    const plankH = 32;
+    const tones = ['#92400e', '#78350f', '#b45309', '#a16207', '#854d0e'];
+
+    for (let y = 0; y < 512; y += plankH) {
+      const pIdx = Math.floor(y / plankH);
+      ctx.fillStyle = tones[pIdx % tones.length];
+      ctx.fillRect(0, y + 2, 512, plankH - 4);
+
+      // Wood grain fibers and curves
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.16)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i++) {
+        const lineY = y + 5 + i * 7 + (Math.sin(pIdx * 2.5 + i) * 2);
+        ctx.beginPath();
+        ctx.moveTo(0, lineY);
+        ctx.bezierCurveTo(140, lineY + 1.5, 360, lineY - 1.5, 512, lineY);
+        ctx.stroke();
+      }
+
+      // Dark shadow crevice between planks & top bevel highlight
+      ctx.fillStyle = '#1c0d02';
+      ctx.fillRect(0, y, 512, 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(0, y + 2, 512, 1);
+
+      // Iron nail studs at staggered joint intervals
+      const nailX1 = 28 + ((pIdx * 89) % 55);
+      const nailX2 = 250 + ((pIdx * 127) % 65);
+      const nailX3 = 485 - ((pIdx * 67) % 45);
+      [nailX1, nailX2, nailX3].forEach((nx) => {
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(nx, y + plankH / 2, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.beginPath();
+        ctx.arc(nx - 0.6, y + plankH / 2 - 0.6, 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
+  private createBurlapTarpTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    // Weathered royal blue canvas
+    ctx.fillStyle = '#1e3a8a';
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Crosshatch burlap weave
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 256; i += 4) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke();
+    }
+
+    // Shadow & fold gradient
+    const grad = ctx.createLinearGradient(0, 0, 256, 256);
+    grad.addColorStop(0, 'rgba(30, 58, 138, 0.4)');
+    grad.addColorStop(0.5, 'rgba(59, 130, 246, 0.15)');
+    grad.addColorStop(1, 'rgba(15, 23, 42, 0.6)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Reinforced perimeter stitched hem
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(6, 6, 244, 244);
+
+    // Brass corner grommets
+    [[10, 10], [246, 10], [10, 246], [246, 246], [128, 6], [128, 250]].forEach(([gx, gy]) => {
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath(); ctx.arc(gx, gy, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath(); ctx.arc(gx, gy, 1.8, 0, Math.PI * 2); ctx.fill();
+    });
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
@@ -3928,7 +4036,8 @@ export class ThreeRenderer {
       activeIds.add(b.id);
       const isBlueprint = b.isConstructing && b.constructionProgress <= 0;
       const isUpgrading = (b.researchQueue && b.researchQueue.length > 0 && b.researchQueue.some(r => r.isBuildingUpgrade)) || false;
-      const stateKey = `${b.id}_${isBlueprint ? 'blueprint' : (b.isConstructing ? 'building' : (isUpgrading ? 'upgrading' : 'done'))}_lvl${b.level}`;
+      const constrStage = isBlueprint ? 0 : Math.min(3, Math.max(1, Math.ceil(b.constructionProgress / 33.3)));
+      const stateKey = `${b.id}_${isBlueprint ? 'blueprint' : (b.isConstructing ? `building_s${constrStage}` : (isUpgrading ? 'upgrading' : 'done'))}_lvl${b.level}`;
       let group = this.buildingsMap.get(b.id);
 
       if (!group || group.name !== stateKey) {
@@ -3941,14 +4050,15 @@ export class ThreeRenderer {
         this.buildingsMap.set(b.id, group);
       }
 
-      // Animate construction crane and hoist if castle is upgrading
+      // Animate construction crane and hoist if castle is upgrading or site is under construction
       const craneArm = this.getPart(group, 'craneArm');
       const hoistBucket = this.getPart(group, 'hoistBucket');
       if (craneArm) {
         craneArm.rotation.y = Math.sin(time * 1.2) * 0.45;
       }
       if (hoistBucket) {
-        hoistBucket.position.y = -14 + Math.sin(time * 1.8) * 2.5;
+        const baseY = hoistBucket.userData.baseY !== undefined ? hoistBucket.userData.baseY : -14;
+        hoistBucket.position.y = baseY + Math.sin(time * 1.8) * 2.0;
       }
 
       // Animate hovering beacon crystal on upgraded Palace
@@ -4054,6 +4164,425 @@ export class ThreeRenderer {
     return group;
   }
 
+  private createConstructionSiteModel(b: Building, progress: number): THREE.Group {
+    const group = new THREE.Group();
+    const ts = this.gridManager.tileSize;
+    const w = b.width * ts;
+    const h = b.height * ts;
+    const isPalace = b.type === 'palace';
+    const isTower = b.type === 'wizard_tower' || b.type === 'guard_tower';
+    const isCottage = b.type === 'peasant_cottage';
+
+    const stage = Math.min(3, Math.max(1, Math.ceil(progress / 33.3)));
+    const targetHeight = isPalace ? 28 : (isTower ? 34 : (isCottage ? 14 : 20));
+
+    // Shared authentic textured materials
+    const earthMat = new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.95 });
+    const stoneMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      map: this.royalCastleWallTexture,
+      roughness: 0.85
+    });
+    const plankMat = new THREE.MeshStandardMaterial({
+      color: 0xb45309,
+      map: this.woodPlankTexture,
+      roughness: 0.75
+    });
+    const poleMat = new THREE.MeshStandardMaterial({
+      color: 0x78350f,
+      map: this.timberLogTexture,
+      roughness: 0.85
+    });
+    const tarpMat = new THREE.MeshStandardMaterial({
+      color: 0x1e3a8a,
+      map: this.burlapTarpTexture,
+      roughness: 0.8,
+      side: THREE.DoubleSide
+    });
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.75, roughness: 0.35 });
+    const mortarMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.95 });
+
+    // 1. Excavated Compacted Ground Earth Plinth
+    const earthGeo = new THREE.BoxGeometry(w * 0.94, 0.4, h * 0.94);
+    const earth = new THREE.Mesh(earthGeo, earthMat);
+    earth.position.y = 0.2;
+    earth.receiveShadow = true;
+    group.add(earth);
+
+    // 2. Stepped Ashlar Stone Foundation Footing
+    const footingH = stage === 1 ? 3.0 : 3.8;
+    const footingGeo = new THREE.BoxGeometry(w * 0.86, footingH, h * 0.86);
+    const footing = new THREE.Mesh(footingGeo, stoneMat);
+    footing.position.y = footingH / 2 + 0.2;
+    footing.castShadow = true;
+    footing.receiveShadow = true;
+    group.add(footing);
+
+    // 3. Rising Masonry Walls & Timber Framing by Stage
+    const halfW = w * 0.38;
+    const halfH = h * 0.38;
+
+    if (stage === 1) {
+      // --- STAGE 1 (1 - 33%): Foundation Footings, Timber Sills & Course Laying ---
+      const sillWGeo = new THREE.BoxGeometry(w * 0.78, 1.2, 1.2);
+      const sillDGeo = new THREE.BoxGeometry(1.2, 1.2, h * 0.78);
+      const s1 = new THREE.Mesh(sillWGeo, plankMat); s1.position.set(0, footingH + 0.6, -halfH); group.add(s1);
+      const s2 = new THREE.Mesh(sillWGeo, plankMat); s2.position.set(0, footingH + 0.6, halfH); group.add(s2);
+      const s3 = new THREE.Mesh(sillDGeo, plankMat); s3.position.set(-halfW, footingH + 0.6, 0); group.add(s3);
+      const s4 = new THREE.Mesh(sillDGeo, plankMat); s4.position.set(halfW, footingH + 0.6, 0); group.add(s4);
+
+      // Low masonry wall blocks showing active bricklaying
+      const lowWallGeo = new THREE.BoxGeometry(w * 0.74, 3.2, h * 0.74);
+      const lowWall = new THREE.Mesh(lowWallGeo, stoneMat);
+      lowWall.position.y = footingH + 1.8;
+      lowWall.castShadow = true;
+      group.add(lowWall);
+
+      // Staggered ashlar stone blocks waiting to be mortared
+      const blockGeo = new THREE.BoxGeometry(4.2, 2.2, 3.2);
+      for (let i = 0; i < 4; i++) {
+        const blk = new THREE.Mesh(blockGeo, stoneMat);
+        blk.position.set(-halfW + 6 + i * 8, footingH + 4.2, -halfH + (i % 2 === 0 ? 0.4 : -0.4));
+        blk.rotation.y = (i * 0.08);
+        blk.castShadow = true;
+        group.add(blk);
+      }
+    } else if (stage === 2) {
+      // --- STAGE 2 (34 - 66%): Half-Height Walls, Arched Doorway & Window Voids ---
+      const wallH = targetHeight * 0.55;
+      
+      const doorW = Math.max(6, w * 0.22);
+      const sideWallW = (w * 0.76 - doorW) / 2;
+      const sideWallGeo = new THREE.BoxGeometry(sideWallW, wallH, 3.5);
+      
+      const swLeft = new THREE.Mesh(sideWallGeo, stoneMat);
+      swLeft.position.set(-w * 0.38 + sideWallW / 2, footingH + wallH / 2, halfH);
+      swLeft.castShadow = true;
+      group.add(swLeft);
+
+      const swRight = new THREE.Mesh(sideWallGeo, stoneMat);
+      swRight.position.set(w * 0.38 - sideWallW / 2, footingH + wallH / 2, halfH);
+      swRight.castShadow = true;
+      group.add(swRight);
+
+      // Heavy timber door lintel header
+      const lintelGeo = new THREE.BoxGeometry(doorW + 4, 1.8, 4.0);
+      const lintel = new THREE.Mesh(lintelGeo, plankMat);
+      lintel.position.set(0, footingH + wallH * 0.75, halfH);
+      lintel.castShadow = true;
+      group.add(lintel);
+
+      // North, East and West walls
+      const northWall = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, wallH, 3.5), stoneMat);
+      northWall.position.set(0, footingH + wallH / 2, -halfH);
+      northWall.castShadow = true;
+      group.add(northWall);
+
+      const sideWallE = new THREE.Mesh(new THREE.BoxGeometry(3.5, wallH, h * 0.74), stoneMat);
+      sideWallE.position.set(halfW, footingH + wallH / 2, 0);
+      sideWallE.castShadow = true;
+      group.add(sideWallE);
+
+      const sideWallWMesh = new THREE.Mesh(new THREE.BoxGeometry(3.5, wallH, h * 0.74), stoneMat);
+      sideWallWMesh.position.set(-halfW, footingH + wallH / 2, 0);
+      sideWallWMesh.castShadow = true;
+      group.add(sideWallWMesh);
+    } else {
+      // --- STAGE 3 (67 - 99%): Full-Height Walls, Exposed Timber Roof Framing ---
+      const wallH = targetHeight * 0.82;
+      const fullWalls = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, wallH, h * 0.76), stoneMat);
+      fullWalls.position.y = footingH + wallH / 2;
+      fullWalls.castShadow = true;
+      group.add(fullWalls);
+
+      // Top timber wall-plates (eave beams)
+      const eavePlateGeo = new THREE.BoxGeometry(w * 0.8, 1.4, 1.4);
+      const ep1 = new THREE.Mesh(eavePlateGeo, plankMat); ep1.position.set(0, footingH + wallH + 0.7, -halfH); group.add(ep1);
+      const ep2 = new THREE.Mesh(eavePlateGeo, plankMat); ep2.position.set(0, footingH + wallH + 0.7, halfH); group.add(ep2);
+
+      // Exposed Timber Roof Trusses (A-frame rafters, tie beams, king posts, ridge beam)
+      const roofRise = Math.max(6, Math.min(w, h) * 0.32);
+      const ridgeGeo = new THREE.BoxGeometry(1.6, 1.6, h * 0.78);
+      const ridgeBeam = new THREE.Mesh(ridgeGeo, plankMat);
+      ridgeBeam.position.set(0, footingH + wallH + roofRise, 0);
+      ridgeBeam.castShadow = true;
+      group.add(ridgeBeam);
+
+      // 3 A-frame timber trusses spaced along depth
+      const rafterLen = Math.hypot(halfW, roofRise);
+      const rafterAngle = Math.atan2(roofRise, halfW);
+      const rafterGeo = new THREE.BoxGeometry(rafterLen, 1.2, 1.2);
+
+      [-halfH * 0.8, 0, halfH * 0.8].forEach((zPos) => {
+        const tie = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 1.0, 1.0), plankMat);
+        tie.position.set(0, footingH + wallH + 0.6, zPos);
+        group.add(tie);
+
+        const king = new THREE.Mesh(new THREE.BoxGeometry(1.2, roofRise, 1.2), plankMat);
+        king.position.set(0, footingH + wallH + roofRise / 2, zPos);
+        group.add(king);
+
+        const rLeft = new THREE.Mesh(rafterGeo, plankMat);
+        rLeft.position.set(-halfW / 2, footingH + wallH + roofRise / 2, zPos);
+        rLeft.rotation.z = rafterAngle;
+        rLeft.castShadow = true;
+        group.add(rLeft);
+
+        const rRight = new THREE.Mesh(rafterGeo, plankMat);
+        rRight.position.set(halfW / 2, footingH + wallH + roofRise / 2, zPos);
+        rRight.rotation.z = -rafterAngle;
+        rRight.castShadow = true;
+        group.add(rRight);
+      });
+
+      // Canvas weather tarpaulin draped over one rafter slope
+      const tarpGeo = new THREE.PlaneGeometry(halfW * 1.1, h * 0.72);
+      const tarpMesh = new THREE.Mesh(tarpGeo, tarpMat);
+      tarpMesh.position.set(halfW / 2 + 0.2, footingH + wallH + roofRise / 2 + 0.5, 0);
+      tarpMesh.rotation.z = -rafterAngle;
+      tarpMesh.rotation.x = Math.PI / 2;
+      group.add(tarpMesh);
+
+      // Royal heraldic pennant fluttering atop the front roof apex
+      const pennantStaff = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 8, 6), poleMat);
+      pennantStaff.position.set(0, footingH + wallH + roofRise + 4, halfH * 0.8);
+      group.add(pennantStaff);
+
+      const pennantGeo = new THREE.BoxGeometry(4.5, 2.2, 0.2);
+      const pennant = new THREE.Mesh(pennantGeo, new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 }));
+      pennant.position.set(2.4, footingH + wallH + roofRise + 6.5, halfH * 0.8);
+      group.add(pennant);
+    }
+
+    // 4. Timber Scaffolding with Authentic Medieval Diagonal X-Bracing
+    const scaffoldH = stage === 1 ? 10 : (stage === 2 ? 18 : Math.max(22, targetHeight * 0.95));
+    const scHalfW = halfW + 3.8;
+    const scHalfH = halfH + 3.8;
+
+    // Upright vertical poles
+    const poleGeo = new THREE.CylinderGeometry(0.7, 0.85, scaffoldH, 8);
+    const polePositions: [number, number][] = [
+      [-scHalfW, -scHalfH], [scHalfW, -scHalfH],
+      [-scHalfW, scHalfH], [scHalfW, scHalfH]
+    ];
+    if (w > 60) {
+      polePositions.push([0, -scHalfH], [0, scHalfH]);
+    }
+    if (h > 60) {
+      polePositions.push([-scHalfW, 0], [scHalfW, 0]);
+    }
+
+    polePositions.forEach(([px, pz]) => {
+      const pole = new THREE.Mesh(poleGeo, poleMat);
+      pole.position.set(px, scaffoldH / 2, pz);
+      pole.castShadow = true;
+      group.add(pole);
+    });
+
+    // Helper: build an authentic diagonal X-brace between two posts
+    const addXBrace = (p1: [number, number], p2: [number, number], yBottom: number, yTop: number) => {
+      const dx = p2[0] - p1[0];
+      const dz = p2[1] - p1[1];
+      const dy = yTop - yBottom;
+      const diagLen = Math.hypot(dx, dy, dz);
+      if (diagLen <= 0.001) return;
+
+      const up = new THREE.Vector3(0, 1, 0);
+
+      // Strut 1: (p1, yBottom) -> (p2, yTop)
+      const dir1 = new THREE.Vector3(dx, dy, dz).normalize();
+      const strut1 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, diagLen, 6), poleMat);
+      strut1.position.set((p1[0] + p2[0]) / 2, (yBottom + yTop) / 2, (p1[1] + p2[1]) / 2);
+      strut1.quaternion.setFromUnitVectors(up, dir1);
+      group.add(strut1);
+
+      // Strut 2: (p1, yTop) -> (p2, yBottom)
+      const dir2 = new THREE.Vector3(dx, -dy, dz).normalize();
+      const strut2 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, diagLen, 6), poleMat);
+      strut2.position.set((p1[0] + p2[0]) / 2, (yBottom + yTop) / 2, (p1[1] + p2[1]) / 2);
+      strut2.quaternion.setFromUnitVectors(up, dir2);
+      group.add(strut2);
+    };
+
+    const tier1Y = 7.5;
+    addXBrace([-scHalfW, -scHalfH], [scHalfW, -scHalfH], 0.5, tier1Y);
+    addXBrace([-scHalfW, -scHalfH], [-scHalfW, scHalfH], 0.5, tier1Y);
+    addXBrace([scHalfW, -scHalfH], [scHalfW, scHalfH], 0.5, tier1Y);
+
+    if (stage >= 2) {
+      const tier2Y = Math.min(scaffoldH - 1, 15.5);
+      addXBrace([-scHalfW, -scHalfH], [scHalfW, -scHalfH], tier1Y, tier2Y);
+      addXBrace([-scHalfW, -scHalfH], [-scHalfW, scHalfH], tier1Y, tier2Y);
+      addXBrace([scHalfW, -scHalfH], [scHalfW, scHalfH], tier1Y, tier2Y);
+    }
+
+    // Scaffold Plank Walkway Decks
+    const addDeck = (deckY: number, width: number, depth: number) => {
+      const deckE = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.6, depth * 0.95), plankMat);
+      deckE.position.set(width / 2, deckY, 0);
+      deckE.castShadow = true;
+      group.add(deckE);
+
+      const deckN = new THREE.Mesh(new THREE.BoxGeometry(width * 0.95, 0.6, 4.2), plankMat);
+      deckN.position.set(0, deckY, -depth / 2);
+      deckN.castShadow = true;
+      group.add(deckN);
+
+      const railE = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, depth * 0.95), plankMat);
+      railE.position.set(width / 2 + 1.8, deckY + 3.0, 0);
+      group.add(railE);
+    };
+
+    addDeck(tier1Y, scHalfW * 2, scHalfH * 2);
+    if (stage >= 2) {
+      addDeck(Math.min(scaffoldH - 1, 15.5), scHalfW * 2, scHalfH * 2);
+    }
+
+    // 5. Authentic Leaning Wooden Ladder with Individual Rungs
+    const addLadder = (bottomX: number, bottomY: number, bottomZ: number, topX: number, topY: number, topZ: number) => {
+      const dx = topX - bottomX;
+      const dy = topY - bottomY;
+      const dz = topZ - bottomZ;
+      const len = Math.hypot(dx, dy, dz);
+      if (len <= 0.001) return;
+
+      const ladderGroup = new THREE.Group();
+      ladderGroup.position.set((bottomX + topX) / 2, (bottomY + topY) / 2, (bottomZ + topZ) / 2);
+      const dir = new THREE.Vector3(dx, dy, dz).normalize();
+      ladderGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+
+      const stringerGeo = new THREE.BoxGeometry(0.4, len, 0.4);
+      const leftS = new THREE.Mesh(stringerGeo, plankMat); leftS.position.x = -1.1; ladderGroup.add(leftS);
+      const rightS = new THREE.Mesh(stringerGeo, plankMat); rightS.position.x = 1.1; ladderGroup.add(rightS);
+
+      const rungs = 7;
+      const rungGeo = new THREE.BoxGeometry(2.2, 0.35, 0.35);
+      for (let i = 0; i < rungs; i++) {
+        const rung = new THREE.Mesh(rungGeo, plankMat);
+        rung.position.y = -len / 2 + (i + 1) * (len / (rungs + 1));
+        ladderGroup.add(rung);
+      }
+
+      ladderGroup.castShadow = true;
+      group.add(ladderGroup);
+    };
+
+    addLadder(-scHalfW - 3.5, 0, -scHalfH * 0.4, -scHalfW, tier1Y, -scHalfH * 0.4);
+    if (stage >= 2) {
+      addLadder(scHalfW, tier1Y, scHalfH * 0.2, scHalfW, Math.min(scaffoldH - 1, 15.5), scHalfH * 0.6);
+    }
+
+    // 6. Medieval Derrick Crane & Pulley Hoist (Stage 2 & 3)
+    if (stage >= 2) {
+      const craneBase = new THREE.Group();
+      craneBase.position.set(scHalfW, Math.min(scaffoldH - 1, 15.5), -scHalfH);
+
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 13, 6), poleMat);
+      mast.position.y = 6.5;
+      craneBase.add(mast);
+
+      const knee = new THREE.Mesh(new THREE.BoxGeometry(0.8, 6, 0.8), plankMat);
+      knee.position.set(-2, 3.5, 0);
+      knee.rotation.z = Math.PI / 4;
+      craneBase.add(knee);
+
+      const craneArm = new THREE.Group();
+      craneArm.name = 'craneArm';
+      craneArm.position.y = 12.5;
+
+      const jib = new THREE.Mesh(new THREE.BoxGeometry(15, 1.2, 1.2), plankMat);
+      jib.position.x = -6.5;
+      craneArm.add(jib);
+
+      const pulley = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.4, 8), ironMat);
+      pulley.position.set(-13, 0, 0);
+      pulley.rotation.x = Math.PI / 2;
+      craneArm.add(pulley);
+
+      const cableH = 9;
+      const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, cableH, 4), ironMat);
+      cable.position.set(-13, -cableH / 2, 0);
+      craneArm.add(cable);
+
+      const cargoGeo = stage === 2 ? new THREE.BoxGeometry(3.6, 2.4, 2.8) : new THREE.BoxGeometry(3.2, 3.2, 3.2);
+      const cargo = new THREE.Mesh(cargoGeo, stage === 2 ? stoneMat : plankMat);
+      cargo.name = 'hoistBucket';
+      cargo.userData.baseY = -cableH - 1.2;
+      cargo.position.set(-13, cargo.userData.baseY, 0);
+      cargo.castShadow = true;
+      craneArm.add(cargo);
+
+      craneBase.add(craneArm);
+      group.add(craneBase);
+    }
+
+    // 7. Worksite Details: Cross-Stacked Lumber, Stone Pallets, Mortar Trough, Sawhorse, Barrels
+    const lumberGroup = new THREE.Group();
+    lumberGroup.position.set(-w * 0.32, 0.4, h * 0.34);
+    const boardGeo = new THREE.BoxGeometry(6.5, 0.5, 1.4);
+    for (let layer = 0; layer < 3; layer++) {
+      const isRotated = layer % 2 === 1;
+      [-1.4, 1.4].forEach((offset) => {
+        const board = new THREE.Mesh(boardGeo, plankMat);
+        board.position.set(isRotated ? offset : 0, layer * 0.65 + 0.3, isRotated ? 0 : offset);
+        if (isRotated) board.rotation.y = Math.PI / 2;
+        board.castShadow = true;
+        lumberGroup.add(board);
+      });
+    }
+    group.add(lumberGroup);
+
+    const stonePallet = new THREE.Group();
+    stonePallet.position.set(w * 0.32, 0.4, h * 0.32);
+    const cutStoneGeo = new THREE.BoxGeometry(2.8, 1.8, 2.2);
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 2; c++) {
+        const cs = new THREE.Mesh(cutStoneGeo, stoneMat);
+        cs.position.set((r - 0.5) * 3.2, 0.9, (c - 0.5) * 2.6);
+        cs.castShadow = true;
+        stonePallet.add(cs);
+      }
+    }
+    group.add(stonePallet);
+
+    const troughGroup = new THREE.Group();
+    troughGroup.position.set(-w * 0.15, 0.4, h * 0.38);
+    const troughBox = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.4, 3.2), plankMat);
+    troughBox.position.y = 0.7;
+    troughGroup.add(troughBox);
+    const wetMortar = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.2, 2.6), mortarMat);
+    wetMortar.position.y = 1.3;
+    troughGroup.add(wetMortar);
+    const hoeHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 5.0, 4), poleMat);
+    hoeHandle.position.set(1.5, 2.2, 0.5);
+    hoeHandle.rotation.z = Math.PI / 3;
+    troughGroup.add(hoeHandle);
+    group.add(troughGroup);
+
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.4, 3.6, 8), poleMat);
+    barrel.position.set(w * 0.36, 1.8, -h * 0.36);
+    barrel.castShadow = true;
+    group.add(barrel);
+
+    const sawhorse = new THREE.Group();
+    sawhorse.position.set(-w * 0.36, 0.4, -h * 0.34);
+    const shBar = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.6, 0.6), plankMat);
+    shBar.position.y = 2.4;
+    sawhorse.add(shBar);
+    const shLegGeo = new THREE.CylinderGeometry(0.25, 0.25, 2.8, 4);
+    [-2, 2].forEach((lx) => {
+      const legL = new THREE.Mesh(shLegGeo, poleMat); legL.position.set(lx, 1.2, -0.8); legL.rotation.x = -0.35; sawhorse.add(legL);
+      const legR = new THREE.Mesh(shLegGeo, poleMat); legR.position.set(lx, 1.2, 0.8); legR.rotation.x = 0.35; sawhorse.add(legR);
+    });
+    const woodLog = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 6.0, 6), poleMat);
+    woodLog.position.set(0, 3.0, 0);
+    woodLog.rotation.z = Math.PI / 2;
+    sawhorse.add(woodLog);
+    group.add(sawhorse);
+
+    return group;
+  }
+
   private create3DBuilding(b: Building): THREE.Group {
     const group = new THREE.Group();
     const ts = this.gridManager.tileSize;
@@ -4132,51 +4661,8 @@ export class ThreeRenderer {
         return group;
       }
 
-      // --- 2. ACTIVE CONSTRUCTION SITE (Builder Has Arrived & Begun Building) ---
-      const postMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
-      const plankMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.8 });
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 });
-
-      // Ground Timber Foundation
-      const foundationGeo = new THREE.BoxGeometry(w * 0.85, 2, h * 0.85);
-      const foundation = new THREE.Mesh(foundationGeo, plankMat);
-      foundation.position.y = 1;
-      foundation.castShadow = true;
-      group.add(foundation);
-
-      // Rising Stone Wall Base
-      const risingWallGeo = new THREE.BoxGeometry(w * 0.7, 6, h * 0.7);
-      const risingWall = new THREE.Mesh(risingWallGeo, stoneMat);
-      risingWall.position.y = 4;
-      risingWall.castShadow = true;
-      group.add(risingWall);
-
-      // 4 Corner Timber Posts
-      const postGeo = new THREE.CylinderGeometry(1.5, 1.5, 20, 6);
-      const halfW = w * 0.38;
-      const halfH = h * 0.38;
-
-      const p1 = new THREE.Mesh(postGeo, postMat); p1.position.set(-halfW, 10, -halfH); p1.castShadow = true; group.add(p1);
-      const p2 = new THREE.Mesh(postGeo, postMat); p2.position.set(halfW, 10, -halfH); p2.castShadow = true; group.add(p2);
-      const p3 = new THREE.Mesh(postGeo, postMat); p3.position.set(-halfW, 10, halfH); p3.castShadow = true; group.add(p3);
-      const p4 = new THREE.Mesh(postGeo, postMat); p4.position.set(halfW, 10, halfH); p4.castShadow = true; group.add(p4);
-
-      // Top Framework Crossbeams
-      const beamXGeo = new THREE.BoxGeometry(w * 0.8, 1.8, 1.8);
-      const beamZGeo = new THREE.BoxGeometry(1.8, 1.8, h * 0.8);
-
-      const b1 = new THREE.Mesh(beamXGeo, plankMat); b1.position.set(0, 18, -halfH); group.add(b1);
-      const b2 = new THREE.Mesh(beamXGeo, plankMat); b2.position.set(0, 18, halfH); group.add(b2);
-      const b3 = new THREE.Mesh(beamZGeo, plankMat); b3.position.set(-halfW, 18, 0); group.add(b3);
-      const b4 = new THREE.Mesh(beamZGeo, plankMat); b4.position.set(halfW, 18, 0); group.add(b4);
-
-      // Stacks of Lumber & Crates on site
-      const crateGeo = new THREE.BoxGeometry(4, 4, 4);
-      const crate = new THREE.Mesh(crateGeo, postMat);
-      crate.position.set(-w * 0.25, 4, h * 0.25);
-      group.add(crate);
-
-      return group;
+      // --- 2. ACTIVE CONSTRUCTION SITE (Authentic Medieval Timber Scaffolding & Masons) ---
+      return this.createConstructionSiteModel(b, b.constructionProgress);
     }
 
     // Try loading the high-quality KayKit 3D GLTF building model from ModelRegistry (palace uses custom multi-tiered fortress)
@@ -6803,17 +7289,17 @@ export class ThreeRenderer {
           controller.setTimeScale(1.0);
         } else if (isMoving) {
           const isRun = p.state === 'fleeing';
-          controller.play(isRun ? 'run' : 'walk', 0.18);
-          controller.setTimeScale(isRun ? peasantSpeed / 65 : peasantSpeed / 38);
+          controller.play(isRun ? 'run' : 'walk', 0.15);
+          controller.setTimeScale(Math.max(1.0, isRun ? peasantSpeed / 23.0 : peasantSpeed / 16.5));
         } else {
           controller.play('idle', 0.22);
           controller.setTimeScale(1.0);
         }
       }
 
-      // If no skeletal controller, use procedural step bob and limb animation synced to ground speed
-      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.9 : 0;
-      const bodySway = !controller && isMoving ? Math.sin(time * strideFreq) * 0.08 : 0;
+      // Natural gait kinematics for citizen locomotion
+      const stepBob = isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.65 : 0;
+      const bodySway = isMoving ? Math.sin(time * strideFreq * 0.5) * 0.04 : 0;
       const legStride = isMoving ? Math.sin(time * strideFreq) * 0.6 : 0;
 
       pGroup.position.set(p.x, this.getTerrainHeight(p.x, p.y) + stepBob, p.y);
@@ -6951,10 +7437,16 @@ export class ThreeRenderer {
       );
 
       const isMoving = (movedDist > 0.04 || hasActivePath || (hasTargetDist && isTravelingState)) && h.state !== 'idle' && h.isAttackingAnimation <= 0;
-      const heroBaseSpeed = h.speed || 45;
-      const calculatedSpeed = movedDist > 0.02 ? (movedDist / Math.max(0.001, delta)) : heroBaseSpeed;
-      const heroActualSpeed = Math.max(heroBaseSpeed * 0.8, Math.min(heroBaseSpeed * 1.5, calculatedSpeed));
-      const strideFreq = (heroActualSpeed / 40) * 3.5;
+      const gameSpeedMult = state.isPaused ? 0 : Math.max(1, state.gameSpeed || 1);
+      const heroNominalSpeed = (h.speed || 32) * gameSpeedMult;
+      const observedSpeed = movedDist > 0.01 ? (movedDist / Math.max(0.001, delta)) : heroNominalSpeed;
+      const heroActualSpeed = Math.max(heroNominalSpeed * 0.75, Math.min(heroNominalSpeed * 1.5, observedSpeed));
+      
+      // KayKit walk stride cycle is ~16 units per 2-step loop. Running stride is ~24 units.
+      // Scaling cadence to translation speed ensures foot plants solidly without sliding or gliding.
+      const isRunning = h.state === 'fleeing' || heroActualSpeed > 58;
+      const walkCadence = Math.max(1.0, Math.min(3.6, isRunning ? heroActualSpeed / 23.0 : heroActualSpeed / 16.5));
+      const strideFreq = walkCadence * Math.PI * 2;
 
       // Update Skeletal Animation Controller if present
       const controller = this.animControllers.get(h.id);
@@ -6965,19 +7457,19 @@ export class ThreeRenderer {
           controller.play('attack', 0.12);
           controller.setTimeScale(1.0);
         } else if (isMoving) {
-          const isRunning = h.state === 'fleeing' || heroActualSpeed > 62;
-          controller.play(isRunning ? 'run' : 'walk', 0.18);
-          // Scale leg animation speed exactly to match world translation speed
-          controller.setTimeScale(isRunning ? heroActualSpeed / 70 : heroActualSpeed / 42);
+          controller.play(isRunning ? 'run' : 'walk', 0.15);
+          // Scale leg playback rate accurately to ground translation speed
+          controller.setTimeScale(walkCadence);
         } else {
           controller.play('idle', 0.22);
           controller.setTimeScale(1.0);
         }
       }
 
-      // If no skeletal controller, use procedural step bob and limb animation synced to stride
-      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * strideFreq)) * 1.0 : 0;
-      const bodySway = !controller && isMoving ? Math.sin(time * strideFreq) * 0.09 : 0;
+      // Natural human gait kinematics: vertical center-of-mass bobbing and subtle lateral weight shift
+      // This eliminates the stiff "gliding on ice" look of flat root translation
+      const stepBob = isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.7 : 0;
+      const bodySway = isMoving ? Math.sin(time * strideFreq * 0.5) * 0.045 : 0;
       const legStride = isMoving ? Math.sin(time * strideFreq) * 0.65 : 0;
 
       const heroGroundY = this.getTerrainHeight(h.x, h.y);
@@ -8612,17 +9104,17 @@ export class ThreeRenderer {
           controller.play('death', 0.15);
         } else if (isMoving) {
           const isRun = tc.state === 'fleeing';
-          controller.play(isRun ? 'run' : 'walk', 0.18);
-          controller.setTimeScale(isRun ? tcSpeed / 68 : tcSpeed / 40);
+          controller.play(isRun ? 'run' : 'walk', 0.15);
+          controller.setTimeScale(Math.max(1.0, isRun ? tcSpeed / 23.0 : tcSpeed / 16.5));
         } else {
           controller.play('idle', 0.22);
           controller.setTimeScale(1.0);
         }
       }
 
-      // If no skeletal controller, use procedural step bob and limb animation
-      const stepBob = !controller && isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.9 : 0;
-      const bodySway = !controller && isMoving ? Math.sin(time * strideFreq) * 0.08 : 0;
+      // Natural gait kinematics for tax collector locomotion
+      const stepBob = isMoving ? Math.abs(Math.sin(time * strideFreq)) * 0.65 : 0;
+      const bodySway = isMoving ? Math.sin(time * strideFreq * 0.5) * 0.04 : 0;
       const legStride = isMoving ? Math.sin(time * strideFreq) * 0.55 : 0;
 
       tcGroup.position.set(tc.x, this.getTerrainHeight(tc.x, tc.y) + stepBob, tc.y);
@@ -9221,10 +9713,13 @@ export class ThreeRenderer {
     const time = Date.now() * 0.001;
     const isDeadOfNight = state.stats.dayTime >= 2300 || state.stats.dayTime < 350;
 
-    // 1. Heroes resting / sleeping at Guild or Inn
+    // 1. Heroes resting / sleeping at Guild or Inn (must have arrived and NOT currently moving/walking!)
     for (const h of state.heroes) {
       if (h.isDead) continue;
-      const isResting = h.state === 'resting_at_guild' || h.state === 'visiting_inn';
+      const isRestingState = h.state === 'resting_at_guild' || h.state === 'visiting_inn';
+      // Never render Zzz while walking/traveling toward the guild or inn
+      const isWalking = h.targetX !== undefined || (h.path && h.path.length > 0);
+      const isResting = isRestingState && !isWalking;
       if (isResting) {
         const id = `sleep_${h.id}`;
         activeSleepingIds.add(id);
@@ -9232,11 +9727,12 @@ export class ThreeRenderer {
       }
     }
 
-    // 2. Peasants / Builders sleeping during the Dead of Night
+    // 2. Peasants / Builders sleeping during the Dead of Night (must be resting at palace, not walking)
     if (isDeadOfNight) {
       for (const p of state.peasants) {
         if (p.hp <= 0) continue;
-        if (p.state === 'idle_at_palace') {
+        const isWalking = (p.path && p.path.length > 0) || p.state === 'walking_to_site' || p.state === 'fleeing';
+        if (p.state === 'idle_at_palace' && !isWalking) {
           const id = `sleep_${p.id}`;
           activeSleepingIds.add(id);
           this.renderUnitSleepZzz(id, p.x, p.y, 14, time, this.gridManager.isPixelVisible(p.x, p.y));

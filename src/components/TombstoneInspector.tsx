@@ -20,6 +20,7 @@ import {
 interface TombstoneInspectorProps {
   corpse: Corpse;
   treasuryGold: number;
+  hasClericTemple?: boolean;
   onClose: () => void;
   onResurrect: (corpseId: string) => void;
   onTrackGrave?: (x: number, y: number) => void;
@@ -28,6 +29,7 @@ interface TombstoneInspectorProps {
 export const TombstoneInspector: React.FC<TombstoneInspectorProps> = ({
   corpse,
   treasuryGold,
+  hasClericTemple = true,
   onClose,
   onResurrect,
   onTrackGrave
@@ -56,9 +58,10 @@ export const TombstoneInspector: React.FC<TombstoneInspectorProps> = ({
   const classDef = HERO_CLASS_DEFINITIONS[hero.heroClass];
   const resurrectCost = getResurrectionCost(hero.level);
   const canAfford = treasuryGold >= resurrectCost;
+  const canResurrect = canAfford && hasClericTemple;
 
   const handleResurrectClick = () => {
-    if (!canAfford) {
+    if (!canResurrect) {
       setShaking(true);
       setTimeout(() => setShaking(false), 450);
       audioManager.playInsufficientGoldSound();
@@ -192,23 +195,27 @@ export const TombstoneInspector: React.FC<TombstoneInspectorProps> = ({
         className={`w-full py-2.5 px-3 rounded-lg font-serif font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer ${
           shaking
             ? 'animate-error-shake bg-rose-900 border-2 border-rose-500 text-rose-200'
-            : canAfford
+            : canResurrect
             ? 'bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600 hover:from-amber-500 hover:to-yellow-400 text-slate-950 shadow-amber-900/50 hover:shadow-amber-500/25 active:scale-95'
-            : 'bg-slate-800/80 border border-rose-900/60 text-slate-400 hover:bg-rose-950/40 active:scale-95'
+            : 'bg-slate-800/80 border border-slate-700 text-slate-400 hover:bg-slate-800 active:scale-95'
         }`}
       >
         <Sparkles className="w-4 h-4" />
-        <span>Resurrect Champion</span>
+        <span>{hasClericTemple ? 'Resurrect Champion' : 'Requires Cleric Temple'}</span>
         <span className="ml-1 px-2 py-0.5 rounded-full bg-slate-950/40 font-mono text-xs text-amber-200 flex items-center gap-1">
           <Coins className="w-3 h-3 text-amber-400" /> {resurrectCost}g
         </span>
       </button>
 
-      {!canAfford && (
+      {!hasClericTemple ? (
+        <div className="text-[11px] text-amber-400/90 text-center mt-2 font-medium">
+          Construct a Cleric Temple to channel holy resurrection power.
+        </div>
+      ) : !canAfford ? (
         <div className="text-[11px] text-rose-400 text-center mt-2 font-medium">
           Insufficient Treasury Gold ({treasuryGold}g / {resurrectCost}g needed)
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

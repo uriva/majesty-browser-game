@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Crown, Scroll, Coins, Sparkles, XCircle } from 'lucide-react';
+import { Crown, Pause } from 'lucide-react';
 import { DilemmaChoice, RoyalDilemma } from '../game/types';
 
 interface DilemmaModalProps {
@@ -29,23 +29,35 @@ export const DilemmaModal: React.FC<DilemmaModalProps> = ({
         <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-amber-400" />
 
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-amber-500/30 pb-4">
-          <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-400/60 text-amber-300">
-            <Crown className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-[11px] font-sans font-bold uppercase tracking-widest text-amber-400/90">
-              Royal Petition • {dilemma.sender}
+        <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 pb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-400/60 text-amber-300 shrink-0">
+              <Crown className="w-6 h-6" />
             </div>
-            <h2 className="font-serif text-xl font-bold text-amber-100 tracking-wide">
-              {dilemma.title}
-            </h2>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-sans font-bold uppercase tracking-widest text-amber-400/90 truncate">
+                  {dilemma.act ? `${dilemma.act} • ` : ''}{dilemma.sender}
+                </span>
+                {dilemma.isStoryDispatch && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 text-[9px] font-bold uppercase tracking-wider">
+                    Story Event
+                  </span>
+                )}
+              </div>
+              <h2 className="font-serif text-xl font-bold text-amber-100 tracking-wide truncate">
+                {dilemma.title}
+              </h2>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/60 text-amber-300 text-[11px] font-bold tracking-wider uppercase shrink-0 shadow-inner">
+            <Pause className="w-3 h-3 fill-current" /> Paused
           </div>
         </div>
 
         {/* Narrative Description */}
         <div className="my-5 p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-200 text-sm font-serif leading-relaxed italic">
-          "{dilemma.description}"
+          &ldquo;{dilemma.description}&rdquo;
         </div>
 
         {/* Choices */}

@@ -32,7 +32,9 @@ import { audioManager } from '../game/engine/Audio';
 interface SaveLoadModalProps {
   isOpen: boolean;
   initialTab?: 'save' | 'load';
-  engine: GameEngine | null;
+  engine?: GameEngine | null;
+  isGameOver?: boolean;
+  onSaveToSlot?: (slotId: string, customLabel?: string) => SaveMeta | null;
   onClose: () => void;
   onLoadSave: (rawSave: string, meta: SaveMeta) => void;
   onActionFeedback: (title: string, message: string, type: 'save' | 'load' | 'delete') => void;
@@ -42,6 +44,8 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
   isOpen,
   initialTab = 'load',
   engine,
+  isGameOver = false,
+  onSaveToSlot,
   onClose,
   onLoadSave,
   onActionFeedback
@@ -51,6 +55,8 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
   const [selectedSlotId, setSelectedSlotId] = useState<string>('slot_1');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const canSave = !isGameOver && (Boolean(onSaveToSlot) || (Boolean(engine) && !engine?.state.isGameOver));
 
   const refreshSlots = () => {
     setSlots(listAllSaveSlots());
@@ -67,9 +73,10 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
   if (!isOpen) return null;
 
   const handleSaveToSlot = (slotId: string, customLabel?: string) => {
-    if (!engine || engine.state.isGameOver) return;
+    if (!canSave) return;
     audioManager.playClick();
-    const meta = saveGameToSlot(engine, slotId, customLabel);
+    const meta = onSaveToSlot ? onSaveToSlot(slotId, customLabel) : (engine ? saveGameToSlot(engine, slotId, customLabel) : null);
+    if (!meta) return;
     refreshSlots();
     setActionSuccess(`Archived to ${meta.label || slotId}!`);
     onActionFeedback(
@@ -197,7 +204,7 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
                 setActiveTab('save');
                 audioManager.playClick();
               }}
-              disabled={!engine || engine.state.isGameOver}
+                        disabled={!canSave}
               className={`flex items-center gap-2 px-5 py-2 text-xs font-serif font-bold rounded-lg transition-all ${
                 activeTab === 'save'
                   ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-slate-950 font-black shadow-lg'
@@ -317,7 +324,7 @@ export const SaveLoadModal: React.FC<SaveLoadModalProps> = ({
                           e.stopPropagation();
                           handleSaveToSlot(slot.slotId);
                         }}
-                        disabled={!engine || engine.state.isGameOver}
+              disabled={!canSave}
                         className="px-4 py-2 text-xs font-serif font-bold rounded-lg bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-slate-950 shadow transition-all flex items-center gap-1.5 disabled:opacity-40"
                       >
                         <Save className="w-3.5 h-3.5" />

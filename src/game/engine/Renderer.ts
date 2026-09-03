@@ -319,17 +319,44 @@ export class CanvasRenderer {
         return;
       }
 
-      // Scaffolding & Active Construction
-      ctx.fillStyle = '#78350f';
-      ctx.fillRect(px, py, w, h);
-      ctx.strokeStyle = '#d97706';
+      // Scaffolding & Active Medieval Construction Site
+      // Foundation stone plinth
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(px, py + h * 0.45, w, h * 0.55);
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(px + 3, py + h * 0.5, w - 6, h * 0.45);
+
+      // Timber scaffolding framework & diagonal X-braces
+      ctx.strokeStyle = '#92400e';
       ctx.lineWidth = 2;
       ctx.strokeRect(px + 2, py + 2, w - 4, h - 4);
-      // Progress bar
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(px + 4, py + h / 2 - 6, w - 8, 12);
+
+      // X-bracing lines
+      ctx.beginPath();
+      ctx.moveTo(px + 2, py + 2); ctx.lineTo(px + w - 2, py + h * 0.6);
+      ctx.moveTo(px + w - 2, py + 2); ctx.lineTo(px + 2, py + h * 0.6);
+      ctx.stroke();
+
+      // Top scaffold walkway beam
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(px, py + 2, w, 5);
+
+      // Progress bar & construction banner
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.fillRect(px + 4, py + h / 2 - 8, w - 8, 16);
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 4, py + h / 2 - 8, w - 8, 16);
+
+      const progWidth = Math.max(0, Math.min(w - 10, (w - 10) * (b.constructionProgress / 100)));
       ctx.fillStyle = '#22c55e';
-      ctx.fillRect(px + 4, py + h / 2 - 6, (w - 8) * (b.constructionProgress / 100), 12);
+      ctx.fillRect(px + 5, py + h / 2 - 7, progWidth, 14);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🔨 ${Math.round(b.constructionProgress)}%`, px + w / 2, py + h / 2);
       return;
     }
 
@@ -1333,8 +1360,9 @@ export class CanvasRenderer {
     ctx.textAlign = 'center';
     ctx.fillText(`${hero.level}`, x, y - 25 - bodyBob);
 
-    // 8. SLEEPING "Zzz" ANIMATION FOR RESTING HEROES
-    if (hero.state === 'resting_at_guild' || hero.state === 'visiting_inn') {
+    // 8. SLEEPING "Zzz" ANIMATION FOR RESTING HEROES (only when arrived at building and stationary)
+    const isHeroWalking = hero.targetX !== undefined || (hero.path && hero.path.length > 0);
+    if ((hero.state === 'resting_at_guild' || hero.state === 'visiting_inn') && !isHeroWalking) {
       const time = Date.now() * 0.003;
       const zPhase = time % 1.0;
       const driftX = Math.sin(time * 3) * 4;
@@ -1793,7 +1821,8 @@ export class CanvasRenderer {
 
     const isSelected = state.selectedEntity?.type === 'peasant' && state.selectedEntity.id === p.id;
     const isDeadOfNight = state.stats.dayTime >= 2300 || state.stats.dayTime < 350;
-    const isSleeping = isDeadOfNight && p.state === 'idle_at_palace';
+    const isPeasantWalking = (p.path && p.path.length > 0) || p.state === 'walking_to_site' || p.state === 'fleeing';
+    const isSleeping = isDeadOfNight && p.state === 'idle_at_palace' && !isPeasantWalking;
     const bob = isSleeping ? 0 : Math.sin(Date.now() * 0.008 + p.x) * 1.5;
 
     if (isSelected) {

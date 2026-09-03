@@ -661,15 +661,15 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
 
 export const SOVEREIGN_SPELLS: SovereignSpell[] = [
   {
-    id: 'royal_lightning',
-    name: 'Lightning Strike',
-    description: 'Calls down divine wrath upon target location or foe, dealing 120 magic damage in an area.',
-    goldCost: 75,
-    manaCost: 40,
-    cooldown: 5,
+    id: 'far_sight',
+    name: 'Far Sight',
+    description: 'Permanently reveals a large region of the Fog of War across the realm.',
+    goldCost: 40,
+    manaCost: 20,
+    cooldown: 8,
     currentCooldown: 0,
     targetType: 'position',
-    icon: 'Zap'
+    icon: 'Eye'
   },
   {
     id: 'holy_restoration',
@@ -680,29 +680,22 @@ export const SOVEREIGN_SPELLS: SovereignSpell[] = [
     cooldown: 8,
     currentCooldown: 0,
     targetType: 'position',
-    icon: 'HeartPulse'
+    icon: 'HeartPulse',
+    requiredBuilding: 'cleric_temple',
+    requiredBuildingName: 'Cleric Temple'
   },
   {
-    id: 'resurrection',
-    name: 'Resurrection',
-    description: 'Channels holy divine power upon a fallen hero’s tombstone, restoring them to life with full level and equipment.',
-    goldCost: 150,
-    manaCost: 50,
-    cooldown: 12,
+    id: 'royal_lightning',
+    name: 'Lightning Strike',
+    description: 'Calls down arcane wrath upon target location or foe, dealing 120 magic damage in an area.',
+    goldCost: 75,
+    manaCost: 40,
+    cooldown: 5,
     currentCooldown: 0,
     targetType: 'position',
-    icon: 'Sparkles'
-  },
-  {
-    id: 'far_sight',
-    name: 'Far Sight',
-    description: 'Permanently reveals a large region of the Fog of War.',
-    goldCost: 40,
-    manaCost: 20,
-    cooldown: 10,
-    currentCooldown: 0,
-    targetType: 'position',
-    icon: 'Eye'
+    icon: 'Zap',
+    requiredBuilding: 'wizard_tower',
+    requiredBuildingName: 'Wizard Tower'
   },
   {
     id: 'call_to_arms',
@@ -713,18 +706,22 @@ export const SOVEREIGN_SPELLS: SovereignSpell[] = [
     cooldown: 45,
     currentCooldown: 0,
     targetType: 'global',
-    icon: 'Swords'
+    icon: 'Swords',
+    requiredBuilding: 'warrior_guild',
+    requiredBuildingName: 'Warrior Guild'
   },
   {
     id: 'midas_blessing',
     name: "Midas' Prosperity",
-    description: 'Instantly grants 250 Gold directly to the Royal Treasury.',
+    description: 'Instantly grants 250 Gold directly to the Royal Treasury through royal commerce.',
     goldCost: 0,
     manaCost: 80,
     cooldown: 60,
     currentCooldown: 0,
     targetType: 'global',
-    icon: 'Coins'
+    icon: 'Coins',
+    requiredBuilding: 'marketplace',
+    requiredBuildingName: 'Marketplace'
   }
 ];
 
