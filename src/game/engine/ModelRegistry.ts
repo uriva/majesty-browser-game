@@ -14,10 +14,20 @@ export interface CharacterAnimationController {
   dispose: () => void;
 }
 
+// Quaternius CC0 creatures (single .glb, skinned + embedded clips).
+// Loaded in a DEFERRED wave after the critical set, so the loading veil
+// lifts fast — monsters pop in via the onChange rebuild when ready.
+const CREATURE_MODELS: Record<string, string> = {
+  'creature_dragon': '/models/creatures/dragon.glb',
+  'creature_wolf': '/models/creatures/wolf.glb',
+  'creature_rat': '/models/creatures/rat.glb',
+  'creature_zombie': '/models/creatures/zombie.glb',
+  'creature_goblin': '/models/creatures/goblin.glb'
+};
+
 export class ModelRegistry {
   private static instance: ModelRegistry;
-  private loader: GLTFLoader = new GLTFLoader();
-  private staticTemplates: Map<string, THREE.Group> = new Map();
+  private loader: GLTFLoader = new GLTFLoader();  private staticTemplates: Map<string, THREE.Group> = new Map();
   private characterTemplates: Map<string, THREE.Group> = new Map();
   // Quaternius CC0 creatures with their own embedded armature + clips
   // (dragon, wolf, rat, zombie, goblin) — see public/models/creatures/
@@ -31,6 +41,11 @@ export class ModelRegistry {
   private totalExpected: number = 0;
   private totalLoaded: number = 0;
   private preloadStarted: boolean = false;
+  private deferredStarted: boolean = false;
+  private deferredLoaded: number = 0;
+  private deferredTotal: number = 0;
+  /** Last finished asset key, for honest loading screens */
+  public lastLoadedKey: string = '';
 
   public static getInstance(): ModelRegistry {
     if (!ModelRegistry.instance) {
@@ -44,6 +59,29 @@ export class ModelRegistry {
     if (this.isReady) {
       try { callback(); } catch {}
     }
+  }
+
+  /** Honest loading progress for the veil: critical wave, then deferred creatures */
+  public getProgress(): { loaded: number; total: number; percent: number; label: string; deferred: boolean } {
+    if (!this.preloadStarted) return { loaded: 0, total: 1, percent: 0, label: 'Waking the scribes…', deferred: false };
+    if (!this.isReady) {
+      const total = Math.max(1, this.totalExpected);
+      return {
+        loaded: Math.min(this.totalLoaded, total),
+        total,
+        percent: Math.round((Math.min(this.totalLoaded, total) / total) * 100),
+        label: this.lastLoadedKey ? `Summoning ${this.lastLoadedKey.replace(/_/g, ' ')}…` : 'Summoning the realm…',
+        deferred: false
+      };
+    }
+    const total = Math.max(1, this.deferredTotal);
+    return {
+      loaded: Math.min(this.deferredLoaded, total),
+      total,
+      percent: this.deferredTotal === 0 ? 100 : Math.round((Math.min(this.deferredLoaded, total) / total) * 100),
+      label: 'Luring monsters from the wilds…',
+      deferred: true
+    };
   }
 
   private notifyTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -146,29 +184,24 @@ export class ModelRegistry {
       'anim_tools': '/models/animations/Rig_Medium_Tools.glb'
     };
 
-    // Quaternius CC0 creatures (single .glb, skinned + embedded clips)
-    const creatureModels: Record<string, string> = {
-      'creature_dragon': '/models/creatures/dragon.glb',
-      'creature_wolf': '/models/creatures/wolf.glb',
-      'creature_rat': '/models/creatures/rat.glb',
-      'creature_zombie': '/models/creatures/zombie.glb',
-      'creature_goblin': '/models/creatures/goblin.glb'
-    };
-
+    // Quaternius CC0 creatures load in a deferred wave (see startDeferredCreatures)
+    // so the loading veil lifts as soon as the critical set is ready.
     const allStatic = { ...buildingModels, ...natureModels };
-    this.totalExpected = Object.keys(allStatic).length + Object.keys(characterModels).length + Object.keys(animationPacks).length + Object.keys(creatureModels).length;
+    this.totalExpected = Object.keys(allStatic).length + Object.keys(characterModels).length + Object.keys(animationPacks).length;
     this.totalLoaded = 0;
 
     const checkComplete = () => {
       this.totalLoaded++;
       if (this.totalLoaded >= this.totalExpected) {
+        const firstReady = !this.isReady;
         this.isReady = true;
+        if (firstReady) this.startDeferredCreatures();
       }
       this.notify();
     };
 
     // 1. Load Animation Packs
-    for (const [, url] of Object.entries(animationPacks)) {
+    for (const [packKey, url] of Object.entries(animationPacks)) {
       this.loader.load(
         url,
         (gltf) => {
@@ -177,6 +210,7 @@ export class ModelRegistry {
               this.sharedClips.set(clip.name, clip);
             }
           }
+          this.lastLoadedKey = packKey;
           checkComplete();
         },
         undefined,
@@ -193,10 +227,25 @@ export class ModelRegistry {
     for (const [key, url] of Object.entries(characterModels)) {
       this.loadCharacterModel(key, url, checkComplete);
     }
+  }
 
-    // 4. Load Quaternius CC0 Creatures (own armature + embedded clips)
-    for (const [key, url] of Object.entries(creatureModels)) {
-      this.loadEmbeddedCreature(key, url, checkComplete);
+  /**
+   * Second wave: creature GLBs start only after the critical set is ready,
+   * so the loading veil lifts earlier. Each arrival notifies (monsters swap
+   * from procedural fallbacks to animated GLBs via the onChange rebuild).
+   */
+  private startDeferredCreatures() {
+    if (this.deferredStarted) return;
+    this.deferredStarted = true;
+    const entries = Object.entries(CREATURE_MODELS);
+    this.deferredTotal = entries.length;
+    if (entries.length === 0) return;
+    for (const [key, url] of entries) {
+      this.loadEmbeddedCreature(key, url, () => {
+        this.lastLoadedKey = key;
+        this.deferredLoaded++;
+        this.notify();
+      });
     }
   }
 
@@ -226,6 +275,7 @@ export class ModelRegistry {
 
         this.staticTemplates.set(key, root);
         this.loading.delete(key);
+        this.lastLoadedKey = key;
         onDone();
       },
       undefined,
@@ -264,6 +314,7 @@ export class ModelRegistry {
 
         this.characterTemplates.set(key, root);
         this.loading.delete(key);
+        this.lastLoadedKey = key;
         onDone();
       },
       undefined,
@@ -317,6 +368,7 @@ export class ModelRegistry {
 
         this.embeddedTemplates.set(key, { template: root, clips: gltf.animations || [], bounds: this.measureBindBounds(root) });
         this.loading.delete(key);
+        this.lastLoadedKey = key;
         onDone();
       },
       undefined,

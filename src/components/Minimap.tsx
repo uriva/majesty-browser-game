@@ -10,11 +10,17 @@ interface MinimapProps {
 
 export const Minimap: React.FC<MinimapProps> = ({ state, onPanTo }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Full-grid canvas redraw at HUD sync rate (8Hz) is wasteful — 2Hz is plenty for a minimap.
+  const lastDrawRef = useRef<number>(0);
 
   const mapWidthPx = state.mapWidth * state.tileSize;
   const mapHeightPx = state.mapHeight * state.tileSize;
 
   useEffect(() => {
+    const now = performance.now();
+    if (now - lastDrawRef.current < 500) return;
+    lastDrawRef.current = now;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');

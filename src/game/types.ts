@@ -358,6 +358,72 @@ export interface NotificationItem {
   targetPos?: Position;
 }
 
+export type QuestObjectiveKind =
+  | 'construct'      // raise N buildings of given types (completed, not blueprints)
+  | 'recruit'        // recruit N heroes (since stage start)
+  | 'destroy_lairs'  // destroy N lairs, optionally of a type (since stage start)
+  | 'place_bounty'   // post N bounty flags (since stage start)
+  | 'reach_day'      // survive until day N
+  | 'treasury'       // hold at least N gold
+  | 'raze_all'       // no live lairs remain (finale)
+  | 'slay_boss';     // slay the stage's spawned boss
+
+export interface QuestObjective {
+  kind: QuestObjectiveKind;
+  description: string;
+  count?: number;
+  buildingTypes?: BuildingType[];
+  lairType?: LairType;
+  day?: number;
+  gold?: number;
+}
+
+export interface QuestBossSpawn {
+  monsterType: MonsterType;
+  name: string;
+  title: string;
+  hpMult: number;
+  attackMult: number;
+  /** Prefer spawning at a lair of this type, else any lair */
+  nearLairType?: LairType;
+  introText: string;
+}
+
+export interface QuestStage {
+  id: string;
+  title: string;
+  introText: string;
+  objectives: QuestObjective[];
+  rewardGold?: number;
+  rewardMana?: number;
+  spawnBoss?: QuestBossSpawn;
+}
+
+export interface QuestDef {
+  id: string;
+  name: string;
+  act: string;
+  description: string;
+  /** Side quests are active from the start; main quests unlock in order */
+  side?: boolean;
+  stages: QuestStage[];
+}
+
+export interface QuestProgress {
+  questId: string;
+  stageIndex: number;
+  status: 'locked' | 'active' | 'complete';
+  /** Stat baselines snapshotted when the current stage started */
+  baselineStage: number;
+  baseline: {
+    heroesRecruited: number;
+    buildingsConstructed: number;
+    lairsDestroyed: number;
+    bountiesPlaced: number;
+  };
+  bossSpawned: boolean;
+}
+
 export interface Scenario {
   id: string;
   name: string;
@@ -383,6 +449,7 @@ export interface GameStats {
   buildingsConstructed: number;
   lairsDestroyed: number;
   spellsCast: number;
+  bountiesPlaced: number; // attack/explore/defend flags posted by the sovereign
   dayTime: number; // 0 to 2400 (day-night cycle)
   daysPassed: number;
 }
@@ -446,6 +513,7 @@ export interface GameState {
   floatingTexts: FloatingText[];
   spells: SovereignSpell[];
   notifications: NotificationItem[];
+  quests: QuestProgress[];
   stats: GameStats;
   selectedEntity: {
     type: 'hero' | 'building' | 'monster' | 'lair' | 'flag' | 'tax_collector' | 'peasant' | 'corpse';

@@ -1,6 +1,62 @@
 import { MAP_CONFIG } from '../constants';
 import { Building, MonsterLair, Position } from '../types';
 
+interface AStarNode {
+  x: number;
+  y: number;
+  g: number;
+  h: number;
+  f: number;
+  parent?: AStarNode;
+}
+
+/** Binary min-heap priority queue, hoisted to module scope (was re-declared per findPath call). */
+class AStarMinHeap {
+  private heap: AStarNode[] = [];
+  push(node: AStarNode) {
+    this.heap.push(node);
+    this.bubbleUp(this.heap.length - 1);
+  }
+  pop(): AStarNode | undefined {
+    const top = this.heap[0];
+    const bottom = this.heap.pop();
+    if (this.heap.length > 0 && bottom !== undefined) {
+      this.heap[0] = bottom;
+      this.bubbleDown(0);
+    }
+    return top;
+  }
+  get length() { return this.heap.length; }
+  clear() { this.heap.length = 0; }
+  private bubbleUp(idx: number) {
+    const heap = this.heap;
+    while (idx > 0) {
+      const parentIdx = (idx - 1) >> 1;
+      if (heap[idx].f >= heap[parentIdx].f) break;
+      const temp = heap[idx];
+      heap[idx] = heap[parentIdx];
+      heap[parentIdx] = temp;
+      idx = parentIdx;
+    }
+  }
+  private bubbleDown(idx: number) {
+    const heap = this.heap;
+    const len = heap.length;
+    while (true) {
+      let smallest = idx;
+      const left = (idx << 1) + 1;
+      const right = (idx << 1) + 2;
+      if (left < len && heap[left].f < heap[smallest].f) smallest = left;
+      if (right < len && heap[right].f < heap[smallest].f) smallest = right;
+      if (smallest === idx) break;
+      const temp = heap[idx];
+      heap[idx] = heap[smallest];
+      heap[smallest] = temp;
+      idx = smallest;
+    }
+  }
+}
+
 export class GridManager {
   public width: number;
   public height: number;
@@ -9,6 +65,17 @@ export class GridManager {
   public explored: boolean[][];
   public visible: boolean[][];
   public roadVersion: number = 0;
+
+  // --- Passability caches (perf: pathfinding + LOS run per entity per tick) ---
+  // terrainBlocked: water/rock tiles. Only changes when the grid itself is regenerated/replaced.
+  private terrainBlocked: Uint8Array | null = null;
+  // structureBlocked: building/lair footprints. Rebuilt lazily when the structure hash changes.
+  private structureBlocked: Uint8Array | null = null;
+  private structureBlockedHash: number = 0;
+  // Reusable A* scratch state (avoids per-pathfind allocations)
+  private astarG: Float32Array = new Float32Array(0);
+  private astarClosed: Uint8Array = new Uint8Array(0);
+  private astarHeap: AStarMinHeap = new AStarMinHeap();
 
   constructor(width: number = MAP_CONFIG.DEFAULT_WIDTH, height: number = MAP_CONFIG.DEFAULT_HEIGHT, tileSize: number = MAP_CONFIG.TILE_SIZE) {
     this.width = width;
@@ -183,6 +250,174 @@ export class GridManager {
     // Reveal initial town center
     this.revealArea(centerX, centerY, 12);
     this.roadVersion = 1;
+    this.rebuildTerrainBlockedCache();
+  }
+
+  /** Rebuild the static terrain passability cache (water/rock). Cheap; call after grid replacement. */
+  public rebuildTerrainBlockedCache() {
+    const cache = new Uint8Array(this.width * this.height);
+    for (let y = 0; y < this.height; y++) {
+      const row = this.grid[y];
+      for (let x = 0; x < this.width; x++) {
+        const t = row[x];
+        if (t === 2 || t === 4) cache[y * this.width + x] = 1;
+      }
+    }
+    this.terrainBlocked = cache;
+  }
+
+  private computeStructureHash(buildings: Building[], lairs: MonsterLair[]): number {
+    // FNV-1a style hash over live structure footprints; O(B+L) per call.
+    let h = 2166136261;
+    h = Math.imul(h ^ buildings.length, 16777619);
+    h = Math.imul(h ^ lairs.length, 16777619);
+    for (const b of buildings) {
+      if (b.hp <= 0) continue;
+      h = Math.imul(h ^ b.x, 16777619);
+      h = Math.imul(h ^ b.y, 16777619);
+      h = Math.imul(h ^ b.width, 16777619);
+      h = Math.imul(h ^ (b.height + 77), 16777619);
+    }
+    for (const l of lairs) {
+      if (l.hp <= 0) continue;
+      h = Math.imul(h ^ l.x, 16777619);
+      h = Math.imul(h ^ l.y, 16777619);
+      h = Math.imul(h ^ l.width, 16777619);
+      h = Math.imul(h ^ (l.height + 131), 16777619);
+    }
+    return h | 0;
+  }
+
+  private ensureStructureBlockedCache(buildings: Building[], lairs: MonsterLair[]) {
+    const h = this.computeStructureHash(buildings, lairs);
+    if (this.structureBlocked && h === this.structureBlockedHash) return;
+    const cache = new Uint8Array(this.width * this.height);
+    for (const b of buildings) {
+      if (b.hp <= 0) continue;
+      for (let y = b.y; y < b.y + b.height; y++) {
+        if (y < 0 || y >= this.height) continue;
+        for (let x = b.x; x < b.x + b.width; x++) {
+          if (x < 0 || x >= this.width) continue;
+          cache[y * this.width + x] = 1;
+        }
+      }
+    }
+    for (const l of lairs) {
+      if (l.hp <= 0) continue;
+      for (let y = l.y; y < l.y + l.height; y++) {
+        if (y < 0 || y >= this.height) continue;
+        for (let x = l.x; x < l.x + l.width; x++) {
+          if (x < 0 || x >= this.width) continue;
+          cache[y * this.width + x] = 1;
+        }
+      }
+    }
+    this.structureBlocked = cache;
+    this.structureBlockedHash = h;
+  }
+
+  /** Fast tile-blocked check backed by caches (array lookups instead of AABB scans). */
+  public isTileBlockedFast(
+    tx: number,
+    ty: number,
+    buildings: Building[],
+    lairs: MonsterLair[],
+    excludeBuildingId?: string,
+    excludeRect?: { x0: number; y0: number; x1: number; y1: number } | null
+  ): boolean {
+    if (tx < 0 || tx >= this.width || ty < 0 || ty >= this.height) return true;
+    this.ensureTerrainBlockedCache();
+    const idx = ty * this.width + tx;
+    if (this.terrainBlocked![idx]) return true;
+    this.ensureStructureBlockedCache(buildings, lairs);
+    if (!this.structureBlocked![idx]) return false;
+    if (excludeBuildingId) {
+      const rect = excludeRect ?? this.findStructureRect(excludeBuildingId, buildings, lairs);
+      if (rect && tx >= rect.x0 && tx <= rect.x1 && ty >= rect.y0 && ty <= rect.y1) return false;
+    }
+    return true;
+  }
+
+  private ensureTerrainBlockedCache() {
+    if (!this.terrainBlocked || this.terrainBlocked.length !== this.width * this.height) {
+      this.rebuildTerrainBlockedCache();
+    }
+  }
+
+  /**
+   * Raw cached read for tight loops. Caller MUST have called ensureStructureBlockedCache()
+   * + ensureTerrainBlockedCache() (or isTileBlockedFast()) first so no per-tile hashing
+   * happens inside hot loops.
+   */
+  private isBlockedCached(
+    tx: number,
+    ty: number,
+    excludeRect: { x0: number; y0: number; x1: number; y1: number } | null
+  ): boolean {
+    if (tx < 0 || tx >= this.width || ty < 0 || ty >= this.height) return true;
+    const idx = ty * this.width + tx;
+    if (this.terrainBlocked![idx]) return true;
+    if (!this.structureBlocked![idx]) return false;
+    if (excludeRect && tx >= excludeRect.x0 && tx <= excludeRect.x1 && ty >= excludeRect.y0 && ty <= excludeRect.y1) {
+      return false;
+    }
+    return true;
+  }
+
+  private findStructureRect(
+    id: string,
+    buildings: Building[],
+    lairs: MonsterLair[]
+  ): { x0: number; y0: number; x1: number; y1: number } | null {
+    for (const b of buildings) {
+      if (b.id === id) return { x0: b.x, y0: b.y, x1: b.x + b.width - 1, y1: b.y + b.height - 1 };
+    }
+    for (const l of lairs) {
+      if (l.id === id) return { x0: l.x, y0: l.y, x1: l.x + l.width - 1, y1: l.y + l.height - 1 };
+    }
+    return null;
+  }
+
+  /**
+   * Fast tile-only line-of-sight. Same contract as hasLineOfSight for pathing purposes
+   * (structure footprints ARE in the cache) but O(samples) array lookups instead of
+   * O(samples × structures) AABB scans. Used by the per-tick movement code.
+   */
+  public hasClearTilePath(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    buildings: Building[],
+    lairs: MonsterLair[],
+    excludeBuildingId?: string
+  ): boolean {
+    const dist = Math.hypot(endX - startX, endY - startY);
+    if (dist < 3) return true;
+    // Validate caches once up front — the sampling loop below must not rehash per tile.
+    this.ensureTerrainBlockedCache();
+    this.ensureStructureBlockedCache(buildings, lairs);
+    const excludeRect = excludeBuildingId
+      ? this.findStructureRect(excludeBuildingId, buildings, lairs)
+      : null;
+    const step = Math.max(10, this.tileSize * 0.4);
+    const steps = Math.ceil(dist / step);
+    const dx = (endX - startX) / steps;
+    const dy = (endY - startY) / steps;
+    for (let i = 1; i < steps; i++) {
+      const tx = Math.floor((startX + dx * i) / this.tileSize);
+      const ty = Math.floor((startY + dy * i) / this.tileSize);
+      if (this.isBlockedCached(tx, ty, excludeRect)) {
+        return false;
+      }
+    }
+    // Check the destination tile itself
+    const endTx = Math.floor(endX / this.tileSize);
+    const endTy = Math.floor(endY / this.tileSize);
+    if (this.isBlockedCached(endTx, endTy, excludeRect)) {
+      return false;
+    }
+    return true;
   }
 
   public clearRoadsUnderBuilding(area: { x: number; y: number; width: number; height: number }) {
@@ -356,6 +591,18 @@ export class GridManager {
     const centerTx = Math.floor(px / this.tileSize);
     const centerTy = Math.floor(py / this.tileSize);
     if (!this.isValid(centerTx, centerTy)) return false;
+
+    // Fast reject via passability caches (no per-structure scan): water/rock is never
+    // walkable, and a center inside a live structure footprint always overlaps it given
+    // unitRadius > 0. The excluded structure (if any) still needs the precise path below.
+    this.ensureTerrainBlockedCache();
+    const centerIdx = centerTy * this.width + centerTx;
+    if (this.terrainBlocked![centerIdx]) return false;
+    if (!excludeBuildingId) {
+      this.ensureStructureBlockedCache(buildings, lairs);
+      if (this.structureBlocked![centerIdx]) return false;
+    }
+
     const centerTile = this.grid[centerTy][centerTx];
 
     // 1. Terrain & Water/Rock checks
@@ -595,8 +842,8 @@ export class GridManager {
     lairs: MonsterLair[],
     excludeBuildingId?: string
   ): Position[] {
-    // 1. Direct line-of-sight shortcut with generous corner clearance
-    if (this.hasLineOfSight(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId, 9.5)) {
+    // 1. Direct line-of-sight shortcut with generous corner clearance (cached tile checks)
+    if (this.hasClearTilePath(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId)) {
       return [{ x: endPx, y: endPy }];
     }
 
@@ -655,62 +902,28 @@ export class GridManager {
       return [{ x: endPx, y: endPy }];
     }
 
-    // High-performance A* Pathfinding with Binary Min-Heap Priority Queue
-    interface AStarNode {
-      x: number;
-      y: number;
-      g: number;
-      h: number;
-      f: number;
-      parent?: AStarNode;
-    }
+    // Validate caches once up front so the A* inner loop stays O(1) per tile
+    // (no hashing or scanning inside the hot loop).
+    this.ensureTerrainBlockedCache();
+    this.ensureStructureBlockedCache(buildings, lairs);
+    const excludeRect = excludeBuildingId
+      ? this.findStructureRect(excludeBuildingId, buildings, lairs)
+      : null;
+    const blockedAt = (tx: number, ty: number) => this.isBlockedCached(tx, ty, excludeRect);
 
-    class MinHeap {
-      private heap: AStarNode[] = [];
-      push(node: AStarNode) {
-        this.heap.push(node);
-        this.bubbleUp(this.heap.length - 1);
-      }
-      pop(): AStarNode | undefined {
-        const top = this.heap[0];
-        const bottom = this.heap.pop();
-        if (this.heap.length > 0 && bottom !== undefined) {
-          this.heap[0] = bottom;
-          this.bubbleDown(0);
-        }
-        return top;
-      }
-      get length() { return this.heap.length; }
-      private bubbleUp(idx: number) {
-        while (idx > 0) {
-          const parentIdx = (idx - 1) >> 1;
-          if (this.heap[idx].f >= this.heap[parentIdx].f) break;
-          const temp = this.heap[idx];
-          this.heap[idx] = this.heap[parentIdx];
-          this.heap[parentIdx] = temp;
-          idx = parentIdx;
-        }
-      }
-      private bubbleDown(idx: number) {
-        const len = this.heap.length;
-        while (true) {
-          let smallest = idx;
-          const left = (idx << 1) + 1;
-          const right = (idx << 1) + 2;
-          if (left < len && this.heap[left].f < this.heap[smallest].f) smallest = left;
-          if (right < len && this.heap[right].f < this.heap[smallest].f) smallest = right;
-          if (smallest === idx) break;
-          const temp = this.heap[idx];
-          this.heap[idx] = this.heap[smallest];
-          this.heap[smallest] = temp;
-          idx = smallest;
-        }
-      }
+    // High-performance A* Pathfinding with Binary Min-Heap Priority Queue.
+    // Scratch buffers are reused across calls (no per-call allocs/fills beyond reset).
+    const n = this.width * this.height;
+    if (this.astarG.length !== n) {
+      this.astarG = new Float32Array(n);
+      this.astarClosed = new Uint8Array(n);
     }
-
-    const openHeap = new MinHeap();
-    const closedSet = new Uint8Array(this.width * this.height);
-    const gScores = new Float32Array(this.width * this.height).fill(Infinity);
+    this.astarG.fill(Infinity);
+    this.astarClosed.fill(0);
+    const openHeap = this.astarHeap;
+    openHeap.clear();
+    const closedSet = this.astarClosed;
+    const gScores = this.astarG;
 
     const getIndex = (x: number, y: number) => y * this.width + x;
     const heuristic = (x1: number, y1: number, x2: number, y2: number) => {
@@ -771,13 +984,13 @@ export class GridManager {
         const nIdx = getIndex(nx, ny);
         if (closedSet[nIdx]) continue;
 
-        if (this.isTileBlocked(nx, ny, buildings, lairs, excludeBuildingId)) continue;
+        if (blockedAt(nx, ny)) continue;
 
         // Diagonal corner clearance check: both adjacent orthogonal tiles must be unblocked
         if (dir.x !== 0 && dir.y !== 0) {
           if (
-            this.isTileBlocked(current.x + dir.x, current.y, buildings, lairs, excludeBuildingId) ||
-            this.isTileBlocked(current.x, current.y + dir.y, buildings, lairs, excludeBuildingId)
+            blockedAt(current.x + dir.x, current.y) ||
+            blockedAt(current.x, current.y + dir.y)
           ) {
             continue;
           }
@@ -821,7 +1034,7 @@ export class GridManager {
     while (curIndex < rawWaypoints.length - 1) {
       let furthest = curIndex + 1;
       for (let j = rawWaypoints.length - 1; j > curIndex + 1; j--) {
-        if (this.hasLineOfSight(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId, 5.0)) {
+        if (this.hasClearTilePath(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId)) {
           furthest = j;
           break;
         }
@@ -831,7 +1044,7 @@ export class GridManager {
     }
 
     // Replace final destination with exact destination coordinate if line of sight is clear
-    if (this.hasLineOfSight(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId, 5.0)) {
+    if (this.hasClearTilePath(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId)) {
       smoothPath[smoothPath.length - 1] = { x: endPx, y: endPy };
     } else {
       smoothPath.push({ x: endPx, y: endPy });
@@ -872,7 +1085,7 @@ export class GridManager {
 
     // 1. Direct line-of-sight shortcut: only use direct movement if line of sight is strictly unobstructed
     const hasActiveMultiPath = !!(entity.path && entity.path.length > 1);
-    const hasClearLOS = this.hasLineOfSight(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId, 8.5);
+    const hasClearLOS = this.hasClearTilePath(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId);
     const canDirectMove = (distToTarget < 12 && hasClearLOS) || (!hasActiveMultiPath && hasClearLOS);
 
     if (canDirectMove) {

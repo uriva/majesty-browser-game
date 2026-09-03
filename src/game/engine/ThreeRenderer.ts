@@ -62,6 +62,9 @@ export class ThreeRenderer {
   private roadsGroup: THREE.Group;
   private streetLampsGroup: THREE.Group;
   private streetLampsList: THREE.Object3D[] = [];
+  // Cached lamp glow materials (registered once at creation; avoids per-frame subtree traverses)
+  private lampGlowMats: { root: THREE.Object3D; ember?: THREE.MeshStandardMaterial; cage?: THREE.MeshStandardMaterial; puddle?: THREE.MeshBasicMaterial }[] = [];
+  private lastLampUpdate: number = 0;
   private lastRoadVersion: number = -1;
   private fogGroup: THREE.Group;
   private buildingsMap: Map<string, THREE.Group> = new Map();
@@ -97,6 +100,8 @@ export class ThreeRenderer {
   // Dynamic Structure Footprint Flattening
   private groundMesh: THREE.Mesh | null = null;
   private lastStructureHash: string = '';
+  private lastStructCheck: number = 0;
+  private placementPreviewKey: string = '';
   private lastKnownStructures: { x: number; y: number; width: number; height: number }[] = [];
   private floatingTextTextureCache: Map<string, THREE.CanvasTexture> = new Map();
 
@@ -2029,6 +2034,7 @@ export class ThreeRenderer {
       group.add(roof);
     });
 
+    this.registerLampGlow(group);
     return group;
   }
 
@@ -2145,7 +2151,36 @@ export class ThreeRenderer {
     puddle.position.set(2.0, 0.15, 0);
     lamp.add(puddle);
 
+    this.registerLampGlow(lamp);
     return lamp;
+  }
+
+  /** Traverse a lamp/bridge once at creation and cache its glow materials. */
+  private registerLampGlow(root: THREE.Object3D) {
+    const entry: { root: THREE.Object3D; ember?: THREE.MeshStandardMaterial; cage?: THREE.MeshStandardMaterial; puddle?: THREE.MeshBasicMaterial } = { root };
+    root.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        if (child.name === 'lanternEmber' && child.material instanceof THREE.MeshStandardMaterial) {
+          entry.ember = child.material;
+        } else if (child.name === 'lanternCage' && child.material instanceof THREE.MeshStandardMaterial) {
+          entry.cage = child.material;
+        } else if (child.name === 'lampPuddle' && child.material instanceof THREE.MeshBasicMaterial) {
+          entry.puddle = child.material;
+        }
+      }
+    });
+    this.lampGlowMats.push(entry);
+  }
+
+  private disposeObjectTree(root: THREE.Object3D) {
+    root.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        const mat = child.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+        else if (mat) mat.dispose();
+      }
+    });
   }
 
   // --- UNIFIED ROAD NETWORK GENERATOR (Computed all at once from all building locations) ---
@@ -2492,7 +2527,13 @@ export class ThreeRenderer {
     }
 
     // 4. Update Street Lamps along roads, plazas, and building entrances
-    this.streetLampsGroup.clear();
+    // Dispose removed lamps (frees GPU memory) and drop their cached glow materials.
+    // Bridge lanterns live in terrainGroup and persist — keep those entries.
+    for (const child of [...this.streetLampsGroup.children]) {
+      this.streetLampsGroup.remove(child);
+      this.disposeObjectTree(child);
+    }
+    this.lampGlowMats = this.lampGlowMats.filter(e => e.root.parent !== this.streetLampsGroup && e.root.parent !== null);
     this.streetLampsList = [];
 
     // Re-register bridge lanterns for dynamic day/night illumination
@@ -3012,42 +3053,41 @@ export class ThreeRenderer {
     const h = this.gridManager.height;
     const scaleX = canvasSize / w;
     const scaleY = canvasSize / h;
+    const cellW = Math.ceil(scaleX);
+    const cellH = Math.ceil(scaleY);
 
     // 1. Fill canvas with 100% solid pitch-black unexplored shroud
     ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-    // 2. Draw explored areas (semi-transparent twilight darkness: 0.52 opacity)
+    // 2. Draw explored (but not currently visible) areas in a single pass.
+    // Explored + visible tiles are skipped here and punched out in step 3.
     ctx.fillStyle = 'rgba(9, 13, 22, 0.48)';
+    const explored = this.gridManager.explored;
+    const visible = this.gridManager.visible;
     for (let y = 0; y < h; y++) {
+      const expRow = explored[y];
+      const visRow = visible[y];
+      if (!expRow) continue;
       for (let x = 0; x < w; x++) {
-        if (this.gridManager.explored[y]?.[x]) {
-          ctx.clearRect(x * scaleX, y * scaleY, Math.ceil(scaleX), Math.ceil(scaleY));
-          ctx.fillRect(x * scaleX, y * scaleY, Math.ceil(scaleX), Math.ceil(scaleY));
+        if (expRow[x] && !(visRow && visRow[x])) {
+          ctx.fillRect(x * scaleX, y * scaleY, cellW, cellH);
         }
       }
     }
 
-    // 3. Clear active Line-of-Sight vision circles with soft radial feathering
+    // 3. Punch out currently-visible tiles. Plain rects (no per-tile radial gradients:
+    // thousands of gradient allocations per repaint was the bottleneck); the texture
+    // is sampled with linear filtering so edges stay soft on the 3D shroud.
     ctx.save();
     ctx.globalCompositeOperation = 'destination-out';
-
+    ctx.fillStyle = '#000000';
     for (let y = 0; y < h; y++) {
+      const visRow = visible[y];
+      if (!visRow) continue;
       for (let x = 0; x < w; x++) {
-        if (this.gridManager.visible[y]?.[x]) {
-          const cx = (x + 0.5) * scaleX;
-          const cy = (y + 0.5) * scaleY;
-          const radius = Math.max(scaleX, scaleY) * 1.55;
-
-          const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-          grad.addColorStop(0.0, 'rgba(0, 0, 0, 1.0)');
-          grad.addColorStop(0.68, 'rgba(0, 0, 0, 0.95)');
-          grad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
-
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fill();
+        if (visRow[x]) {
+          ctx.fillRect(x * scaleX, y * scaleY, cellW, cellH);
         }
       }
     }
@@ -3335,20 +3375,38 @@ export class ThreeRenderer {
     }
 
     // Dynamic Street & Bridge Lamps Illumination at Dusk & Night
-    const isNightOrDusk = t > 0.76 || t < 0.25;
-    for (const lamp of this.streetLampsList) {
-      lamp.traverse(child => {
-        if (child instanceof THREE.Mesh) {
-          if (child.name === 'lanternEmber' && child.material instanceof THREE.MeshStandardMaterial) {
-            child.material.emissiveIntensity = isNightOrDusk ? 3.0 + Math.sin(Date.now() * 0.005) * 0.4 : 0.2;
-          } else if (child.name === 'lanternCage' && child.material instanceof THREE.MeshStandardMaterial) {
-            child.material.emissiveIntensity = isNightOrDusk ? 1.4 : 0.1;
-          } else if (child.name === 'lampPuddle' && child.material instanceof THREE.MeshBasicMaterial) {
-            child.material.opacity = isNightOrDusk ? 0.32 : 0.0;
-          }
-        }
-      });
+    // Lamp glow uses cached materials (no per-frame subtree traverses) and updates at
+    // ~5Hz — emissive flicker doesn't need 60fps precision.
+    const nowMs = performance.now();
+    if (nowMs - this.lastLampUpdate > 200) {
+      this.lastLampUpdate = nowMs;
+      const isNightOrDusk = t > 0.76 || t < 0.25;
+      const flicker = Math.sin(nowMs * 0.005) * 0.4;
+      for (const entry of this.lampGlowMats) {
+        if (entry.ember) entry.ember.emissiveIntensity = isNightOrDusk ? 3.0 + flicker : 0.2;
+        if (entry.cage) entry.cage.emissiveIntensity = isNightOrDusk ? 1.4 : 0.1;
+        if (entry.puddle) entry.puddle.opacity = isNightOrDusk ? 0.32 : 0.0;
+      }
     }
+  }
+
+  /**
+   * Cached child lookup. getObjectByName() traverses the whole subtree, and the per-frame
+   * update methods were calling it several times per entity per frame (hundreds of
+   * traversals at 60fps). Results are cached per group; groups are recreated (not mutated)
+   * when their structure changes, so the cache never goes stale.
+   */
+  private getPart(group: THREE.Object3D, name: string): THREE.Object3D | undefined {
+    const userData = group.userData as { partCache?: Map<string, THREE.Object3D | undefined> };
+    let cache = userData.partCache;
+    if (!cache) {
+      cache = new Map();
+      userData.partCache = cache;
+    }
+    if (!cache.has(name)) {
+      cache.set(name, group.getObjectByName(name));
+    }
+    return cache.get(name) ?? undefined;
   }
 
   // --- SMOOTH ROTATION HELPER ---
@@ -3375,15 +3433,19 @@ export class ThreeRenderer {
       this.updateFogOfWar(state);
     }
 
-    // Update curved terrain under buildings whenever structures change (only when added/removed)
-    const structHash = state.buildings.map(b => `${b.id}_${b.x}_${b.y}_${b.width}_${b.height}_${b.hp > 0}`).join('|') + ';' + state.lairs.map(l => `${l.id}_${l.x}_${l.y}_${l.width}_${l.height}_${l.hp > 0}`).join('|');
-    if (structHash !== this.lastStructureHash) {
-      this.lastStructureHash = structHash;
-      this.lastKnownStructures = [
-        ...state.buildings.filter(b => b.hp > 0),
-        ...state.lairs.filter(l => l.hp > 0 && l.type !== 'sewer_grate')
-      ];
-      this.updateTerrainMeshHeights();
+    // Update curved terrain under buildings whenever structures change (only when added/removed).
+    // The hash string is rebuilt at ~4Hz instead of every frame (string allocs at 60fps).
+    if (now - this.lastStructCheck > 250) {
+      this.lastStructCheck = now;
+      const structHash = state.buildings.map(b => `${b.id}_${b.x}_${b.y}_${b.width}_${b.height}_${b.hp > 0}`).join('|') + ';' + state.lairs.map(l => `${l.id}_${l.x}_${l.y}_${l.width}_${l.height}_${l.hp > 0}`).join('|');
+      if (structHash !== this.lastStructureHash) {
+        this.lastStructureHash = structHash;
+        this.lastKnownStructures = [
+          ...state.buildings.filter(b => b.hp > 0),
+          ...state.lairs.filter(l => l.hp > 0 && l.type !== 'sewer_grate')
+        ];
+        this.updateTerrainMeshHeights();
+      }
     }
 
     this.updateTerrainRoads(state);
@@ -3399,11 +3461,11 @@ export class ThreeRenderer {
 
     // Animate waterfall splash foam & rising mist spray
     for (const wf of this.waterfallsList) {
-      const splash = wf.getObjectByName('waterfallSplash');
+      const splash = this.getPart(wf, 'waterfallSplash');
       if (splash) {
         splash.scale.setScalar(1.0 + Math.sin(now * 0.008) * 0.12);
       }
-      const mistGroup = wf.getObjectByName('mistGroup');
+      const mistGroup = this.getPart(wf, 'mistGroup');
       if (mistGroup) {
         mistGroup.children.forEach((puff, idx) => {
           if (puff instanceof THREE.Mesh) {
@@ -3535,7 +3597,10 @@ export class ThreeRenderer {
     if (this.currentSelectionKey === key) return;
     this.currentSelectionKey = key;
 
-    this.selectionGroup.clear();
+    for (const child of [...this.selectionGroup.children]) {
+      this.selectionGroup.remove(child);
+      this.disposeObjectTree(child);
+    }
 
     if (isStructure) {
       // Densely sample perimeter elevation at 64 points along the 4 edges so the aura strictly hugs the terrain
@@ -3688,9 +3753,17 @@ export class ThreeRenderer {
   }
 
   // --- PLACEMENT PREVIEW (HOVER HOLOGRAM & SHADOW) ---
+  private clearPreviewGroup() {
+    for (const child of [...this.placementPreviewGroup.children]) {
+      this.placementPreviewGroup.remove(child);
+      this.disposeObjectTree(child);
+    }
+  }
+
   private updatePlacementPreview(state: GameState, mouseWorldPos: { x: number; y: number } | null) {
     if (!state.activePlacement || !mouseWorldPos) {
       this.placementPreviewGroup.visible = false;
+      this.placementPreviewKey = '';
       return;
     }
 
@@ -3705,43 +3778,46 @@ export class ThreeRenderer {
       const isValid = this.gridManager.canPlaceBuilding(tileX, tileY, bDef.width, bDef.height, state.buildings, state.lairs);
       const color = isValid ? 0x22c55e : 0xef4444;
 
-      // Rebuild preview mesh if needed
-      this.placementPreviewGroup.clear();
-
       const px = (tileX + bDef.width / 2) * ts;
       const pz = (tileY + bDef.height / 2) * ts;
       this.placementPreviewGroup.position.set(px, 0, pz);
 
-      // 3D Bounding Hologram Box
-      const boxGeo = new THREE.BoxGeometry(bDef.width * ts, 20, bDef.height * ts);
-      const boxMat = new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.45,
-        wireframe: false
-      });
-      const box = new THREE.Mesh(boxGeo, boxMat);
-      box.position.y = 10;
-      this.placementPreviewGroup.add(box);
+      // Rebuild preview meshes only when tile/type/validity changes (was: every frame,
+      // allocating + uploading new geometries 60×/sec and leaking the old ones).
+      const key = `b_${state.activePlacement.subType}_${tileX}_${tileY}_${isValid}`;
+      if (key !== this.placementPreviewKey) {
+        this.placementPreviewKey = key;
+        this.clearPreviewGroup();
 
-      // Wireframe Outline
-      const wireMat = new THREE.MeshBasicMaterial({ color, wireframe: true });
-      const wire = new THREE.Mesh(boxGeo, wireMat);
-      wire.position.y = 10;
-      this.placementPreviewGroup.add(wire);
+        // 3D Bounding Hologram Box
+        const boxGeo = new THREE.BoxGeometry(bDef.width * ts, 20, bDef.height * ts);
+        const boxMat = new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.45,
+          wireframe: false
+        });
+        const box = new THREE.Mesh(boxGeo, boxMat);
+        box.position.y = 10;
+        this.placementPreviewGroup.add(box);
 
-      // Ground Footprint Grid
-      const footprintGeo = new THREE.PlaneGeometry(bDef.width * ts, bDef.height * ts);
-      footprintGeo.rotateX(-Math.PI / 2);
-      const footprintMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 });
-      const footprint = new THREE.Mesh(footprintGeo, footprintMat);
-      footprint.position.y = 0.6;
-      this.placementPreviewGroup.add(footprint);
+        // Wireframe Outline
+        const wireMat = new THREE.MeshBasicMaterial({ color, wireframe: true });
+        const wire = new THREE.Mesh(boxGeo, wireMat);
+        wire.position.y = 10;
+        this.placementPreviewGroup.add(wire);
+
+        // Ground Footprint Grid
+        const footprintGeo = new THREE.PlaneGeometry(bDef.width * ts, bDef.height * ts);
+        footprintGeo.rotateX(-Math.PI / 2);
+        const footprintMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 });
+        const footprint = new THREE.Mesh(footprintGeo, footprintMat);
+        footprint.position.y = 0.6;
+        this.placementPreviewGroup.add(footprint);
+      }
 
       this.placementPreviewGroup.visible = true;
     } else if (state.activePlacement.type === 'flag') {
-      this.placementPreviewGroup.clear();
-
       const flagType = state.activePlacement.subType;
       let targetPos = { x: mouseWorldPos.x, y: mouseWorldPos.y };
       let isValidTarget = true;
@@ -3773,33 +3849,44 @@ export class ThreeRenderer {
         ? (isValidTarget ? 0xef4444 : 0x475569)
         : (flagType === 'explore' ? 0x3b82f6 : 0xfbbf24);
 
-      const ringGeo = new THREE.RingGeometry(isValidTarget ? 2 : 8, 20, 24);
-      ringGeo.rotateX(-Math.PI / 2);
-      const ringMat = new THREE.MeshBasicMaterial({
-        color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: isValidTarget ? 0.75 : 0.35
-      });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.position.y = 0.8;
-      this.placementPreviewGroup.add(ring);
+      const key = `f_${flagType}_${isValidTarget}`;
+      if (key !== this.placementPreviewKey) {
+        this.placementPreviewKey = key;
+        this.clearPreviewGroup();
+
+        const ringGeo = new THREE.RingGeometry(isValidTarget ? 2 : 8, 20, 24);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: isValidTarget ? 0.75 : 0.35
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.y = 0.8;
+        this.placementPreviewGroup.add(ring);
+      }
       this.placementPreviewGroup.visible = true;
     } else if (state.activePlacement.type === 'spell') {
-      this.placementPreviewGroup.clear();
       this.placementPreviewGroup.position.set(mouseWorldPos.x, 0, mouseWorldPos.y);
 
-      const ringGeo = new THREE.RingGeometry(2, 60, 32);
-      ringGeo.rotateX(-Math.PI / 2);
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: 0xc084fc,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.5
-      });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.position.y = 0.8;
-      this.placementPreviewGroup.add(ring);
+      const key = `s_${state.activePlacement.subType}`;
+      if (key !== this.placementPreviewKey) {
+        this.placementPreviewKey = key;
+        this.clearPreviewGroup();
+
+        const ringGeo = new THREE.RingGeometry(2, 60, 32);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0xc084fc,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.5
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.y = 0.8;
+        this.placementPreviewGroup.add(ring);
+      }
       this.placementPreviewGroup.visible = true;
     }
   }
@@ -3827,8 +3914,8 @@ export class ThreeRenderer {
       }
 
       // Animate construction crane and hoist if castle is upgrading
-      const craneArm = group.getObjectByName('craneArm');
-      const hoistBucket = group.getObjectByName('hoistBucket');
+      const craneArm = this.getPart(group, 'craneArm');
+      const hoistBucket = this.getPart(group, 'hoistBucket');
       if (craneArm) {
         craneArm.rotation.y = Math.sin(time * 1.2) * 0.45;
       }
@@ -3837,7 +3924,7 @@ export class ThreeRenderer {
       }
 
       // Animate hovering beacon crystal on upgraded Palace
-      const beacon = group.getObjectByName('beaconCrystal');
+      const beacon = this.getPart(group, 'beaconCrystal');
       if (beacon) {
         beacon.rotation.y = time * 1.8;
         const baseY = beacon.userData.baseY || beacon.position.y;
@@ -3845,7 +3932,7 @@ export class ThreeRenderer {
       }
 
       // Animate smoke particles in chimneys, campfires & forges
-      const smokeEmitter = group.getObjectByName('smokeEmitter');
+      const smokeEmitter = this.getPart(group, 'smokeEmitter');
       if (smokeEmitter) {
         const smokeTime = Date.now() * 0.0018;
         smokeEmitter.children.forEach((puff, idx) => {
@@ -6472,7 +6559,7 @@ export class ThreeRenderer {
       mesh.visible = this.gridManager.isPixelExplored(t.x, t.y);
 
       // Gentle golden shimmer bob
-      const shine = mesh.getObjectByName('treasureGlow');
+      const shine = this.getPart(mesh, 'treasureGlow');
       if (shine) {
         shine.rotation.z = time * 0.8;
       }
@@ -6667,10 +6754,10 @@ export class ThreeRenderer {
       pGroup.visible = this.gridManager.isPixelVisible(p.x, p.y);
 
       // Night Torch illumination
-      const torch = pGroup.getObjectByName('nightTorch');
+      const torch = this.getPart(pGroup, 'nightTorch');
       if (torch) {
         torch.visible = isNightOrDusk;
-        const flame = torch.getObjectByName('torchFlame');
+        const flame = this.getPart(torch, 'torchFlame');
         if (flame) {
           flame.scale.y = 1.0 + Math.sin(time * 8.0) * 0.2;
         }
@@ -6728,13 +6815,13 @@ export class ThreeRenderer {
       pGroup.rotation.z = bodySway;
 
       if (!controller) {
-        const leftLeg = pGroup.getObjectByName('leftLeg');
-        const rightLeg = pGroup.getObjectByName('rightLeg');
+        const leftLeg = this.getPart(pGroup,'leftLeg');
+        const rightLeg = this.getPart(pGroup,'rightLeg');
         if (leftLeg) leftLeg.rotation.x = legStride;
         if (rightLeg) rightLeg.rotation.x = -legStride;
 
         // Smooth Realistic Hammering Swing (no high frequency jitter)
-        const rightArm = pGroup.getObjectByName('rightArm');
+        const rightArm = this.getPart(pGroup,'rightArm');
         if (rightArm) {
           if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
             const hammerPhase = (Date.now() * 0.005) % (Math.PI * 2);
@@ -6810,14 +6897,13 @@ export class ThreeRenderer {
         this.updateHeroNameplate(h);
       }
 
-      heroGroup.position.set(h.x, this.getTerrainHeight(h.x, h.y), h.y);
       heroGroup.visible = this.gridManager.isPixelVisible(h.x, h.y);
 
       // Night Torch illumination
-      const torch = heroGroup.getObjectByName('nightTorch');
+      const torch = this.getPart(heroGroup, 'nightTorch');
       if (torch) {
         torch.visible = isNightOrDusk;
-        const flame = torch.getObjectByName('torchFlame');
+        const flame = this.getPart(torch, 'torchFlame');
         if (flame) {
           flame.scale.y = 1.0 + Math.sin(time * 8.0) * 0.2;
         }
@@ -6889,17 +6975,18 @@ export class ThreeRenderer {
       const bodySway = !controller && isMoving ? Math.sin(time * strideFreq) * 0.09 : 0;
       const legStride = isMoving ? Math.sin(time * strideFreq) * 0.65 : 0;
 
-      heroGroup.position.set(h.x, this.getTerrainHeight(h.x, h.y) + stepBob, h.y);
+      const heroGroundY = this.getTerrainHeight(h.x, h.y);
+      heroGroup.position.set(h.x, heroGroundY + stepBob, h.y);
       heroGroup.rotation.z = bodySway;
 
       if (!controller) {
-        const leftLeg = heroGroup.getObjectByName('leftLeg');
-        const rightLeg = heroGroup.getObjectByName('rightLeg');
+        const leftLeg = this.getPart(heroGroup,'leftLeg');
+        const rightLeg = this.getPart(heroGroup,'rightLeg');
         if (leftLeg) leftLeg.rotation.x = legStride;
         if (rightLeg) rightLeg.rotation.x = -legStride;
 
-        const rightArm = heroGroup.getObjectByName('rightArm');
-        const leftArm = heroGroup.getObjectByName('leftArm');
+        const rightArm = this.getPart(heroGroup,'rightArm');
+        const leftArm = this.getPart(heroGroup,'leftArm');
 
         if (rightArm) {
           if (h.isAttackingAnimation > 0) {
@@ -7128,7 +7215,7 @@ export class ThreeRenderer {
       mGroup.visible = this.gridManager.isPixelVisible(m.x, m.y);
 
       // Keep ground shadow projected on terrain beneath flying dragon
-      const groundShadow = mGroup.getObjectByName('dragonShadow');
+      const groundShadow = this.getPart(mGroup,'dragonShadow');
       if (groundShadow) {
         groundShadow.position.y = -flightAltitude + 0.2;
       }
@@ -7152,11 +7239,11 @@ export class ThreeRenderer {
 
       // Type-specific Attack & Locomotion Animations
       if (m.type === 'red_dragon') {
-        const wingL = mGroup.getObjectByName('wingL');
-        const wingR = mGroup.getObjectByName('wingR');
-        const dragonHead = mGroup.getObjectByName('dragonHead');
-        const dragonTail = mGroup.getObjectByName('dragonTail');
-        const dragonBody = mGroup.getObjectByName('dragonBody');
+        const wingL = this.getPart(mGroup,'wingL');
+        const wingR = this.getPart(mGroup,'wingR');
+        const dragonHead = this.getPart(mGroup,'dragonHead');
+        const dragonTail = this.getPart(mGroup,'dragonTail');
+        const dragonBody = this.getPart(mGroup,'dragonBody');
 
         // Dynamic Soaring & Wing Flap: vigorous wing beat when moving/attacking, steady soaring glide when hovering
         const flapRate = isMoving ? 0.95 : 0.45;
@@ -7191,11 +7278,11 @@ export class ThreeRenderer {
           dragonBody.rotation.x = isAttacking ? -0.2 : Math.sin(time * 0.4) * 0.06;
         }
       } else if (m.type === 'giant_rat') {
-        const ratTail = mGroup.getObjectByName('ratTail');
-        const paw1 = mGroup.getObjectByName('paw1');
-        const paw2 = mGroup.getObjectByName('paw2');
-        const ratHead = mGroup.getObjectByName('ratHead');
-        const ratBody = mGroup.getObjectByName('ratBody');
+        const ratTail = this.getPart(mGroup,'ratTail');
+        const paw1 = this.getPart(mGroup,'paw1');
+        const paw2 = this.getPart(mGroup,'paw2');
+        const ratHead = this.getPart(mGroup,'ratHead');
+        const ratBody = this.getPart(mGroup,'ratBody');
 
         if (isAttacking) {
           if (ratBody) ratBody.position.z = attackFactor * 2.5;
@@ -7211,10 +7298,10 @@ export class ThreeRenderer {
           if (ratTail) ratTail.rotation.y = Math.sin(time * 3) * 0.4;
         }
       } else if (m.type === 'skeleton') {
-        const rightArm = mGroup.getObjectByName('rightArm');
-        const leftArm = mGroup.getObjectByName('leftArm');
-        const leftLeg = mGroup.getObjectByName('leftLeg');
-        const rightLeg = mGroup.getObjectByName('rightLeg');
+        const rightArm = this.getPart(mGroup,'rightArm');
+        const leftArm = this.getPart(mGroup,'leftArm');
+        const leftLeg = this.getPart(mGroup,'leftLeg');
+        const rightLeg = this.getPart(mGroup,'rightLeg');
 
         if (leftLeg) leftLeg.rotation.x = walkStride;
         if (rightLeg) rightLeg.rotation.x = -walkStride;
@@ -7232,10 +7319,10 @@ export class ThreeRenderer {
           leftArm.rotation.x = isAttacking ? -attackFactor * 0.6 : (isMoving ? walkStride * 0.7 : 0);
         }
       } else if (m.type === 'zombie') {
-        const rightArm = mGroup.getObjectByName('rightArm');
-        const leftArm = mGroup.getObjectByName('leftArm');
-        const leftLeg = mGroup.getObjectByName('leftLeg');
-        const rightLeg = mGroup.getObjectByName('rightLeg');
+        const rightArm = this.getPart(mGroup,'rightArm');
+        const leftArm = this.getPart(mGroup,'leftArm');
+        const leftLeg = this.getPart(mGroup,'leftLeg');
+        const rightLeg = this.getPart(mGroup,'rightLeg');
 
         if (leftLeg) leftLeg.rotation.x = walkStride * 0.7;
         if (rightLeg) rightLeg.rotation.x = -walkStride * 0.7;
@@ -7248,10 +7335,10 @@ export class ThreeRenderer {
           if (leftArm) leftArm.rotation.x = -0.4 - (isMoving ? Math.sin(time * 1.5) * 0.2 : 0);
         }
       } else if (m.type === 'goblin_spearman') {
-        const rightArm = mGroup.getObjectByName('rightArm');
-        const leftArm = mGroup.getObjectByName('leftArm');
-        const leftLeg = mGroup.getObjectByName('leftLeg');
-        const rightLeg = mGroup.getObjectByName('rightLeg');
+        const rightArm = this.getPart(mGroup,'rightArm');
+        const leftArm = this.getPart(mGroup,'leftArm');
+        const leftLeg = this.getPart(mGroup,'leftLeg');
+        const rightLeg = this.getPart(mGroup,'rightLeg');
 
         if (leftLeg) leftLeg.rotation.x = walkStride * 1.2;
         if (rightLeg) rightLeg.rotation.x = -walkStride * 1.2;
@@ -7267,9 +7354,9 @@ export class ThreeRenderer {
         }
         if (leftArm) leftArm.rotation.x = isMoving ? walkStride * 0.8 : 0;
       } else if (m.type === 'goblin_shaman') {
-        const rightArm = mGroup.getObjectByName('rightArm');
-        const leftLeg = mGroup.getObjectByName('leftLeg');
-        const rightLeg = mGroup.getObjectByName('rightLeg');
+        const rightArm = this.getPart(mGroup,'rightArm');
+        const leftLeg = this.getPart(mGroup,'leftLeg');
+        const rightLeg = this.getPart(mGroup,'rightLeg');
 
         if (leftLeg) leftLeg.rotation.x = walkStride;
         if (rightLeg) rightLeg.rotation.x = -walkStride;
@@ -7282,11 +7369,11 @@ export class ThreeRenderer {
           }
         }
       } else if (m.type === 'dire_wolf' || m.type === 'werewolf' || m.type === 'troll') {
-        const wolfTail = mGroup.getObjectByName('wolfTail');
-        const paw1 = mGroup.getObjectByName('paw1');
-        const paw2 = mGroup.getObjectByName('paw2');
-        const wolfHead = mGroup.getObjectByName('wolfHead');
-        const wolfBody = mGroup.getObjectByName('wolfBody');
+        const wolfTail = this.getPart(mGroup,'wolfTail');
+        const paw1 = this.getPart(mGroup,'paw1');
+        const paw2 = this.getPart(mGroup,'paw2');
+        const wolfHead = this.getPart(mGroup,'wolfHead');
+        const wolfBody = this.getPart(mGroup,'wolfBody');
 
         if (isAttacking) {
           if (wolfBody) wolfBody.position.z = attackFactor * 3.0;
@@ -7302,10 +7389,10 @@ export class ThreeRenderer {
           if (wolfTail) wolfTail.rotation.y = Math.sin(time * 2.5) * 0.35;
         }
       } else if (m.type === 'minotaur') {
-        const rightArm = mGroup.getObjectByName('rightArm');
-        const leftArm = mGroup.getObjectByName('leftArm');
-        const leftLeg = mGroup.getObjectByName('leftLeg');
-        const rightLeg = mGroup.getObjectByName('rightLeg');
+        const rightArm = this.getPart(mGroup,'rightArm');
+        const leftArm = this.getPart(mGroup,'leftArm');
+        const leftLeg = this.getPart(mGroup,'leftLeg');
+        const rightLeg = this.getPart(mGroup,'rightLeg');
 
         if (leftLeg) leftLeg.rotation.x = walkStride * 0.8;
         if (rightLeg) rightLeg.rotation.x = -walkStride * 0.8;
@@ -7319,8 +7406,8 @@ export class ThreeRenderer {
         }
         if (leftArm) leftArm.rotation.x = isMoving ? walkStride * 0.6 : 0;
       } else if (m.type === 'necromancer' || m.type === 'vampire_lord') {
-        const rightArm = mGroup.getObjectByName('rightArm');
-        const leftArm = mGroup.getObjectByName('leftArm');
+        const rightArm = this.getPart(mGroup,'rightArm');
+        const leftArm = this.getPart(mGroup,'leftArm');
 
         // Levitation hovering
         mGroup.position.y = Math.sin(time * 2.0) * 0.8 + (isAttacking ? attackFactor * 2.5 : 0);
@@ -7345,8 +7432,8 @@ export class ThreeRenderer {
           }
         }
       } else if (m.type === 'harpy') {
-        const wingL = mGroup.getObjectByName('wingL');
-        const wingR = mGroup.getObjectByName('wingR');
+        const wingL = this.getPart(mGroup,'wingL');
+        const wingR = this.getPart(mGroup,'wingR');
         const flap = Math.sin(time * (isMoving ? 9 : 5)) * 0.55;
         if (wingL) wingL.rotation.z = flap;
         if (wingR) wingR.rotation.z = -flap;
@@ -8476,10 +8563,10 @@ export class ThreeRenderer {
 
       // Night Hand Lantern illumination
       const isNightOrDusk = state.dayPhase === 'night' || state.dayPhase === 'dusk' || state.dayPhase === 'dawn';
-      const torch = tcGroup.getObjectByName('nightTorch');
+      const torch = this.getPart(tcGroup, 'nightTorch');
       if (torch) {
         torch.visible = isNightOrDusk;
-        const flame = torch.getObjectByName('torchFlame');
+        const flame = this.getPart(torch, 'torchFlame');
         if (flame) {
           flame.scale.y = 1.0 + Math.sin(time * 8.0) * 0.2;
         }
@@ -8535,14 +8622,14 @@ export class ThreeRenderer {
       tcGroup.rotation.z = bodySway;
 
       if (!controller) {
-        const leftLeg = tcGroup.getObjectByName('leftLeg');
-        const rightLeg = tcGroup.getObjectByName('rightLeg');
+        const leftLeg = this.getPart(tcGroup,'leftLeg');
+        const rightLeg = this.getPart(tcGroup,'rightLeg');
         if (leftLeg) leftLeg.rotation.x = legStride;
         if (rightLeg) rightLeg.rotation.x = -legStride;
       }
 
       // Dynamic Gold Sack Expansion
-      const sack = tcGroup.getObjectByName('taxSack');
+      const sack = this.getPart(tcGroup,'taxSack');
       if (sack) {
         const scaleFactor = 1.0 + Math.min(1.2, tc.goldCarried / 120);
         sack.scale.setScalar(scaleFactor);

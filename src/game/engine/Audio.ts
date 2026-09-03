@@ -182,6 +182,7 @@ class SoundManager {
 
     try {
       const audio = new Audio(`/audio/music/${trackName}.mp3`);
+      audio.preload = 'none'; // don't hog bandwidth during model loading; buffer on play
       audio.loop = true;
       audio.volume = this.enabled && !this.isMuted ? this.musicVolume : 0;
       audio.play().catch(() => {

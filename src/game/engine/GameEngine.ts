@@ -8,6 +8,8 @@ import { FlagManager } from './Flags';
 import { GridManager } from './Grid';
 import { HeroAIManager } from './HeroAI';
 import { MonsterAIManager } from './MonsterAI';
+import { bossIdFor, evaluateObjective, getQuestChain, initQuestsForScenario } from '../quests';
+import { QuestBossSpawn } from '../types';
 
 export class GameEngine {
   public state: GameState;
@@ -25,6 +27,9 @@ export class GameEngine {
   private treasureRespawnTimer: number = 45.0;
 
   private onStateChangeCallback?: (state: GameState) => void;
+  // Fog-of-war visibility changes slowly; recomputing it every tick is pure waste.
+  private visibilityTimer: number = 0;
+  private static readonly VISIBILITY_INTERVAL: number = 0.12;
 
   constructor(scenario: Scenario) {
     this.gridManager = new GridManager(scenario.mapWidth, scenario.mapHeight, MAP_CONFIG.TILE_SIZE);
@@ -83,6 +88,7 @@ export class GameEngine {
       this.gridManager.grid = data.grid;
       this.gridManager.explored = data.explored;
       this.gridManager.resetVisibility();
+      this.gridManager.rebuildTerrainBlockedCache();
       this.gridManager.roadVersion++;
 
       // Strip stale pathfinding paths so entities re-path against restored terrain
@@ -97,8 +103,13 @@ export class GameEngine {
         scenario,
         grid: this.gridManager.grid,
         fogOfWar: this.gridManager.visible,
-        exploredMap: this.gridManager.explored
+        exploredMap: this.gridManager.explored,
+        // Migrate older saves (v1) that predate quests / bounty stats
+        quests: Array.isArray((data.state as GameState).quests) && (data.state as GameState).quests.length > 0
+          ? (data.state as GameState).quests
+          : initQuestsForScenario(scenario.id)
       };
+      this.state.stats.bountiesPlaced = this.state.stats.bountiesPlaced ?? 0;
       this.cottageSproutTimer = data.timers.cottageSproutTimer;
       this.peasantReplenishTimer = data.timers.peasantReplenishTimer;
       this.warPartyTimer = data.timers.warPartyTimer ?? 100.0;
@@ -153,10 +164,12 @@ export class GameEngine {
         heroesLost: 0,
         buildingsConstructed: 0,
         lairsDestroyed: 0,
-        spellsCast: 0,
-        dayTime: 800, // Starts at 8:00 AM in bright, clear morning daylight
-        daysPassed: 1
-      },
+      spellsCast: 0,
+      bountiesPlaced: 0,
+      dayTime: 800, // Starts at 8:00 AM in bright, clear morning daylight
+      daysPassed: 1
+    },
+    quests: initQuestsForScenario(scenario.id),
       selectedEntity: null,
       camera: {
         x: centerX,
@@ -329,8 +342,12 @@ export class GameEngine {
     // 2. Passive Mana Regeneration
     this.state.mana = Math.min(this.state.maxMana, this.state.mana + 3.0 * delta);
 
-    // 3. Recalculate Fog of War / Line of Sight
-    this.recalculateVisibility();
+    // 3. Recalculate Fog of War / Line of Sight (throttled ~8Hz — vision changes slowly)
+    this.visibilityTimer -= delta;
+    if (this.visibilityTimer <= 0) {
+      this.visibilityTimer = GameEngine.VISIBILITY_INTERVAL;
+      this.recalculateVisibility();
+    }
 
     // 4. Update Buildings & Peasant Construction & Peasant Cottage Sprouting
     this.updateBuildings(delta);
@@ -339,6 +356,9 @@ export class GameEngine {
 
     // 4.5 Event Director: war parties, ambushes, caravans & treasure respawns
     this.updateEventsDirector(delta);
+
+    // 4.6 Quests: scenario plot objectives polled from live state
+    this.updateQuests(delta);
 
     // 5. Update Monster Lairs
     for (const lair of this.state.lairs) {
@@ -443,16 +463,24 @@ export class GameEngine {
         this.state.stats.monstersKilled += 1;
         audioManager.playSwordClash();
 
-        // Award kill XP (and optional pocket loot) to the hero(es) involved
-        const nearbyHeroes = this.state.heroes.filter(
-          h => !h.isDead && (h.targetEntityId === monster.id || Math.hypot(h.x - monster.x, h.y - monster.y) < 180)
-        );
+        // Award kill XP (and optional pocket loot) to the hero(es) involved.
+        // Single pass: nearest hero is the killer, the rest get assist XP (no filter+sort allocs).
+        let killer: Hero | null = null;
+        let killerDist = Infinity;
+        let nearbyCount = 0;
+        for (const h of this.state.heroes) {
+          if (h.isDead) continue;
+          const d = Math.hypot(h.x - monster.x, h.y - monster.y);
+          if (h.targetEntityId === monster.id || d < 180) {
+            nearbyCount++;
+            if (d < killerDist) {
+              killerDist = d;
+              killer = h;
+            }
+          }
+        }
 
-        if (nearbyHeroes.length > 0) {
-          nearbyHeroes.sort((a, b) => Math.hypot(a.x - monster.x, a.y - monster.y) - Math.hypot(b.x - monster.x, b.y - monster.y));
-
-          // Primary killer
-          const killer = nearbyHeroes[0];
+        if (killer) {
           killer.kills += 1;
           killer.xp += monster.xpReward;
           this.addFloatingText(`+${monster.xpReward} XP`, killer.x, killer.y - 20, '#38bdf8');
@@ -462,12 +490,16 @@ export class GameEngine {
             this.addFloatingText(`+${monster.goldBountyReward}g`, killer.x, killer.y - 32, '#fbbf24');
           }
 
-          // Assisting heroes
-          for (let k = 1; k < nearbyHeroes.length; k++) {
-            const assistHero = nearbyHeroes[k];
+          // Assisting heroes share partial XP
+          if (nearbyCount > 1) {
             const assistXp = Math.round(monster.xpReward * 0.35);
-            assistHero.xp += assistXp;
-            this.addFloatingText(`+${assistXp} XP (Assist)`, assistHero.x, assistHero.y - 20, '#38bdf8');
+            for (const h of this.state.heroes) {
+              if (h === killer || h.isDead) continue;
+              if (h.targetEntityId === monster.id || Math.hypot(h.x - monster.x, h.y - monster.y) < 180) {
+                h.xp += assistXp;
+                this.addFloatingText(`+${assistXp} XP (Assist)`, h.x, h.y - 20, '#38bdf8');
+              }
+            }
           }
         }
 
@@ -636,6 +668,117 @@ export class GameEngine {
     if (this.onStateChangeCallback) {
       this.onStateChangeCallback(this.state);
     }
+  }
+
+  // --- QUESTS: plot layer polled from live state (see src/game/quests.ts) ---
+  private questTick: number = 0;
+
+  private updateQuests(delta: number) {
+    if (this.state.isGameOver) return;
+    this.questTick -= delta;
+    if (this.questTick > 0) return;
+    this.questTick = 0.5;
+
+    const chain = getQuestChain(this.state.scenario.id);
+    if (chain.length === 0 || !Array.isArray(this.state.quests)) return;
+
+    for (const progress of this.state.quests) {
+      if (progress.status !== 'active') continue;
+      const def = chain.find(q => q.id === progress.questId);
+      if (!def) continue;
+      const stage = def.stages[progress.stageIndex];
+      if (!stage) continue;
+
+      // Entering a new stage: snapshot stat baselines, announce, spawn boss
+      if (progress.baselineStage !== progress.stageIndex) {
+        progress.baselineStage = progress.stageIndex;
+        const s = this.state.stats;
+        progress.baseline = {
+          heroesRecruited: s.heroesRecruited,
+          buildingsConstructed: s.buildingsConstructed,
+          lairsDestroyed: s.lairsDestroyed,
+          bountiesPlaced: s.bountiesPlaced || 0
+        };
+        progress.bossSpawned = false;
+        this.addNotification('New Objective', `${def.name} — ${stage.title}: ${stage.introText}`, 'quest');
+        if (stage.spawnBoss) {
+          progress.bossSpawned = this.spawnQuestBoss(def.id, progress.stageIndex, stage.spawnBoss);
+        }
+      }
+
+      const bossId = bossIdFor(def.id, progress.stageIndex);
+      const bossAlive = progress.bossSpawned && this.state.monsters.some(m => m.id === bossId && m.hp > 0);
+      const allDone = stage.objectives.every(o => evaluateObjective(this.state, progress, o, bossAlive).done);
+      if (!allDone) continue;
+
+      if (stage.rewardGold) {
+        this.state.treasuryGold += stage.rewardGold;
+        this.state.stats.goldEarned += stage.rewardGold;
+      }
+      if (stage.rewardMana) {
+        this.state.mana = Math.min(this.state.maxMana, this.state.mana + stage.rewardMana);
+      }
+      const rewardText = [stage.rewardGold ? `+${stage.rewardGold}g` : null, stage.rewardMana ? `+${stage.rewardMana} mana` : null]
+        .filter(Boolean).join(' ');
+      this.addNotification('Objective Complete', `${stage.title}${rewardText ? ` (${rewardText})` : ''}`, 'success');
+
+      progress.stageIndex += 1;
+      progress.bossSpawned = false;
+
+      if (progress.stageIndex >= def.stages.length) {
+        progress.status = 'complete';
+        this.addNotification('Quest Complete', `${def.name} — ${def.act} fulfilled. The bards will sing of this.`, 'quest');
+        const idx = chain.findIndex(q => q.id === def.id);
+        const next = chain[idx + 1];
+        if (next && !next.side) {
+          const np = this.state.quests.find(p => p.questId === next.id);
+          if (np && np.status === 'locked') {
+            np.status = 'active';
+            this.addNotification('New Quest', `${next.name} (${next.act}): ${next.description}`, 'quest');
+          }
+        }
+      }
+    }
+  }
+
+  private spawnQuestBoss(questId: string, stageIndex: number, spawn: QuestBossSpawn): boolean {
+    const def = MONSTER_DEFINITIONS[spawn.monsterType];
+    if (!def) return false;
+    const lairs = this.state.lairs.filter(l => l.hp > 0);
+    if (lairs.length === 0) return true; // nothing to anchor to; objective resolves itself
+    const preferred = spawn.nearLairType ? lairs.filter(l => l.type === spawn.nearLairType) : [];
+    const lair = preferred.length > 0
+      ? preferred[Math.floor(Math.random() * preferred.length)]
+      : lairs[Math.floor(Math.random() * lairs.length)];
+    const ts = this.state.tileSize;
+    const pos = this.gridManager.findNearestWalkablePosition(
+      (lair.x + lair.width / 2) * ts + 40, (lair.y + lair.height / 2) * ts,
+      this.state.buildings, this.state.lairs, lair.id
+    );
+    const id = bossIdFor(questId, stageIndex);
+    this.state.monsters.push({
+      id,
+      name: spawn.name,
+      type: spawn.monsterType,
+      x: pos.x,
+      y: pos.y,
+      hp: Math.round(def.hp * spawn.hpMult),
+      maxHp: Math.round(def.hp * spawn.hpMult),
+      attackPower: Math.round(def.attackPower * spawn.attackMult),
+      defense: def.defense,
+      speed: def.speed,
+      attackRange: def.attackRange,
+      attackCooldown: def.attackCooldown,
+      currentCooldown: 0,
+      xpReward: def.xpReward * 3,
+      goldBountyReward: def.goldBountyReward * 3,
+      state: 'wandering',
+      direction: 'down',
+      isAttackingAnimation: 0,
+      isBoss: true
+    });
+    this.addNotification(spawn.title, spawn.introText, 'danger', { x: pos.x, y: pos.y });
+    return true;
   }
 
   // --- EVENT DIRECTOR: keeps the wilds dangerous & the kingdom's story moving ---
@@ -1103,6 +1246,11 @@ export class GameEngine {
       }
     }
 
+    // Hoisted out of the per-peasant loop: candidate work sites change slowly, and
+    // re-filtering all buildings for every idle peasant every tick is O(P×B).
+    const unbuiltSites = this.state.buildings.filter(b => b.isConstructing && b.hp > 0);
+    const damagedSites = this.state.buildings.filter(b => !b.isConstructing && b.hp > 0 && b.hp < b.maxHp * 0.95);
+
     // Process each peasant builder
     for (let pIdx = 0; pIdx < this.state.peasants.length; pIdx++) {
       const p = this.state.peasants[pIdx];
@@ -1124,25 +1272,24 @@ export class GameEngine {
 
       if (p.state === 'idle_at_palace') {
         // Priority 1: Unfinished construction sites (Prioritize sites with 0 active workers first, then highest progress)
-        const unbuiltSites = this.state.buildings.filter(b => b.isConstructing && b.hp > 0);
         let bestTarget: Building | null = null;
 
         if (unbuiltSites.length > 0) {
-          unbuiltSites.sort((a, b) => {
+          // Smallest worker crew first, then highest progress (sort a copy; arrays are tiny)
+          const ranked = unbuiltSites.slice().sort((a, b) => {
             const countA = (peasantsOnBuilding.get(a.id) || []).length;
             const countB = (peasantsOnBuilding.get(b.id) || []).length;
             if (countA !== countB) return countA - countB; // Fewest workers first!
             return (b.constructionProgress || 0) - (a.constructionProgress || 0); // Highest progress first
           });
-          bestTarget = unbuiltSites[0];
+          bestTarget = ranked[0];
         }
 
         // Priority 2: Damaged buildings needing repair
         if (!bestTarget) {
-          const damaged = this.state.buildings.filter(b => !b.isConstructing && b.hp > 0 && b.hp < b.maxHp * 0.95);
-          if (damaged.length > 0) {
-            damaged.sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp));
-            bestTarget = damaged[0];
+          if (damagedSites.length > 0) {
+            const ranked = damagedSites.slice().sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp));
+            bestTarget = ranked[0];
           }
         }
 
@@ -1771,6 +1918,7 @@ export class GameEngine {
     };
 
     this.state.flags.push(newFlag);
+    this.state.stats.bountiesPlaced = (this.state.stats.bountiesPlaced ?? 0) + 1;
     audioManager.playFlagPlaced();
     this.state.activePlacement = null;
     this.addNotification('Bounty Posted', `${type.toUpperCase()} bounty of ${bountyAmount}g placed!`, 'info', { x, y });

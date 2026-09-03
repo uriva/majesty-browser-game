@@ -18,6 +18,7 @@ import { TaxCollectorInspector } from './TaxCollectorInspector';
 import { PeasantInspector } from './PeasantInspector';
 import { FlagInspector } from './FlagInspector';
 import { HeroRosterBar } from './HeroRosterBar';
+import { QuestTracker } from './QuestTracker';
 import { TombstoneInspector } from './TombstoneInspector';
 import { ScenarioModal } from './ScenarioModal';
 import { SaveLoadModal } from './SaveLoadModal';
@@ -65,14 +66,17 @@ export const GameView: React.FC = () => {
   const trackingHeroIdRef = useRef<string | null>(null);
   const lastHudSyncRef = useRef<number>(0);
 
-  // Track asset readiness
+  // Track asset readiness (with honest progress for the loading veil)
+  const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 1, percent: 0, label: 'Waking the scribes…', deferred: false });
   useEffect(() => {
     const reg = ModelRegistry.getInstance();
     if (reg.isReady) {
       setAssetsReady(true);
+      setLoadProgress(reg.getProgress());
       return;
     }
     const check = () => {
+      setLoadProgress(reg.getProgress());
       if (reg.isReady) {
         setAssetsReady(true);
       }
@@ -647,11 +651,17 @@ export const GameView: React.FC = () => {
               Summoning Sovereign Realm
             </h2>
             <p className="text-xs text-slate-400 font-sans tracking-wide">
-              Rigging battle banners, marshaling guild champions & preparing kingdom...
+              {loadProgress.label}
             </p>
             <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-amber-500/20 mt-2">
-              <div className="h-full bg-gradient-to-r from-amber-500 to-amber-300 animate-pulse w-full rounded-full" />
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-200"
+                style={{ width: `${loadProgress.percent}%` }}
+              />
             </div>
+            <p className="text-[10px] text-slate-500 font-sans tracking-widest">
+              {loadProgress.loaded}/{loadProgress.total} — {loadProgress.percent}%
+            </p>
           </div>
         </div>
       )}
@@ -711,9 +721,9 @@ export const GameView: React.FC = () => {
         </div>
       )}
 
-      {/* Top Left: Hero Roster Bar */}
+      {/* Top Left: Hero Roster Bar + Royal Chronicle (quests) */}
       {gameState && (
-        <div className="absolute top-16 left-4 z-20 pointer-events-none">
+        <div className="absolute top-16 left-4 z-20 pointer-events-none flex flex-col gap-2 max-h-[calc(100vh-8rem)] overflow-y-auto">
           <HeroRosterBar
             heroes={gameState.heroes}
             corpses={gameState.corpses}
@@ -739,6 +749,7 @@ export const GameView: React.FC = () => {
               }
             }}
           />
+          <QuestTracker state={gameState} />
         </div>
       )}
 

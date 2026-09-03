@@ -239,9 +239,18 @@ export class MonsterAIManager {
       } else if (t === 'building') {
         const b = buildings.find(x => x.id === monster.targetEntityId);
         if (b && b.hp > 0 && (!b.isConstructing || b.constructionProgress > 0)) {
-          const tp = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
-          if (Math.hypot(tp.x - monster.x, tp.y - monster.y) < leash * 1.2) {
-            stickyTarget = { x: tp.x, y: tp.y, id: b.id, type: 'building' };
+          // Cheap center-range pre-filter: the exterior point can never be closer than
+          // (centerDist - halfDiag - margin), so skip the expensive perimeter search when
+          // the building is provably beyond the leash.
+          const ts = this.gridManager.tileSize;
+          const bcx = (b.x + b.width / 2) * ts;
+          const bcy = (b.y + b.height / 2) * ts;
+          const halfDiag = Math.hypot(b.width, b.height) * ts * 0.5;
+          if (Math.hypot(bcx - monster.x, bcy - monster.y) <= leash * 1.2 + halfDiag + 24) {
+            const tp = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
+            if (Math.hypot(tp.x - monster.x, tp.y - monster.y) < leash * 1.2) {
+              stickyTarget = { x: tp.x, y: tp.y, id: b.id, type: 'building' };
+            }
           }
         }
       }
@@ -323,10 +332,21 @@ export class MonsterAIManager {
 
     // E. Check for Buildings / Cottages to raid (Stop at exterior wall, do not walk inside!)
     if (!closestTarget) {
+      const ts = this.gridManager.tileSize;
       for (const b of buildings) {
         if (b.hp <= 0) continue;
         // Blueprints cannot be attacked before construction begins (first builder arrives)
         if (b.isConstructing && b.constructionProgress <= 0) continue;
+
+        const raidRange = b.type === 'peasant_cottage' ? 180 : (b.type === 'palace' ? 140 : 150);
+
+        // Cheap center-range pre-filter before the expensive exterior-perimeter search:
+        // a building whose center is beyond (raidRange + halfDiag + margin) can never
+        // have an exterior point within raidRange, so it could never match below.
+        const bcx = (b.x + b.width / 2) * ts;
+        const bcy = (b.y + b.height / 2) * ts;
+        const halfDiag = Math.hypot(b.width, b.height) * ts * 0.5;
+        if (Math.hypot(bcx - monster.x, bcy - monster.y) > raidRange + halfDiag + 24) continue;
 
         // If a peasant is currently repairing/hammering this building, target the peasant instead!
         const repairingPeasant = peasants.find(p => p.hp > 0 && p.targetBuildingId === b.id && (p.state === 'repairing_building' || p.state === 'hammering_construction'));
@@ -339,7 +359,6 @@ export class MonsterAIManager {
         const targetPos = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
         const dist = Math.hypot(targetPos.x - monster.x, targetPos.y - monster.y);
 
-        const raidRange = b.type === 'peasant_cottage' ? 180 : (b.type === 'palace' ? 140 : 150);
         if (dist < raidRange) {
           closestTarget = { x: targetPos.x, y: targetPos.y, id: b.id, type: 'building' };
           break;

@@ -6,6 +6,12 @@ import { GridManager } from './Grid';
 export class HeroAIManager {
   private gridManager: GridManager;
 
+  // Per-updateHero cached combat evaluation (avoids O(H) ally scans per monster check).
+  // Only valid while updateHero for a single hero is executing (synchronous).
+  private activePower: number = 0;
+  private activeBasePower: number = 0;
+  private activeCourage: number = 1;
+
   constructor(gridManager: GridManager) {
     this.gridManager = gridManager;
   }
@@ -60,10 +66,22 @@ export class HeroAIManager {
       if (onFloatingText) onFloatingText('LEVEL UP!', hero.x, hero.y - 20, '#fbbf24');
     }
 
-    // Hero sight reveals fog of war
-    const heroTile = this.gridManager.pixelToTile(hero.x, hero.y);
-    const sightRadius = hero.heroClass === 'ranger' ? 8 : 6;
-    this.gridManager.revealArea(heroTile.x, heroTile.y, sightRadius);
+    // Fog of war is recomputed centrally (throttled) in GameEngine.recalculateVisibility —
+    // per-hero reveals here duplicated that work every tick for every hero.
+
+    // Cache this hero's combat power once per tick: isOverwhelming() is called per
+    // monster below, and each call used to re-scan all allies (O(H×M×H) per frame).
+    let nearbyAllies = 0;
+    for (const h of allHeroes) {
+      if (h.id !== hero.id && !h.isDead && Math.hypot(h.x - hero.x, h.y - hero.y) < 160) {
+        nearbyAllies++;
+      }
+    }
+    const basePower = hero.level * 12 + hero.attackPower +
+      hero.equipment.weaponLevel * 8 + hero.equipment.armorLevel * 6 + hero.maxHp / 10;
+    this.activeBasePower = basePower;
+    this.activePower = basePower * (1 + Math.min(nearbyAllies, 4) * 0.18);
+    this.activeCourage = 0.55 + hero.traits.bravery / 250;
 
     // State Machine Decision Cycle
     hero.stateTimer -= delta;
@@ -107,7 +125,7 @@ export class HeroAIManager {
     if ((hero.fearCooldown ?? 0) <= 0 && hero.state !== 'fleeing' && hero.state !== 'attacking_target' && hero.state !== 'resting_at_guild' && hero.state !== 'visiting_inn') {
       const terrorRadius = 85;
       const terror = monsters.find(
-        m => m.hp > 0 && this.isOverwhelming(hero, m, allHeroes) && Math.hypot(m.x - hero.x, m.y - hero.y) < terrorRadius
+        m => m.hp > 0 && this.isOverwhelmingFast(m) && Math.hypot(m.x - hero.x, m.y - hero.y) < terrorRadius
       );
       const fearChancePerSec = 0.25 * Math.max(0.08, (100 - hero.traits.bravery) / 100);
       if (terror && Math.random() < fearChancePerSec * delta) {
@@ -167,29 +185,15 @@ export class HeroAIManager {
     }
   }
 
-  private estimateHeroPower(hero: Hero, allies?: Hero[]): number {
-    let power = hero.level * 12 + hero.attackPower +
-      hero.equipment.weaponLevel * 8 + hero.equipment.armorLevel * 6 + hero.maxHp / 10;
-
-    // PACK HUNTING: Heroes bolder in numbers — safety in comrades
-    if (allies) {
-      const nearbyAllies = allies.filter(
-        h => h.id !== hero.id && !h.isDead && Math.hypot(h.x - hero.x, h.y - hero.y) < 160
-      ).length;
-      power *= 1 + Math.min(nearbyAllies, 4) * 0.18;
-    }
-    return power;
-  }
-
   private estimateMonsterThreat(monster: Monster): number {
     let threat = monster.maxHp / 12 + monster.attackPower * 1.6;
     if (monster.isBoss) threat *= 1.6;
     return threat;
   }
 
-  private isOverwhelming(hero: Hero, monster: Monster, allies?: Hero[]): boolean {
-    const courageFactor = 0.55 + hero.traits.bravery / 250;
-    return this.estimateMonsterThreat(monster) > this.estimateHeroPower(hero, allies) * courageFactor;
+  /** Cached per-tick version of the old isOverwhelming() (see updateHero). */
+  private isOverwhelmingFast(monster: Monster): boolean {
+    return this.estimateMonsterThreat(monster) > this.activePower * this.activeCourage;
   }
 
   private handleWandering(
@@ -210,7 +214,7 @@ export class HeroAIManager {
       if (m.hp <= 0) continue;
       const dist = Math.hypot(m.x - hero.x, m.y - hero.y);
       if (dist < searchRadius && this.gridManager.isPixelVisible(m.x, m.y)) {
-        if (this.isOverwhelming(hero, m, allHeroes)) {
+        if (this.isOverwhelmingFast(m)) {
           avoidedThreat = m; // Cowardly discretion — do not pick fights with dragons
         } else {
           nearbyMonster = m;
@@ -344,9 +348,8 @@ export class HeroAIManager {
             targetThreat = def.hp / 12 + def.attackPower * 1.6 + (def.isBoss ? 30 : 0);
           }
         }
-        const courageFactor = 0.55 + hero.traits.bravery / 250;
-        if (targetThreat > this.estimateHeroPower(hero, allHeroes) * courageFactor) {
-          const fearPenalty = (targetThreat - this.estimateHeroPower(hero)) * (2.2 - hero.traits.greed / 100);
+        if (targetThreat > this.activePower * this.activeCourage) {
+          const fearPenalty = (targetThreat - this.activeBasePower) * (2.2 - hero.traits.greed / 100);
           appeal -= fearPenalty;
           if (appeal <= 20) hero.currentThought = 'That bounty spells certain doom...';
         }
@@ -386,7 +389,7 @@ export class HeroAIManager {
       if (m.hp <= 0) continue;
       const dist = Math.hypot(m.x - hero.x, m.y - hero.y);
       if (dist < closestDist && this.gridManager.isPixelVisible(m.x, m.y)) {
-        if (this.isOverwhelming(hero, m, allHeroes)) {
+        if (this.isOverwhelmingFast(m)) {
           dreadedMonster = m;
           continue;
         }
@@ -420,8 +423,8 @@ export class HeroAIManager {
         if (l.type === 'dragon_cavern' || def.isBoss) continue; // Never assaulted without a bounty
 
         const lairThreat = def.hp / 12 + def.attackPower * 1.6;
-        const courageFactor = 0.5 + hero.traits.bravery / 220;
-        if (lairThreat > this.estimateHeroPower(hero, allHeroes) * courageFactor) continue;
+        const lairCourage = 0.5 + hero.traits.bravery / 220;
+        if (lairThreat > this.activePower * lairCourage) continue;
 
         const lcx = (l.x + l.width / 2) * this.gridManager.tileSize;
         const lcy = (l.y + l.height / 2) * this.gridManager.tileSize;
@@ -859,7 +862,7 @@ export class HeroAIManager {
     // While traveling to flag, engage any monster directly blocking or attacking (unless overwhelming)
     const nearbyMonster = monsters.find(
       m => m.hp > 0 && Math.hypot(m.x - hero.x, m.y - hero.y) < 130 &&
-        this.gridManager.isPixelVisible(m.x, m.y) && !this.isOverwhelming(hero, m)
+        this.gridManager.isPixelVisible(m.x, m.y) && !this.isOverwhelmingFast(m)
     );
     if (nearbyMonster) {
       hero.state = 'attacking_target';
