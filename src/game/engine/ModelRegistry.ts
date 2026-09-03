@@ -113,7 +113,6 @@ export class ModelRegistry {
     this.preloadStarted = true;
 
     const buildingModels: Record<string, string> = {
-      'palace': '/models/building_castle_blue.gltf',
       'warrior_guild': '/models/building_barracks_blue.gltf',
       'ranger_guild': '/models/building_archeryrange_blue.gltf',
       'rogue_guild': '/models/building_windmill_blue.gltf',
@@ -270,6 +269,16 @@ export class ModelRegistry {
                 m.side = THREE.DoubleSide;
                 if (m.map) {
                   m.map.colorSpace = THREE.SRGBColorSpace;
+                } else {
+                  const texUrl = (m.name === 'halloweenbits_texture' || key === 'crypt' || key === 'gravestone' || key === 'skull' || key === 'post_skull' || key === 'tree_dead_large')
+                    ? '/models/halloweenbits_texture.png'
+                    : '/models/hexagons_medieval.png';
+                  new THREE.TextureLoader().load(texUrl, (loadedTex) => {
+                    loadedTex.colorSpace = THREE.SRGBColorSpace;
+                    loadedTex.flipY = false;
+                    m.map = loadedTex;
+                    m.needsUpdate = true;
+                  });
                 }
               });
             }
