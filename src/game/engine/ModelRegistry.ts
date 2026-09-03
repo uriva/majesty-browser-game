@@ -19,6 +19,11 @@ export class ModelRegistry {
   private loader: GLTFLoader = new GLTFLoader();
   private staticTemplates: Map<string, THREE.Group> = new Map();
   private characterTemplates: Map<string, THREE.Group> = new Map();
+  // Quaternius CC0 creatures with their own embedded armature + clips
+  // (dragon, wolf, rat, zombie, goblin) — see public/models/creatures/
+  // bounds = bind-pose LOCAL bounds measured straight from POSITION
+  // attributes (Box3.setFromObject is unreliable on skinned meshes).
+  private embeddedTemplates: Map<string, { template: THREE.Group; clips: THREE.AnimationClip[]; bounds: THREE.Box3 }> = new Map();
   private sharedClips: Map<string, THREE.AnimationClip> = new Map();
   private loading: Set<string> = new Set();
   private onChangeCallbacks: (() => void)[] = [];
@@ -141,8 +146,17 @@ export class ModelRegistry {
       'anim_tools': '/models/animations/Rig_Medium_Tools.glb'
     };
 
+    // Quaternius CC0 creatures (single .glb, skinned + embedded clips)
+    const creatureModels: Record<string, string> = {
+      'creature_dragon': '/models/creatures/dragon.glb',
+      'creature_wolf': '/models/creatures/wolf.glb',
+      'creature_rat': '/models/creatures/rat.glb',
+      'creature_zombie': '/models/creatures/zombie.glb',
+      'creature_goblin': '/models/creatures/goblin.glb'
+    };
+
     const allStatic = { ...buildingModels, ...natureModels };
-    this.totalExpected = Object.keys(allStatic).length + Object.keys(characterModels).length + Object.keys(animationPacks).length;
+    this.totalExpected = Object.keys(allStatic).length + Object.keys(characterModels).length + Object.keys(animationPacks).length + Object.keys(creatureModels).length;
     this.totalLoaded = 0;
 
     const checkComplete = () => {
@@ -178,6 +192,11 @@ export class ModelRegistry {
     // 3. Load Skinned Character Models (Rigged with Skeleton)
     for (const [key, url] of Object.entries(characterModels)) {
       this.loadCharacterModel(key, url, checkComplete);
+    }
+
+    // 4. Load Quaternius CC0 Creatures (own armature + embedded clips)
+    for (const [key, url] of Object.entries(creatureModels)) {
+      this.loadEmbeddedCreature(key, url, checkComplete);
     }
   }
 
@@ -250,6 +269,59 @@ export class ModelRegistry {
       undefined,
       (err) => {
         console.warn(`Failed to load character model ${key} from ${url}:`, err);
+        this.loading.delete(key);
+        onDone();
+      }
+    );
+  }
+
+  private loadEmbeddedCreature(key: string, url: string, onDone: () => void) {
+    if (this.embeddedTemplates.has(key) || this.loading.has(key)) return;
+    this.loading.add(key);
+
+    this.loader.load(
+      url,
+      (gltf) => {
+        const root = gltf.scene;
+        root.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            // Skinned creatures move far from their bind pose — never cull by static bounds
+            child.frustumCulled = false;
+            if (child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((m) => {
+                m.side = THREE.DoubleSide;
+                if (m.map) {
+                  m.map.colorSpace = THREE.SRGBColorSpace;
+                }
+              });
+            }
+          }
+        });
+
+        // Quaternius ships a green dragon — Fryre the Red demands crimson.
+        // Tint once at load (shared template materials, all dragons identical).
+        if (key === 'creature_dragon') {
+          const red = new THREE.Color(1.5, 0.32, 0.28);
+          root.traverse((child) => {
+            if (child instanceof THREE.Mesh && child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((m) => {
+                if (m instanceof THREE.MeshStandardMaterial && m.color) m.color.multiply(red);
+              });
+            }
+          });
+        }
+
+        this.embeddedTemplates.set(key, { template: root, clips: gltf.animations || [], bounds: this.measureBindBounds(root) });
+        this.loading.delete(key);
+        onDone();
+      },
+      undefined,
+      (err) => {
+        console.warn(`Failed to load creature model ${key} from ${url}:`, err);
         this.loading.delete(key);
         onDone();
       }
@@ -377,6 +449,150 @@ export class ModelRegistry {
     return { group: cloned, controller };
   }
 
+  /**
+   * Bind-pose local bounds measured directly from POSITION attributes.
+   * Used to scale/center embedded creatures (Box3.setFromObject misbehaves
+   * on skinned meshes whose bones aren't posed yet).
+   */
+  private measureBindBounds(root: THREE.Group): THREE.Box3 {
+    const box = new THREE.Box3(
+      new THREE.Vector3(Infinity, Infinity, Infinity),
+      new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+    );
+    // Quaternius GLBs carry the real size on mesh NODES (e.g. 100x), so the
+    // raw POSITION attributes must be transformed by each mesh's world matrix.
+    root.updateMatrixWorld(true);
+    const v = new THREE.Vector3();
+    root.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const pos = child.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+        if (!pos) return;
+        for (let i = 0; i < pos.count; i++) {
+          v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(child.matrixWorld);
+          if (v.x < box.min.x) box.min.x = v.x;
+          if (v.y < box.min.y) box.min.y = v.y;
+          if (v.z < box.min.z) box.min.z = v.z;
+          if (v.x > box.max.x) box.max.x = v.x;
+          if (v.y > box.max.y) box.max.y = v.y;
+          if (v.z > box.max.z) box.max.z = v.z;
+        }
+      }
+    });
+    if (!isFinite(box.min.x)) {
+      box.min.set(0, 0, 0);
+      box.max.set(1, 1, 1);
+    }
+    return box;
+  }
+
+  /**
+   * Instantiate a Quaternius CC0 creature: its own armature is cloned and its
+   * embedded clips are mapped onto the standard controller states by keyword.
+   * Returns null when the .glb hasn't finished loading (caller falls back).
+   */
+  public createEmbeddedCreature(creatureKey: string): { group: THREE.Group; controller: CharacterAnimationController; baseBounds: THREE.Box3 } | null {
+    const entry = this.embeddedTemplates.get(creatureKey);
+    if (!entry) return null;
+
+    // Strip armature prefixes: 'RatArmature|Rat_Attack' -> 'rat_attack'
+    const byName = new Map<string, THREE.AnimationClip>();
+    for (const clip of entry.clips) {
+      const short = (clip.name.split('|').pop() || clip.name).toLowerCase();
+      if (!byName.has(short)) byName.set(short, clip);
+    }
+    const pick = (...keywords: string[]): THREE.AnimationClip | null => {
+      for (const k of keywords) {
+        const exact = byName.get(k);
+        if (exact) return exact;
+      }
+      for (const [name, clip] of byName) {
+        if (keywords.some(k => name.includes(k))) return clip;
+      }
+      return null;
+    };
+
+    // Per-creature clip vocabulary (Quaternius naming differs per model)
+    const vocab: Record<string, Record<AnimState, string[]>> = {
+      creature_dragon: {
+        idle: ['flying_idle'], walk: ['fast_flying'], run: ['fast_flying'],
+        attack: ['headbutt', 'punch'], hammer: ['flying_idle'], death: ['death']
+      },
+      creature_wolf: {
+        idle: ['idle'], walk: ['walk'], run: ['run'],
+        attack: ['headbutt'], hammer: ['idle'], death: ['death']
+      },
+      creature_rat: {
+        idle: ['rat_idle'], walk: ['rat_walk'], run: ['rat_run'],
+        attack: ['rat_attack'], hammer: ['rat_idle'], death: ['rat_death']
+      },
+      creature_zombie: {
+        idle: ['idle'], walk: ['walk'], run: ['run'],
+        attack: ['punch', 'idle_attack'], hammer: ['idle'], death: ['death']
+      },
+      creature_goblin: {
+        idle: ['idle'], walk: ['walk'], run: ['run'],
+        attack: ['attack'], hammer: ['idle'], death: ['death']
+      }
+    };
+    const words = vocab[creatureKey] || {
+      idle: ['idle'], walk: ['walk'], run: ['run'],
+      attack: ['attack'], hammer: ['idle'], death: ['death']
+    };
+
+    // SkeletonUtils.clone keeps the SkinnedMesh/bone bindings intact
+    const cloned = SkeletonUtils.clone(entry.template) as THREE.Group;
+    cloned.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.frustumCulled = false;
+      }
+    });
+
+    const mixer = new THREE.AnimationMixer(cloned);
+    const actions = new Map<AnimState, THREE.AnimationAction>();
+    (Object.keys(words) as AnimState[]).forEach((state) => {
+      const clip = pick(...words[state]);
+      if (clip) actions.set(state, mixer.clipAction(clip));
+    });
+
+    const idleAction = actions.get('idle') || actions.values().next().value;
+    if (idleAction) idleAction.play();
+
+    const controller: CharacterAnimationController = {
+      mixer,
+      actions,
+      currentState: 'idle',
+      play: (state: AnimState, fadeDuration = 0.18) => {
+        if (controller.currentState === state) return;
+        const prevAction = actions.get(controller.currentState);
+        const nextAction = actions.get(state);
+        if (prevAction && nextAction) {
+          prevAction.fadeOut(fadeDuration);
+          nextAction.reset().fadeIn(fadeDuration).play();
+        } else if (nextAction) {
+          nextAction.reset().play();
+        }
+        controller.currentState = state;
+      },
+      setTimeScale: (scale: number) => {
+        const currentAction = actions.get(controller.currentState);
+        if (currentAction) {
+          currentAction.timeScale = Math.max(0.25, Math.min(3.0, scale));
+        }
+      },
+      update: (delta: number) => {
+        mixer.update(delta);
+      },
+      dispose: () => {
+        mixer.stopAllAction();
+        mixer.uncacheRoot(cloned);
+      }
+    };
+
+    return { group: cloned, controller, baseBounds: entry.bounds.clone() };
+  }
+
   public createAnimatedHero(heroClass: string): { group: THREE.Group; controller: CharacterAnimationController } | null {
     let key = 'knight';
     switch (heroClass) {
@@ -412,10 +628,18 @@ export class ModelRegistry {
   }
 
   public createAnimatedMonster(monsterType: string): { group: THREE.Group; controller: CharacterAnimationController } | null {
+    // Quaternius CC0 creatures with embedded armatures (see public/models/creatures/)
+    if (monsterType === 'red_dragon') return this.createEmbeddedCreature('creature_dragon');
+    if (monsterType === 'dire_wolf') return this.createEmbeddedCreature('creature_wolf');
+    if (monsterType === 'giant_rat') return this.createEmbeddedCreature('creature_rat');
+    if (monsterType === 'zombie') return this.createEmbeddedCreature('creature_zombie');
+    if (monsterType === 'goblin_spearman' || monsterType === 'goblin_archer' || monsterType === 'goblin_shaman') {
+      return this.createEmbeddedCreature('creature_goblin');
+    }
+
     let key: string | null = null;
     switch (monsterType) {
       case 'skeleton':
-      case 'zombie':
         key = 'skeleton_warrior';
         break;
       case 'skeleton_mage':
@@ -425,23 +649,17 @@ export class ModelRegistry {
       case 'cultist':
         key = 'necromancer';
         break;
-      case 'goblin_spearman':
-      case 'goblin_archer':
-      case 'goblin_shaman':
       case 'orc':
       case 'troll':
       case 'minotaur':
         key = 'orc_raider';
         break;
       case 'werewolf':
-      case 'dire_wolf':
-      case 'giant_rat':
         key = 'werewolf';
         break;
       case 'vampire_lord':
       case 'vampire':
       case 'harpy':
-      case 'red_dragon':
         key = 'vampire';
         break;
       default:

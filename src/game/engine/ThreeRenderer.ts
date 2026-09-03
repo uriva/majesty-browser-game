@@ -7374,22 +7374,32 @@ export class ThreeRenderer {
     const group = new THREE.Group();
 
     // Check if high-quality 3D animated model exists for this monster
-    if (m.type !== 'red_dragon') {
+    // (KayKit humanoids via shared Rig_Medium clips, Quaternius creatures
+    // via their own embedded clips — both expose the same controller)
+    {
       const animated = ModelRegistry.getInstance().createAnimatedMonster(m.type);
       if (animated) {
         this.animControllers.set(m.id, animated.controller);
         const { group: gltfMonster } = animated;
-        const box = new THREE.Box3().setFromObject(gltfMonster);
+        // Embedded Quaternius creatures carry exact bind-pose bounds measured
+        // from POSITION attributes (Box3 misreads unposed skinned meshes).
+        const embedded = animated as typeof animated & { baseBounds?: THREE.Box3 };
+        const box = embedded.baseBounds ? embedded.baseBounds.clone() : new THREE.Box3().setFromObject(gltfMonster);
         const size = new THREE.Vector3();
         box.getSize(size);
         const center = new THREE.Vector3();
         box.getCenter(center);
 
         let targetHeight = 12.0;
-        if (m.type === 'werewolf' || m.type === 'dire_wolf') targetHeight = 16.0;
+        if (m.type === 'werewolf') targetHeight = 16.0;
+        else if (m.type === 'dire_wolf') targetHeight = 15.0;
         else if (m.type === 'vampire_lord') targetHeight = 18.0;
         else if (m.type === 'necromancer') targetHeight = 14.0;
         else if (m.type === 'troll') targetHeight = 17.0;
+        else if (m.type === 'red_dragon') targetHeight = 24.0;
+        else if (m.type === 'giant_rat') targetHeight = 7.0;
+        else if (m.type === 'zombie') targetHeight = 13.0;
+        else if (m.type === 'goblin_spearman' || m.type === 'goblin_shaman') targetHeight = 11.0;
 
         const scale = size.y > 0 ? targetHeight / size.y : 1.0;
 
