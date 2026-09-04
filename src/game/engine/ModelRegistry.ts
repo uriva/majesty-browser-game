@@ -15,8 +15,8 @@ export interface CharacterAnimationController {
 }
 
 // Quaternius CC0 creatures (single .glb, skinned + embedded clips).
-// Loaded in a DEFERRED wave after the critical set, so the loading veil
-// lifts fast — monsters pop in via the onChange rebuild when ready.
+// Loaded in the SAME batch as everything else: there are no temporary
+// stand-in models anywhere, the loading veil simply waits for all of them.
 const CREATURE_MODELS: Record<string, string> = {
   'creature_dragon': '/models/creatures/dragon.glb',
   'creature_wolf': '/models/creatures/wolf.glb',
@@ -39,15 +39,11 @@ export class ModelRegistry {
   private embeddedTemplates: Map<string, { template: THREE.Group; clips: THREE.AnimationClip[]; bounds: THREE.Box3 }> = new Map();
   private sharedClips: Map<string, THREE.AnimationClip> = new Map();
   private loading: Set<string> = new Set();
-  /** 'critical' = buildings/nature/characters (veil lifts) · 'deferred' = creatures (pop in later) */
-  private onChangeCallbacks: ((wave: 'critical' | 'deferred') => void)[] = [];
+  private onChangeCallbacks: (() => void)[] = [];
   public isReady: boolean = false;
   private totalExpected: number = 0;
   private totalLoaded: number = 0;
   private preloadStarted: boolean = false;
-  private deferredStarted: boolean = false;
-  private deferredLoaded: number = 0;
-  private deferredTotal: number = 0;
   /** Last finished asset key, for honest loading screens */
   public lastLoadedKey: string = '';
 
@@ -58,45 +54,35 @@ export class ModelRegistry {
     return ModelRegistry.instance;
   }
 
-  public onChange(callback: (wave: 'critical' | 'deferred') => void) {
+  public onChange(callback: () => void) {
     this.onChangeCallbacks.push(callback);
     if (this.isReady) {
-      try { callback('critical'); } catch {}
+      try { callback(); } catch {}
     }
   }
 
-  /** Honest loading progress for the veil: critical wave, then deferred creatures */
+  /** Honest loading progress for the veil — one batch, everything blocking. */
   public getProgress(): { loaded: number; total: number; percent: number; label: string; deferred: boolean } {
     if (!this.preloadStarted) return { loaded: 0, total: 1, percent: 0, label: 'Waking the scribes…', deferred: false };
-    if (!this.isReady) {
-      const total = Math.max(1, this.totalExpected);
-      return {
-        loaded: Math.min(this.totalLoaded, total),
-        total,
-        percent: Math.round((Math.min(this.totalLoaded, total) / total) * 100),
-        label: this.lastLoadedKey ? `Summoning ${this.lastLoadedKey.replace(/_/g, ' ')}…` : 'Summoning the realm…',
-        deferred: false
-      };
-    }
-    const total = Math.max(1, this.deferredTotal);
+    const total = Math.max(1, this.totalExpected);
     return {
-      loaded: Math.min(this.deferredLoaded, total),
+      loaded: Math.min(this.totalLoaded, total),
       total,
-      percent: this.deferredTotal === 0 ? 100 : Math.round((Math.min(this.deferredLoaded, total) / total) * 100),
-      label: 'Luring monsters from the wilds…',
-      deferred: true
+      percent: Math.round((Math.min(this.totalLoaded, total) / total) * 100),
+      label: this.lastLoadedKey ? `Summoning ${this.lastLoadedKey.replace(/_/g, ' ')}…` : 'Summoning the realm…',
+      deferred: false
     };
   }
 
   private notifyTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  private notify(wave: 'critical' | 'deferred') {
+  private notify() {
     if (this.notifyTimeout) clearTimeout(this.notifyTimeout);
     this.notifyTimeout = setTimeout(() => {
       this.notifyTimeout = null;
       for (const cb of this.onChangeCallbacks) {
         try {
-          cb(wave);
+          cb();
         } catch (err) {
           console.warn('ModelRegistry onChange callback error:', err);
         }
@@ -142,7 +128,8 @@ export class ModelRegistry {
       'post_skull': '/models/post_skull.gltf',
       'skull': '/models/skull.gltf',
       'dark_castle_keep': '/models/building_church_red.gltf',
-      'dark_tower': '/models/building_tower_B_blue.gltf'
+      'dark_tower': '/models/building_tower_B_blue.gltf',
+      'palace': '/models/building_castle_blue.gltf'
     };
 
     const natureModels: Record<string, string> = {
@@ -186,20 +173,19 @@ export class ModelRegistry {
       'anim_tools': '/models/animations/Rig_Medium_Tools.glb'
     };
 
-    // Quaternius CC0 creatures load in a deferred wave (see startDeferredCreatures)
-    // so the loading veil lifts as soon as the critical set is ready.
+    // Everything — buildings, nature, characters, animations AND creatures —
+    // loads in one batch. isReady only flips when all of it arrived (failed
+    // downloads count too, so the veil can never hang forever).
     const allStatic = { ...buildingModels, ...natureModels };
-    this.totalExpected = Object.keys(allStatic).length + Object.keys(characterModels).length + Object.keys(animationPacks).length;
+    this.totalExpected = Object.keys(allStatic).length + Object.keys(characterModels).length + Object.keys(animationPacks).length + Object.keys(CREATURE_MODELS).length;
     this.totalLoaded = 0;
 
     const checkComplete = () => {
       this.totalLoaded++;
       if (this.totalLoaded >= this.totalExpected) {
-        const firstReady = !this.isReady;
         this.isReady = true;
-        if (firstReady) this.startDeferredCreatures();
       }
-      this.notify('critical');
+      this.notify();
     };
 
     // 1. Load Animation Packs
@@ -229,27 +215,10 @@ export class ModelRegistry {
     for (const [key, url] of Object.entries(characterModels)) {
       this.loadCharacterModel(key, url, checkComplete);
     }
-  }
 
-  /**
-   * Second wave: creature GLBs start only after the critical set is ready,
-   * so the loading veil lifts earlier. Each arrival notifies with the
-   * 'deferred' wave so renderers rebuild monsters only — buildings, heroes
-   * and lairs must NOT be touched (rebuilding them would visibly swap models
-   * long after the game is already on screen).
-   */
-  private startDeferredCreatures() {
-    if (this.deferredStarted) return;
-    this.deferredStarted = true;
-    const entries = Object.entries(CREATURE_MODELS);
-    this.deferredTotal = entries.length;
-    if (entries.length === 0) return;
-    for (const [key, url] of entries) {
-      this.loadEmbeddedCreature(key, url, () => {
-        this.lastLoadedKey = key;
-        this.deferredLoaded++;
-        this.notify('deferred');
-      });
+    // 4. Load Quaternius CC0 Creatures (own armature + embedded clips)
+    for (const [key, url] of Object.entries(CREATURE_MODELS)) {
+      this.loadEmbeddedCreature(key, url, checkComplete);
     }
   }
 
