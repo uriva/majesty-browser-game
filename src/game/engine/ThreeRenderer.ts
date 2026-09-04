@@ -268,8 +268,17 @@ export class ThreeRenderer {
     // Preload KayKit 3D Model Asset Library
     const registry = ModelRegistry.getInstance();
     registry.preloadAll();
-    registry.onChange(() => {
-      // Clear instantiated maps so active entities re-instantiate with high quality GLTF models
+    registry.onChange((wave) => {
+      // Deferred wave = creature GLBs arriving after the veil lifted.
+      // Rebuild monsters only — clearing buildings/heroes/lairs here is what
+      // made finished models visibly swap long after the game was on screen.
+      if (wave === 'deferred') {
+        this.monstersMap.forEach((grp) => this.scene.remove(grp));
+        this.monstersMap.clear();
+        return;
+      }
+      // Critical wave: happens behind the loading veil, so swapping the
+      // empty placeholders for real GLTF models is invisible.
       this.buildingsMap.forEach((grp) => this.scene.remove(grp));
       this.buildingsMap.clear();
       this.heroesMap.forEach((grp) => this.scene.remove(grp));
@@ -4665,7 +4674,14 @@ export class ThreeRenderer {
       return this.createConstructionSiteModel(b, b.constructionProgress);
     }
 
-    // Try loading the high-quality KayKit 3D GLTF building model from ModelRegistry (palace uses custom multi-tiered fortress)
+    // Single-model path: the KayKit GLTF is the one and only finished look.
+    // While models are still streaming in behind the loading veil, render
+    // nothing (empty placeholder) instead of the legacy procedural stand-in —
+    // the old stand-in is what flashed as the "ugly version" before swapping
+    // to the GLTF "nice version" live on screen. Once the registry is ready
+    // and a model is still missing (failed download), fall through to the
+    // procedural builder below so the building stays visible.
+    // (palace keeps its bespoke procedural fortress — it has no GLTF.)
     if (b.type !== 'palace') {
       const gltfBuilding = ModelRegistry.getInstance().getBuildingModel(b.type);
       if (gltfBuilding) {
@@ -4684,6 +4700,7 @@ export class ThreeRenderer {
         group.add(gltfBuilding);
         return group;
       }
+      if (!ModelRegistry.getInstance().isReady) return group;
     }
 
     if (b.type === 'palace') {

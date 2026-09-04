@@ -39,7 +39,8 @@ export class ModelRegistry {
   private embeddedTemplates: Map<string, { template: THREE.Group; clips: THREE.AnimationClip[]; bounds: THREE.Box3 }> = new Map();
   private sharedClips: Map<string, THREE.AnimationClip> = new Map();
   private loading: Set<string> = new Set();
-  private onChangeCallbacks: (() => void)[] = [];
+  /** 'critical' = buildings/nature/characters (veil lifts) · 'deferred' = creatures (pop in later) */
+  private onChangeCallbacks: ((wave: 'critical' | 'deferred') => void)[] = [];
   public isReady: boolean = false;
   private totalExpected: number = 0;
   private totalLoaded: number = 0;
@@ -57,10 +58,10 @@ export class ModelRegistry {
     return ModelRegistry.instance;
   }
 
-  public onChange(callback: () => void) {
+  public onChange(callback: (wave: 'critical' | 'deferred') => void) {
     this.onChangeCallbacks.push(callback);
     if (this.isReady) {
-      try { callback(); } catch {}
+      try { callback('critical'); } catch {}
     }
   }
 
@@ -89,13 +90,13 @@ export class ModelRegistry {
 
   private notifyTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  private notify() {
+  private notify(wave: 'critical' | 'deferred') {
     if (this.notifyTimeout) clearTimeout(this.notifyTimeout);
     this.notifyTimeout = setTimeout(() => {
       this.notifyTimeout = null;
       for (const cb of this.onChangeCallbacks) {
         try {
-          cb();
+          cb(wave);
         } catch (err) {
           console.warn('ModelRegistry onChange callback error:', err);
         }
@@ -125,7 +126,6 @@ export class ModelRegistry {
       'statue_king': '/models/building_well_blue.gltf',
       'dwarf_settlement': '/models/building_mine_blue.gltf',
       'peasant_cottage': '/models/building_home_A_blue.gltf',
-      'peasant_cottage_b': '/models/building_home_B_blue.gltf',
       'lumbermill': '/models/building_lumbermill_blue.gltf',
       'fairgrounds': '/models/building_stage_A.gltf',
       'elven_lounge': '/models/building_watermill_blue.gltf',
@@ -199,7 +199,7 @@ export class ModelRegistry {
         this.isReady = true;
         if (firstReady) this.startDeferredCreatures();
       }
-      this.notify();
+      this.notify('critical');
     };
 
     // 1. Load Animation Packs
@@ -233,8 +233,10 @@ export class ModelRegistry {
 
   /**
    * Second wave: creature GLBs start only after the critical set is ready,
-   * so the loading veil lifts earlier. Each arrival notifies (monsters swap
-   * from procedural fallbacks to animated GLBs via the onChange rebuild).
+   * so the loading veil lifts earlier. Each arrival notifies with the
+   * 'deferred' wave so renderers rebuild monsters only — buildings, heroes
+   * and lairs must NOT be touched (rebuilding them would visibly swap models
+   * long after the game is already on screen).
    */
   private startDeferredCreatures() {
     if (this.deferredStarted) return;
@@ -246,7 +248,7 @@ export class ModelRegistry {
       this.loadEmbeddedCreature(key, url, () => {
         this.lastLoadedKey = key;
         this.deferredLoaded++;
-        this.notify();
+        this.notify('deferred');
       });
     }
   }
@@ -399,10 +401,10 @@ export class ModelRegistry {
   }
 
   public getBuildingModel(type: string): THREE.Group | null {
-    if (type === 'peasant_cottage') {
-      const variant = Math.random() > 0.5 ? 'peasant_cottage' : 'peasant_cottage_b';
-      return this.cloneModel(variant) || this.cloneModel('peasant_cottage');
-    }
+    // One model per building type. The cottage used to roll Math.random()
+    // between home_A/home_B on every call, so cottages visibly changed
+    // variant whenever models (re)loaded — now always home_A.
+    if (type === 'peasant_cottage_b') type = 'peasant_cottage';
     return this.cloneModel(type);
   }
 
