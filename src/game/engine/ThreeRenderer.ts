@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BUILDING_DEFINITIONS, HERO_CLASS_DEFINITIONS } from '../constants';
-import { Building, Corpse, Flag, FloatingText, GameState, Hero, Monster, MonsterLair, Particle, Peasant, PointOfInterest, Projectile, TaxCollector, Treasure } from '../types';
+import { Building, Corpse, Flag, FloatingText, GameState, Hero, HeroClass, Monster, MonsterLair, Particle, Peasant, PointOfInterest, Projectile, TaxCollector, Treasure } from '../types';
 import { GridManager } from './Grid';
 import { CharacterAnimationController, ModelRegistry } from './ModelRegistry';
 
@@ -49,6 +49,11 @@ export class ThreeRenderer {
   private fogTexture: THREE.CanvasTexture;
   private lastFogUpdate: number = 0;
   private fogMesh: THREE.Mesh | null = null;
+  // Low-res shroud mask (128px): vision is punched as circles here, then the
+  // mask is upscaled onto the 512px shroud with bilinear filtering — that is
+  // what turns tile-rectangle vision into curved, softly fading outskirts.
+  private fogMaskCanvas: HTMLCanvasElement;
+  private fogMaskCtx: CanvasRenderingContext2D;
 
   // Object pools / mappings
   private terrainGroup: THREE.Group;
@@ -163,6 +168,12 @@ export class ThreeRenderer {
     this.fogTexture = new THREE.CanvasTexture(this.fogCanvas);
     this.fogTexture.minFilter = THREE.LinearFilter;
     this.fogTexture.magFilter = THREE.LinearFilter;
+
+    // Low-res vision mask backing the curved/fading shroud edge.
+    this.fogMaskCanvas = document.createElement('canvas');
+    this.fogMaskCanvas.width = 128;
+    this.fogMaskCanvas.height = 128;
+    this.fogMaskCtx = this.fogMaskCanvas.getContext('2d')!;
 
     // 1. Scene Setup & Biome Atmosphere
     this.scene = new THREE.Scene();
@@ -2760,50 +2771,66 @@ export class ThreeRenderer {
   }
 
   private updateFogOfWar(state: GameState) {
-    const ctx = this.fogCtx;
+    const maskSize = 128;
     const canvasSize = 512;
     const w = this.gridManager.width;
     const h = this.gridManager.height;
-    const scaleX = canvasSize / w;
-    const scaleY = canvasSize / h;
-    const cellW = Math.ceil(scaleX);
-    const cellH = Math.ceil(scaleY);
-
-    // 1. Fill canvas with 100% solid pitch-black unexplored shroud
-    ctx.fillStyle = '#090d16';
-    ctx.fillRect(0, 0, canvasSize, canvasSize);
-
-    // 2. Draw explored (but not currently visible) areas in a single pass.
-    // Explored + visible tiles are skipped here and punched out in step 3.
-    ctx.fillStyle = 'rgba(9, 13, 22, 0.48)';
+    const mScaleX = maskSize / w;
+    const mScaleY = maskSize / h;
+    const mctx = this.fogMaskCtx;
     const explored = this.gridManager.explored;
     const visible = this.gridManager.visible;
+
+    // 1. Vision mask: transparent = full shroud. Live vision is carved as
+    // opaque white discs (curved outskirts); explored-but-unseen memory as
+    // half-alpha rects (dim). destination-out below erases shroud through it.
+    mctx.save();
+    mctx.globalCompositeOperation = 'source-over';
+    mctx.clearRect(0, 0, maskSize, maskSize);
+
+    // Explored memory first (under the vision cutout).
+    mctx.fillStyle = 'rgba(255, 255, 255, 0.52)';
     for (let y = 0; y < h; y++) {
       const expRow = explored[y];
       const visRow = visible[y];
       if (!expRow) continue;
       for (let x = 0; x < w; x++) {
         if (expRow[x] && !(visRow && visRow[x])) {
-          ctx.fillRect(x * scaleX, y * scaleY, cellW, cellH);
+          mctx.fillRect(x * mScaleX, y * mScaleY, Math.ceil(mScaleX), Math.ceil(mScaleY));
         }
       }
     }
 
-    // 3. Punch out currently-visible tiles. Plain rects (no per-tile radial gradients:
-    // thousands of gradient allocations per repaint was the bottleneck); the texture
-    // is sampled with linear filtering so edges stay soft on the 3D shroud.
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = '#000000';
+    // Live vision as overlapping discs: union reads as one curved blob.
+    // Radius ~1.35 tiles so neighbors merge with no rectangular seams.
+    mctx.fillStyle = '#ffffff';
+    const rad = Math.max(mScaleX, mScaleY) * 1.35;
+    mctx.beginPath();
     for (let y = 0; y < h; y++) {
       const visRow = visible[y];
       if (!visRow) continue;
       for (let x = 0; x < w; x++) {
         if (visRow[x]) {
-          ctx.fillRect(x * scaleX, y * scaleY, cellW, cellH);
+          mctx.moveTo((x + 0.5) * mScaleX + rad, (y + 0.5) * mScaleY);
+          mctx.arc((x + 0.5) * mScaleX, (y + 0.5) * mScaleY, rad, 0, Math.PI * 2);
         }
       }
     }
+    mctx.fill();
+    mctx.restore();
+
+    // 2. Dark shroud, erased through the upscaled mask. Bilinear upscaling of
+    // the 128px mask onto 512px is what fades the edge over ~half a tile.
+    const ctx = this.fogCtx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(this.fogMaskCanvas, 0, 0, canvasSize, canvasSize);
     ctx.restore();
 
     this.fogTexture.needsUpdate = true;
@@ -3608,14 +3635,20 @@ export class ThreeRenderer {
   // --- 3D BUILDINGS ---
   private updateBuildings(state: GameState) {
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.003;
+    // Wall-clock in SECONDS. All oscillation rates below are true rad/s
+    // (a previous 3x clock made every frequency three times too fast).
+    const time = Date.now() * 0.001;
 
     for (const b of state.buildings) {
       activeIds.add(b.id);
       const isBlueprint = b.isConstructing && b.constructionProgress <= 0;
       const isUpgrading = (b.researchQueue && b.researchQueue.length > 0 && b.researchQueue.some(r => r.isBuildingUpgrade)) || false;
       const constrStage = isBlueprint ? 0 : Math.min(3, Math.max(1, Math.ceil(b.constructionProgress / 33.3)));
-      const stateKey = `${b.id}_${isBlueprint ? 'blueprint' : (b.isConstructing ? `building_s${constrStage}` : (isUpgrading ? 'upgrading' : 'done'))}_lvl${b.level}`;
+      // Researched upgrades change the building's look (banners, ballistae,
+      // crystals...), so they are part of the key — otherwise a finished
+      // research would never rebuild the group and stay invisible.
+      const upgKey = (b.researchedUpgrades || []).slice().sort().join('+');
+      const stateKey = `${b.id}_${isBlueprint ? 'blueprint' : (b.isConstructing ? `building_s${constrStage}` : (isUpgrading ? 'upgrading' : 'done'))}_lvl${b.level}_u${upgKey}`;
       let group = this.buildingsMap.get(b.id);
 
       if (!group || group.name !== stateKey) {
@@ -3632,19 +3665,19 @@ export class ThreeRenderer {
       const craneArm = this.getPart(group, 'craneArm');
       const hoistBucket = this.getPart(group, 'hoistBucket');
       if (craneArm) {
-        craneArm.rotation.y = Math.sin(time * 1.2) * 0.45;
+        craneArm.rotation.y = Math.sin(time * 3.6) * 0.45;
       }
       if (hoistBucket) {
         const baseY = hoistBucket.userData.baseY !== undefined ? hoistBucket.userData.baseY : -14;
-        hoistBucket.position.y = baseY + Math.sin(time * 1.8) * 2.0;
+        hoistBucket.position.y = baseY + Math.sin(time * 5.4) * 2.0;
       }
 
       // Animate hovering beacon crystal on upgraded Palace
       const beacon = this.getPart(group, 'beaconCrystal');
       if (beacon) {
-        beacon.rotation.y = time * 1.8;
+        beacon.rotation.y = time * 5.4;
         const baseY = beacon.userData.baseY || beacon.position.y;
-        beacon.position.y = baseY + Math.sin(time * 2.2) * 0.9;
+        beacon.position.y = baseY + Math.sin(time * 6.6) * 0.9;
       }
 
       // Animate smoke particles in chimneys, campfires & forges
@@ -4214,7 +4247,467 @@ export class ThreeRenderer {
       gltfBuilding.scale.set(scale, scale, scale);
       gltfBuilding.position.set(-center.x * scale, -box.min.y * scale + 0.1, -center.z * scale);
       group.add(gltfBuilding);
+      // Researched upgrades must read on the model itself (banners, ballistae,
+      // crystals, stalls...). Dressing is computed from the placed footprint
+      // and the GLTF's world-space top so props sit on/around any model.
+      const topY = -box.min.y * scale + 0.1 + size.y * scale;
+      this.addUpgradeDressing(group, b, w, h, topY);
       return group;
+    }
+  }
+
+  /**
+   * Visible upgrade dressing for finished buildings: every researched upgrade
+   * id adds cumulative props (banners, racks, crystals, stalls, ballista...).
+   * All dimensions are WORLD units in building-group space (footprint w×h,
+   * model top at topY). Parts named 'smokeEmitter' / 'beaconCrystal' are
+   * picked up by the existing per-frame animation in updateBuildings.
+   */
+  private addUpgradeDressing(group: THREE.Group, b: Building, w: number, h: number, topY: number) {
+    const has = (id: string): boolean => (b.researchedUpgrades || []).includes(id);
+    if (!b.researchedUpgrades || b.researchedUpgrades.length === 0) {
+      // Palace tiers read through levelScale alone, but a tier-1 citadel still
+      // wants its gate banners so the seat of power never looks bare.
+      if (b.type === 'palace') this.addBannerPair(group, w, h, 0x1e3a8a, 0xfbbf24, 0);
+      return;
+    }
+
+    const steel = new THREE.MeshStandardMaterial({ color: 0xe8edf3, metalness: 0.45, roughness: 0.32 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x9aa5b5, metalness: 0.4, roughness: 0.42 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+    const plankMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.75 });
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.85 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd34d, metalness: 0.55, roughness: 0.3 });
+    const shadowed = (m: THREE.Mesh): THREE.Mesh => { m.castShadow = true; return m; };
+
+    // War banner on a pole. Returns the group (caller positions it).
+    const banner = (clothColor: number, trimColor: number, poleH = 16, clothW = 5, clothH = 7): THREE.Group => {
+      const g = new THREE.Group();
+      const pole = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, poleH, 6), woodMat));
+      pole.position.y = poleH / 2;
+      g.add(pole);
+      const finial = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), goldMat));
+      finial.position.y = poleH + 0.4;
+      g.add(finial);
+      const cloth = shadowed(new THREE.Mesh(
+        new THREE.BoxGeometry(clothW, clothH, 0.25),
+        new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.8, side: THREE.DoubleSide })
+      ));
+      cloth.position.set(clothW / 2 + 0.3, poleH - clothH / 2 - 0.6, 0);
+      g.add(cloth);
+      const trim = new THREE.Mesh(
+        new THREE.BoxGeometry(clothW, 0.7, 0.28),
+        new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.7 })
+      );
+      trim.position.set(clothW / 2 + 0.3, poleH - clothH - 0.2, 0);
+      g.add(trim);
+      return g;
+    };
+
+    // Braziers with an emissive flame (no dynamic light: perf).
+    const brazier = (flameColor: number, emissive: number): THREE.Group => {
+      const g = new THREE.Group();
+      const stem = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 5, 7), darkSteel));
+      stem.position.y = 2.5;
+      g.add(stem);
+      const bowl = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(2.2, 1.2, 1.6, 8), darkSteel));
+      bowl.position.y = 5.6;
+      g.add(bowl);
+      const flame = new THREE.Mesh(
+        new THREE.SphereGeometry(1.2, 8, 6),
+        new THREE.MeshStandardMaterial({ color: flameColor, emissive, emissiveIntensity: 2.2, roughness: 0.4 })
+      );
+      flame.position.y = 7.0;
+      flame.scale.y = 1.5;
+      g.add(flame);
+      return g;
+    };
+
+    // Floating upgrade crystal. Named 'beaconCrystal' so updateBuildings
+    // spins/bobs it for free.
+    const crystal = (color: number, emissive: number, r = 2.4): THREE.Group => {
+      const g = new THREE.Group();
+      const gem = new THREE.Mesh(
+        new THREE.OctahedronGeometry(r),
+        new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: 1.8, roughness: 0.2 })
+      );
+      g.add(gem);
+      const cage = new THREE.Mesh(new THREE.TorusGeometry(r * 1.15, 0.22, 6, 12), goldMat);
+      cage.rotation.x = Math.PI / 2.4;
+      g.add(cage);
+      g.name = 'beaconCrystal';
+      g.userData.baseY = topY + 9;
+      g.position.y = topY + 9;
+      return g;
+    };
+
+    const ex = w / 2 - 3;   // footprint edge inset for ground props
+    const ez = h / 2 - 3;
+
+    switch (b.type) {
+      case 'palace': {
+        if (b.level >= 2 || has('palace_lvl2')) {
+          const b1 = banner(0x1e3a8a, 0xfbbf24); b1.position.set(-ex, 0, ez + 4); group.add(b1);
+          const b2 = banner(0x1e3a8a, 0xfbbf24); b2.position.set(ex, 0, ez + 4); group.add(b2);
+          const f1 = brazier(0xfb923c, 0xea580c); f1.position.set(-ex, 0, -ez - 2); group.add(f1);
+          const f2 = brazier(0xfb923c, 0xea580c); f2.position.set(ex, 0, -ez - 2); group.add(f2);
+        }
+        if (b.level >= 3 || has('palace_lvl3')) {
+          const c = crystal(0xfbbf24, 0xd97706, 3.0);
+          group.add(c);
+          const b3 = banner(0x7c2d12, 0xfbbf24, 19); b3.position.set(-ex, 0, -ez - 2); group.add(b3);
+          const b4 = banner(0x7c2d12, 0xfbbf24, 19); b4.position.set(ex, 0, -ez - 2); group.add(b4);
+        }
+        break;
+      }
+      case 'guard_tower': {
+        if (has('heavy_ballista')) {
+          // Heavy ballista mounted on the tower crown + war banner + stone base ring.
+          const rig = new THREE.Group();
+          const frame = shadowed(new THREE.Mesh(new THREE.BoxGeometry(7, 1.4, 9), woodMat));
+          frame.position.y = 0.7;
+          rig.add(frame);
+          const slider = shadowed(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 10), plankMat));
+          slider.position.y = 1.8;
+          rig.add(slider);
+          for (const s of [-1, 1]) {
+            const arm = shadowed(new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.9, 1.1), woodMat));
+            arm.position.set(s * 3.6, 1.8, 2.2);
+            arm.rotation.y = s * -0.62;
+            rig.add(arm);
+          }
+          const string = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xe7e5e4 }));
+          string.position.set(0, 1.8, -0.6);
+          rig.add(string);
+          const bolt = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 11, 6), woodMat));
+          bolt.rotation.x = Math.PI / 2;
+          bolt.position.set(0, 2.4, 1.4);
+          rig.add(bolt);
+          const tip = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.8, 6), steel));
+          tip.rotation.x = Math.PI / 2;
+          tip.position.set(0, 2.4, 7.6);
+          rig.add(tip);
+          // Wall-mounted fighting platform jutting from the tower face above
+          // the gate (cone roofs leave no room for a crown mount). The rig
+          // faces outward (+Z, building front) so it reads from the camera.
+          const mountY = topY * 0.52;
+          const faceZ = h * 0.46;
+          const deck = shadowed(new THREE.Mesh(new THREE.BoxGeometry(13, 1.6, 9), woodMat));
+          deck.position.set(0, mountY, faceZ + 2.5);
+          group.add(deck);
+          for (const s of [-1, 1]) {
+            const strut = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.9, 9, 0.9), woodMat));
+            strut.position.set(s * 5.2, mountY - 4.2, faceZ + 1.2);
+            strut.rotation.x = 0.5;
+            group.add(strut);
+            const rail = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.5, 3.2, 8.5), woodMat));
+            rail.position.set(s * 6.2, mountY + 2.2, faceZ + 2.5);
+            group.add(rail);
+          }
+          rig.position.set(0, mountY + 1.2, faceZ + 2.5);
+          rig.scale.setScalar(1.7);
+          group.add(rig);
+          const ring = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w, h) * 0.52, Math.min(w, h) * 0.56, 2.5, 10), stoneMat));
+          ring.position.y = 1.2;
+          group.add(ring);
+          const wb = banner(0xb91c1c, 0xfbbf24, 18); wb.position.set(ex, 0, ez); group.add(wb);
+        }
+        break;
+      }
+      case 'warrior_guild': {
+        if (has('iron_resolve')) {
+          this.addBannerPair(group, w, h, 0xb91c1c, 0xe7e5e4, 0);
+          // Shield plaque above the gate.
+          const shield = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.7, 12), steel));
+          shield.rotation.x = Math.PI / 2;
+          shield.position.set(0, topY * 0.55, ez + 1.5);
+          group.add(shield);
+          const boss = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 6), goldMat));
+          boss.position.set(0, topY * 0.55, ez + 2.1);
+          group.add(boss);
+        }
+        if (has('shield_bash')) {
+          // Crossed greatswords + stacked shields by the door.
+          for (const s of [-1, 1]) {
+            const blade = shadowed(new THREE.Mesh(new THREE.BoxGeometry(1.1, 11, 0.3), steel));
+            blade.position.set(s * 2.2, 7.5, ez + 1.0);
+            blade.rotation.z = s * 0.5;
+            group.add(blade);
+          }
+          for (let i = 0; i < 3; i++) {
+            const sh = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.5, 10), i === 1 ? goldMat : darkSteel));
+            sh.rotation.x = Math.PI / 2;
+            sh.position.set(-ex + 1.5, 2.5 + i * 2.2, ez + 0.5);
+            group.add(sh);
+          }
+        }
+        break;
+      }
+      case 'ranger_guild': {
+        if (has('eagle_eye')) {
+          const pen = banner(0x166534, 0xfbbf24, 24, 4, 9);
+          pen.position.set(0, 0, -ez);
+          group.add(pen);
+        }
+        if (has('piercing_arrows')) {
+          // Archery target dummy with arrow shafts beside the door.
+          const straw = new THREE.MeshStandardMaterial({ color: 0xd6a35c, roughness: 0.9 });
+          const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 9, 6), woodMat));
+          post.position.set(ex - 1, 4.5, ez + 1);
+          group.add(post);
+          const butt = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 1.2, 10), straw));
+          butt.rotation.x = Math.PI / 2;
+          butt.position.set(ex - 1, 8.5, ez + 1);
+          group.add(butt);
+          const ringM = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.28, 6, 12), new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.7 }));
+          ringM.position.set(ex - 1, 8.5, ez + 1.8);
+          group.add(ringM);
+          for (let i = 0; i < 3; i++) {
+            const shaft = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.4, 5), woodMat));
+            shaft.rotation.x = Math.PI / 2 + (i - 1) * 0.12;
+            shaft.position.set(ex - 1 + (i - 1) * 0.9, 8.5 + (i % 2) * 0.7, ez + 2.6);
+            group.add(shaft);
+          }
+        }
+        break;
+      }
+      case 'rogue_guild': {
+        if (has('poison_daggers')) {
+          // Sickly-green alchemist lantern on an iron post.
+          const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 11, 6), darkSteel));
+          post.position.set(ex, 5.5, ez);
+          group.add(post);
+          const lamp = new THREE.Mesh(
+            new THREE.SphereGeometry(1.3, 8, 6),
+            new THREE.MeshStandardMaterial({ color: 0x4ade80, emissive: 0x16a34a, emissiveIntensity: 2.4 })
+          );
+          lamp.position.set(ex, 12, ez);
+          group.add(lamp);
+          const cap = shadowed(new THREE.Mesh(new THREE.ConeGeometry(1.7, 1.2, 8), darkSteel));
+          cap.position.set(ex, 13.4, ez);
+          group.add(cap);
+        }
+        if (has('bounty_greed')) {
+          // Loot pile: stacked coin cylinders + gem + purple banner.
+          for (let i = 0; i < 4; i++) {
+            const coin = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(1.3 - i * 0.18, 1.3 - i * 0.18, 0.7, 10), goldMat));
+            coin.position.set(-ex, 0.4 + i * 0.7, ez);
+            group.add(coin);
+          }
+          const gem = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.9),
+            new THREE.MeshStandardMaterial({ color: 0xc084fc, emissive: 0x7c3aed, emissiveIntensity: 1.6 })
+          );
+          gem.position.set(-ex, 3.6, ez);
+          group.add(gem);
+          const pb = banner(0x6b21a8, 0xe7e5e4); pb.position.set(-ex + 4, 0, ez); group.add(pb);
+        }
+        break;
+      }
+      case 'wizard_tower': {
+        if (has('arcane_library')) {
+          const c = crystal(0x8b5cf6, 0x6d28d9, 2.4);
+          group.add(c);
+        }
+        if (has('teleportation')) {
+          // Ground rune ring + twin minor crystals.
+          const rune = new THREE.Mesh(
+            new THREE.TorusGeometry(Math.min(w, h) * 0.42, 0.5, 8, 24),
+            new THREE.MeshStandardMaterial({ color: 0x8b5cf6, emissive: 0x6d28d9, emissiveIntensity: 1.8 })
+          );
+          rune.rotation.x = Math.PI / 2;
+          rune.position.y = 0.5;
+          group.add(rune);
+          for (const s of [-1, 1]) {
+            const m = new THREE.Mesh(
+              new THREE.OctahedronGeometry(1.1),
+              new THREE.MeshStandardMaterial({ color: 0xc4b5fd, emissive: 0x7c3aed, emissiveIntensity: 1.6 })
+            );
+            m.position.set(s * ex * 0.8, 2.2, ez * 0.8);
+            group.add(m);
+          }
+        }
+        break;
+      }
+      case 'cleric_temple': {
+        if (has('holy_blessing')) {
+          this.addBannerPair(group, w, h, 0xf8fafc, 0xfbbf24, 0);
+          const crossV = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.5, 0.9), goldMat));
+          crossV.position.set(0, topY + 2.2, 0);
+          group.add(crossV);
+          const crossH = shadowed(new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.9, 0.9), goldMat));
+          crossH.position.set(0, topY + 3.2, 0);
+          group.add(crossH);
+        }
+        if (has('smite_undead')) {
+          const f1 = brazier(0xfef9c3, 0xfacc15); f1.position.set(-ex, 0, ez + 2); group.add(f1);
+          const f2 = brazier(0xfef9c3, 0xfacc15); f2.position.set(ex, 0, ez + 2); group.add(f2);
+        }
+        break;
+      }
+      case 'dwarf_settlement': {
+        if (has('dwarf_stonecraft')) {
+          // Anvil + granite reinforcement skirt + lit forge vent (animated smoke).
+          const anvilBase = shadowed(new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.2, 2.6), woodMat));
+          anvilBase.position.set(ex - 1, 1.1, ez + 1);
+          group.add(anvilBase);
+          const anvilTop = shadowed(new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.2, 1.8), darkSteel));
+          anvilTop.position.set(ex - 1, 2.8, ez + 1);
+          group.add(anvilTop);
+          const skirt = shadowed(new THREE.Mesh(new THREE.BoxGeometry(w * 0.96, 2.2, h * 0.96), stoneMat));
+          skirt.position.y = 1.0;
+          group.add(skirt);
+          const vent = this.createSmokeEmitter(0, topY + 2, -h * 0.2, false, 4);
+          group.add(vent);
+        }
+        break;
+      }
+      case 'marketplace': {
+        // Each stock upgrade adds a striped stall awning + goods crates.
+        const stocks: { id: string; color: number; goods: number }[] = [
+          { id: 'healing_elixirs', color: 0xef4444, goods: 0x16a34a },
+          { id: 'speed_draughts', color: 0x38bdf8, goods: 0xfbbf24 },
+          { id: 'warding_amulets', color: 0x8b5cf6, goods: 0xe7e5e4 }
+        ];
+        let slot = 0;
+        for (const s of stocks) {
+          if (!has(s.id)) continue;
+          const sx = -ex + slot * (w * 0.32);
+          const awn = shadowed(new THREE.Mesh(
+            new THREE.BoxGeometry(9, 0.5, 7),
+            new THREE.MeshStandardMaterial({ color: s.color, roughness: 0.8, side: THREE.DoubleSide })
+          ));
+          awn.position.set(sx, 7.5, ez + 3.5);
+          awn.rotation.x = 0.18;
+          group.add(awn);
+          for (const px of [-2.6, 2.6]) {
+            const pole = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 7.5, 6), woodMat));
+            pole.position.set(sx + px, 3.7, ez + 3.5);
+            group.add(pole);
+          }
+          const crate = shadowed(new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.2, 3.0), plankMat));
+          crate.position.set(sx, 1.1, ez + 3.2);
+          group.add(crate);
+          for (let i = 0; i < 3; i++) {
+            const pot = new THREE.Mesh(
+              new THREE.SphereGeometry(0.55, 7, 6),
+              new THREE.MeshStandardMaterial({ color: s.goods, emissive: s.goods, emissiveIntensity: 0.5, roughness: 0.3 })
+            );
+            pot.position.set(sx - 1 + i, 2.8, ez + 3.2);
+            group.add(pot);
+          }
+          slot++;
+        }
+        break;
+      }
+      case 'blacksmith': {
+        if (has('iron_weapons')) {
+          // Arms rack with blades by the forge door.
+          for (const px of [-3.4, 3.4]) {
+            const post = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.7, 6.5, 0.7), woodMat));
+            post.position.set(ex - 1 + px * 0.4, 3.2, ez + 1);
+            group.add(post);
+          }
+          const rail = shadowed(new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.6, 0.6), woodMat));
+          rail.position.set(ex - 1, 6.2, ez + 1);
+          group.add(rail);
+          for (let i = 0; i < 3; i++) {
+            const blade = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.5, 4.6, 0.16), steel));
+            blade.position.set(ex - 2.6 + i * 1.6, 4.0, ez + 1);
+            blade.rotation.z = (i - 1) * 0.14;
+            group.add(blade);
+          }
+        }
+        if (has('steel_armor')) {
+          // Armor stand: torso + helm.
+          const torso = shadowed(new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.6, 1.6), darkSteel));
+          torso.position.set(-ex + 1, 3.4, ez + 1);
+          group.add(torso);
+          const helm = shadowed(new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 6), steel));
+          helm.position.set(-ex + 1, 6.0, ez + 1);
+          group.add(helm);
+          const stand = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 3.4, 6), woodMat));
+          stand.position.set(-ex + 1, 1.7, ez + 1);
+          group.add(stand);
+        }
+        if (has('mithril_forging')) {
+          // Mithril-cold forge glow + chimney smoke (animated).
+          const glow = new THREE.Mesh(
+            new THREE.BoxGeometry(5, 1.2, 4),
+            new THREE.MeshStandardMaterial({ color: 0x67e8f9, emissive: 0x0891b2, emissiveIntensity: 2.2 })
+          );
+          glow.position.set(0, 1.4, ez - 1);
+          group.add(glow);
+          const vent = this.createSmokeEmitter(0, topY + 2, -h * 0.15, false, 4);
+          group.add(vent);
+        }
+        if (has('dragonforged')) {
+          const glow = new THREE.Mesh(
+            new THREE.BoxGeometry(6.5, 1.6, 5),
+            new THREE.MeshStandardMaterial({ color: 0xfb923c, emissive: 0xdc2626, emissiveIntensity: 2.6 })
+          );
+          glow.position.set(0, 1.2, ez - 0.5);
+          group.add(glow);
+          const db = banner(0x7c2d12, 0xfbbf24, 18); db.position.set(-ex, 0, ez); group.add(db);
+          const db2 = banner(0x7c2d12, 0xfbbf24, 18); db2.position.set(ex, 0, ez); group.add(db2);
+        }
+        break;
+      }
+      case 'royal_inn': {
+        if (has('fine_ales')) {
+          // Hanging mug sign + barrel stack.
+          const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 12, 6), woodMat));
+          post.position.set(ex + 1, 6, ez + 1);
+          group.add(post);
+          const armM = shadowed(new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.5, 0.5), woodMat));
+          armM.position.set(ex - 1, 11.5, ez + 1);
+          group.add(armM);
+          const sign = shadowed(new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 0.3), plankMat));
+          sign.position.set(ex - 2.2, 9.8, ez + 1);
+          group.add(sign);
+          const mug = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.6, 1.2, 8), goldMat));
+          mug.position.set(ex - 2.2, 8.6, ez + 1.4);
+          group.add(mug);
+          for (let i = 0; i < 3; i++) {
+            const barrel = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.3, 2.8, 9), woodMat));
+            barrel.position.set(-ex + (i % 2) * 3.0, 1.4 + Math.floor(i / 2) * 2.8, ez + 1);
+            group.add(barrel);
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  /** Pair of faction banners flanking the front (south) corners. */
+  private addBannerPair(group: THREE.Group, w: number, h: number, cloth: number, trim: number, dy: number) {
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd34d, metalness: 0.55, roughness: 0.3 });
+    const ex = w / 2 - 3;
+    const ez = h / 2 + 1;
+    for (const s of [-1, 1]) {
+      const g = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 16, 6), woodMat);
+      pole.position.y = 8;
+      pole.castShadow = true;
+      g.add(pole);
+      const finial = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), goldMat);
+      finial.position.y = 16.4;
+      g.add(finial);
+      const clothM = new THREE.Mesh(
+        new THREE.BoxGeometry(5, 7, 0.25),
+        new THREE.MeshStandardMaterial({ color: cloth, roughness: 0.8, side: THREE.DoubleSide })
+      );
+      clothM.position.set(2.8, 11.9, 0);
+      clothM.castShadow = true;
+      g.add(clothM);
+      const trimM = new THREE.Mesh(new THREE.BoxGeometry(5, 0.7, 0.28), new THREE.MeshStandardMaterial({ color: trim, roughness: 0.7 }));
+      trimM.position.set(2.8, 8.2, 0);
+      g.add(trimM);
+      g.position.set(s * ex, dy, ez);
+      group.add(g);
     }
   }
 
@@ -4922,7 +5415,8 @@ export class ThreeRenderer {
   private updatePointsOfInterest(state: GameState) {
     if (!state.pointsOfInterest) return;
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.003;
+    // Seconds-based clock (was 3x); coefficients rescaled to preserve tuned rates.
+    const time = Date.now() * 0.001;
 
     for (const poi of state.pointsOfInterest) {
       activeIds.add(poi.id);
@@ -4945,12 +5439,12 @@ export class ThreeRenderer {
       // Animate hovering shrine crystal or rune glow
       const crystal = group.getObjectByName('shrineCrystal');
       if (crystal) {
-        crystal.rotation.y = time * 1.5;
-        crystal.position.y = 12.0 + Math.sin(time * 2.0) * 1.2;
+        crystal.rotation.y = time * 4.5;
+        crystal.position.y = 12.0 + Math.sin(time * 6.0) * 1.2;
       }
       const runeLight = group.getObjectByName('vaultRuneLight');
       if (runeLight && runeLight instanceof THREE.Mesh && runeLight.material instanceof THREE.MeshStandardMaterial) {
-        runeLight.material.emissiveIntensity = 1.0 + Math.sin(time * 3.0) * 0.5;
+        runeLight.material.emissiveIntensity = 1.0 + Math.sin(time * 9.0) * 0.5;
       }
     }
 
@@ -5070,7 +5564,8 @@ export class ThreeRenderer {
   // --- 3D TREASURES (GOLD SACKS & CHESTS) ---
   private updateTreasures(state: GameState) {
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.004;
+    // Seconds-based clock (was 4x); spin rate preserved.
+    const time = Date.now() * 0.001;
 
     for (const t of state.treasures) {
       activeIds.add(t.id);
@@ -5088,7 +5583,7 @@ export class ThreeRenderer {
       // Gentle golden shimmer bob
       const shine = this.getPart(mesh, 'treasureGlow');
       if (shine) {
-        shine.rotation.z = time * 0.8;
+        shine.rotation.z = time * 3.2;
       }
     }
 
@@ -5264,7 +5759,10 @@ export class ThreeRenderer {
   // --- 3D PEASANT BUILDERS ---
   private updatePeasants(state: GameState, delta: number) {
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.01;
+    // Wall-clock in SECONDS. Gait coefficients below are authored as true rad/s:
+    // strideFreq ~= walk cadence * 2π. (A previous 10x clock drove them at ~10x
+    // frequency, which read as high-frequency shaking.)
+    const time = Date.now() * 0.001;
     const isNightOrDusk = state.dayPhase === 'night' || state.dayPhase === 'dusk' || state.dayPhase === 'dawn';
 
     for (const p of state.peasants) {
@@ -5351,7 +5849,7 @@ export class ThreeRenderer {
         const rightArm = this.getPart(pGroup,'rightArm');
         if (rightArm) {
           if (p.state === 'hammering_construction' || p.state === 'repairing_building') {
-            const hammerPhase = (Date.now() * 0.005) % (Math.PI * 2);
+            const hammerPhase = (time * 5.0) % (Math.PI * 2);
             const swing = Math.sin(hammerPhase);
             rightArm.rotation.x = -0.4 - Math.max(0, swing) * 1.5;
           } else {
@@ -5404,7 +5902,10 @@ export class ThreeRenderer {
   // --- 3D HEROES & NAMEPLATES ---
   private updateHeroes(state: GameState, delta: number) {
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.01;
+    // Wall-clock in SECONDS. Gait coefficients below are authored as true rad/s:
+    // strideFreq = walk cadence * 2π. (A previous 10x clock drove the bob/sway
+    // overlays at ~10x frequency, which read as Parkinson-like shaking.)
+    const time = Date.now() * 0.001;
     const isNightOrDusk = state.dayPhase === 'night' || state.dayPhase === 'dusk' || state.dayPhase === 'dawn';
 
     for (const h of state.heroes) {
@@ -5679,6 +6180,10 @@ export class ThreeRenderer {
 
       gltfHero.scale.set(scale, scale, scale);
       gltfHero.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      // KayKit hero models ship weapon-free (empty hands), so an attack reads
+      // as an empty punch. Dress the handslot bones with class weapons built
+      // in model units (they inherit gltfHero's scale).
+      this.attachHeroWeapon(gltfHero, h.heroClass);
       group.add(gltfHero);
       return group;
     }
@@ -5686,10 +6191,154 @@ export class ThreeRenderer {
     return group;
   }
 
+  /**
+   * Procedural class weapon props parented to the KayKit handslot bones, so
+   * the weapon follows the hand through idle/walk/attack clips. All geometry
+   * is authored in MODEL units (hero ~1.7 tall); the hero scale applies.
+   * Blade convention: +Y out of the grip (KayKit handslots rest blade-down
+   * when the arm hangs, swinging up through the chop clip).
+   */
+  private attachHeroWeapon(gltfHero: THREE.Group, heroClass: HeroClass) {
+    // Chunky low-poly steel: no envmap in-scene, so keep metalness moderate —
+    // full-metal PBR without an environment map renders near-black.
+    const steel = new THREE.MeshStandardMaterial({ color: 0xe8edf3, metalness: 0.45, roughness: 0.32 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x9aa5b5, metalness: 0.4, roughness: 0.42 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+    const leather = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xffd34d, metalness: 0.55, roughness: 0.3 });
+
+    const shadowed = (mesh: THREE.Mesh): THREE.Mesh => {
+      mesh.castShadow = true;
+      return mesh;
+    };
+
+    // Arming sword (warrior/knight). Length ~1.05.
+    const buildSword = (scaleLen = 1.0): THREE.Group => {
+      const g = new THREE.Group();
+      const blade = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.72 * scaleLen, 0.035), steel));
+      blade.position.y = 0.52 * scaleLen;
+      g.add(blade);
+      const tip = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.16 * scaleLen, 4), steel));
+      tip.position.y = (0.88 + 0.08) * scaleLen;
+      tip.rotation.y = Math.PI / 4;
+      g.add(tip);
+      const guard = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.09), gold));
+      guard.position.y = 0.15 * scaleLen;
+      g.add(guard);
+      const grip = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.2 * scaleLen, 6), leather));
+      grip.position.y = 0.03 * scaleLen;
+      g.add(grip);
+      const pommel = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 6), gold));
+      pommel.position.y = -0.09 * scaleLen;
+      g.add(pommel);
+      return g;
+    };
+
+    // Battle axe (barbarian/dwarf): haft + twin wedge blades + top spike.
+    const buildAxe = (): THREE.Group => {
+      const g = new THREE.Group();
+      const haft = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 1.15, 7), wood));
+      haft.position.y = 0.42;
+      g.add(haft);
+      for (const side of [-1, 1]) {
+        const blade = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 0.05), steel));
+        blade.position.set(side * 0.2, 0.82, 0);
+        blade.rotation.z = side * -0.35;
+        g.add(blade);
+      }
+      const spike = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6), darkSteel));
+      spike.position.y = 1.1;
+      g.add(spike);
+      const cap = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), gold));
+      cap.position.y = -0.16;
+      g.add(cap);
+      return g;
+    };
+
+    // Hunting bow (ranger/elf): wooden arc + taut string. Held in the LEFT hand.
+    const buildBow = (): THREE.Group => {
+      const g = new THREE.Group();
+      const arc = shadowed(new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.035, 6, 14, Math.PI * 1.25), wood));
+      arc.rotation.z = Math.PI * 0.875;
+      g.add(arc);
+      const stringMat = new THREE.MeshBasicMaterial({ color: 0xe7e5e4 });
+      const topY = 0.39;
+      const string = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, topY * 2, 4), stringMat);
+      string.position.x = -0.13;
+      g.add(string);
+      const gripWrap = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.16, 6), leather));
+      g.add(gripWrap);
+      return g;
+    };
+
+    // Dagger (rogue): short blade.
+    const buildDagger = (): THREE.Group => {
+      const g = buildSword(0.55);
+      return g;
+    };
+
+    // Arcane staff (wizard/cleric/mage): shaft + glowing orb + claw prongs.
+    const buildStaff = (orbColor: number, orbEmissive: number): THREE.Group => {
+      const g = new THREE.Group();
+      const shaft = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 1.5, 7), wood));
+      shaft.position.y = 0.45;
+      g.add(shaft);
+      const collar = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 6), gold));
+      collar.position.y = 1.18;
+      g.add(collar);
+      const orb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.11, 10, 8),
+        new THREE.MeshStandardMaterial({ color: orbColor, emissive: orbEmissive, emissiveIntensity: 1.6, roughness: 0.2 })
+      );
+      orb.position.y = 1.34;
+      g.add(orb);
+      for (const a of [0, Math.PI / 2]) {
+        const prong = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.14, 5), gold));
+        prong.position.set(Math.cos(a) * 0.09, 1.26, Math.sin(a) * 0.09);
+        g.add(prong);
+      }
+      const foot = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 6), darkSteel));
+      foot.position.y = -0.35;
+      foot.rotation.x = Math.PI;
+      g.add(foot);
+      return g;
+    };
+
+    // Per-class loadout: [weapon builder, hand bone, grip offset]
+    let weapon: THREE.Group | null = null;
+    let handName = 'handslot.r';
+    let weaponScale = 2.2; // KayKit-proportioned: oversized reads at game zoom
+    if (heroClass === 'warrior') weapon = buildSword(1.0);
+    else if (heroClass === 'dwarf') weapon = buildAxe();
+    else if (heroClass === 'ranger' || heroClass === 'elf') { weapon = buildBow(); handName = 'handslot.l'; weaponScale = 1.3; }
+    else if (heroClass === 'rogue') weapon = buildDagger();
+    else if (heroClass === 'wizard') { weapon = buildStaff(0x8b5cf6, 0x6d28d9); weaponScale = 1.0; }
+    else if (heroClass === 'cleric') { weapon = buildStaff(0xfbbf24, 0xd97706); weaponScale = 1.0; }
+    if (!weapon) return;
+
+    const hand = gltfHero.getObjectByName(handName)
+      // THREE's GLTFLoader sanitizes node names (strips '.'): the KayKit
+      // 'handslot.r' bone arrives as 'handslotr'. Try both spellings.
+      || gltfHero.getObjectByName(handName.replace('.', ''));
+    if (!hand) return;
+    // Seat the grip in the palm: slight forward offset so fingers wrap the haft.
+    weapon.position.set(0, -0.02, 0.03);
+    weapon.scale.setScalar(weaponScale);
+    // Rest-pose correction: in the KayKit idle carry the hand's local -X aims
+    // at the sky, so roll the weapon +Y (blade) onto -X. The blade then rides
+    // upright at rest and swings with the fist through attack clips.
+    if (handName === 'handslot.r' || handName === 'handslotr') {
+      weapon.rotation.z = Math.PI / 2;
+    }
+    hand.add(weapon);
+  }
+
   // --- 3D MONSTERS WITH COMPLETE ATTACK ANIMATIONS ---
   private updateMonsters(state: GameState, delta: number) {
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.01;
+    // Wall-clock in SECONDS (was 10x). Gait/tail/wing coefficients below are
+    // authored as true rad/s; flight-bob rate preserved from tuning.
+    const time = Date.now() * 0.001;
 
     for (const m of state.monsters) {
       if (m.hp <= 0) continue;
@@ -5705,7 +6354,7 @@ export class ThreeRenderer {
       // Flight Altitude: dragons soar majestically high, harpies swoop low
       const isFlying = m.type === 'red_dragon' || m.isFlying;
       const flightBase = m.type === 'harpy' ? 11 : 24;
-      const flightAltitude = isFlying ? flightBase + Math.sin(time * 0.35) * 4 : 0;
+      const flightAltitude = isFlying ? flightBase + Math.sin(time * 3.5) * 4 : 0;
 
       const isAttacking = m.isAttackingAnimation > 0;
       const attackFactor = isAttacking ? Math.sin((1 - Math.max(0, m.isAttackingAnimation) / 0.35) * Math.PI) : 0;
@@ -5779,7 +6428,7 @@ export class ThreeRenderer {
         const dragonBody = this.getPart(mGroup,'dragonBody');
 
         // Dynamic Soaring & Wing Flap: vigorous wing beat when moving/attacking, steady soaring glide when hovering
-        const flapRate = isMoving ? 0.95 : 0.45;
+        const flapRate = isMoving ? 9.5 : 4.5;
         const flap = Math.sin(time * flapRate) * 0.65;
 
         if (wingL) {
@@ -5797,18 +6446,18 @@ export class ThreeRenderer {
             dragonHead.rotation.x = -attackFactor * 0.4;
           } else {
             dragonHead.position.z = 8;
-            dragonHead.rotation.x = Math.sin(time * 0.4) * 0.15;
+            dragonHead.rotation.x = Math.sin(time * 4.0) * 0.15;
           }
         }
 
         if (dragonTail) {
-          dragonTail.rotation.y = Math.sin(time * 0.6) * 0.45;
-          dragonTail.rotation.x = Math.cos(time * 0.3) * 0.1;
+          dragonTail.rotation.y = Math.sin(time * 6.0) * 0.45;
+          dragonTail.rotation.x = Math.cos(time * 3.0) * 0.1;
         }
 
         if (dragonBody) {
           // Slight banking / pitch when swooping
-          dragonBody.rotation.x = isAttacking ? -0.2 : Math.sin(time * 0.4) * 0.06;
+          dragonBody.rotation.x = isAttacking ? -0.2 : Math.sin(time * 4.0) * 0.06;
         }
       } else if (m.type === 'giant_rat') {
         const ratTail = this.getPart(mGroup,'ratTail');
@@ -5942,8 +6591,8 @@ export class ThreeRenderer {
         const rightArm = this.getPart(mGroup,'rightArm');
         const leftArm = this.getPart(mGroup,'leftArm');
 
-        // Levitation hovering
-        mGroup.position.y = Math.sin(time * 2.0) * 0.8 + (isAttacking ? attackFactor * 2.5 : 0);
+        // Levitation hovering (~1Hz gentle bob)
+        mGroup.position.y = Math.sin(time * 6.0) * 0.8 + (isAttacking ? attackFactor * 2.5 : 0);
 
         if (isAttacking) {
           if (rightArm) {
@@ -6039,7 +6688,8 @@ export class ThreeRenderer {
   // --- 3D TAX COLLECTOR ---
   private updateTaxCollectors(state: GameState, delta: number) {
     const activeIds = new Set<string>();
-    const time = Date.now() * 0.01;
+    // Wall-clock in SECONDS (was 10x); gait authored as true rad/s.
+    const time = Date.now() * 0.001;
 
     for (const tc of state.taxCollectors) {
       activeIds.add(tc.id);
