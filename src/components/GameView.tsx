@@ -98,8 +98,12 @@ export const GameView: React.FC = () => {
     prevAnyDialogOpenRef.current = isAnyDialogOpen;
   }, [isAnyDialogOpen, gameState?.activeDilemma]);
 
-  // Track asset readiness (with honest progress for the loading veil)
+  // Track asset readiness (with honest progress for the loading veil).
+  // The simulation is held paused until the veil lifts — otherwise days,
+  // monsters and builders advance while the player stares at a loading bar.
   const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 1, percent: 0, label: 'Waking the scribes…', deferred: false });
+  const anyDialogRef = useRef(false);
+  anyDialogRef.current = isAnyDialogOpen;
   useEffect(() => {
     const reg = ModelRegistry.getInstance();
     if (reg.isReady) {
@@ -111,6 +115,16 @@ export const GameView: React.FC = () => {
       setLoadProgress(reg.getProgress());
       if (reg.isReady) {
         setAssetsReady(true);
+        const engine = engineRef.current;
+        if (engine) {
+          if (!anyDialogRef.current) {
+            engine.state.isPaused = false;
+          } else {
+            // A dialog (e.g. welcome-back) opened during loading: the boot
+            // hold was not a user pause, so dismissing it should resume.
+            wasPausedBeforeAnyDialogRef.current = false;
+          }
+        }
       }
     };
     reg.onChange(check);
@@ -132,6 +146,12 @@ export const GameView: React.FC = () => {
     engineRef.current = engine;
     if (typeof window !== 'undefined') {
       (window as any).__majesty_engine = engine;
+    }
+    // Hold the simulation until the loading veil lifts (fresh boot only —
+    // on save/load the registry is already ready). The readiness effect
+    // above releases the hold.
+    if (!ModelRegistry.getInstance().isReady) {
+      engine.state.isPaused = true;
     }
 
     if (containerRef.current) {
@@ -619,16 +639,16 @@ export const GameView: React.FC = () => {
       const engine = engineRef.current;
 
       if (e.code === 'Space') {
-        if (isAnyDialogOpen) return;
+        if (isAnyDialogOpen || !assetsReady) return;
         engine.state.isPaused = !engine.state.isPaused;
       } else if (e.code === 'Digit1') {
-        if (isAnyDialogOpen) return;
+        if (isAnyDialogOpen || !assetsReady) return;
         engine.state.gameSpeed = 1;
       } else if (e.code === 'Digit2') {
-        if (isAnyDialogOpen) return;
+        if (isAnyDialogOpen || !assetsReady) return;
         engine.state.gameSpeed = 2;
       } else if (e.code === 'Digit3' || e.code === 'Digit4') {
-        if (isAnyDialogOpen) return;
+        if (isAnyDialogOpen || !assetsReady) return;
         engine.state.gameSpeed = 4;
       } else if (e.code === 'Escape') {
         if (isChronicleOpen) { setIsChronicleOpen(false); return; }
@@ -645,7 +665,7 @@ export const GameView: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAnyDialogOpen, isChronicleOpen, isSettingsModalOpen, isSaveLoadModalOpen, isScenarioModalOpen, gameState?.isGameOver]);
+  }, [isAnyDialogOpen, assetsReady, isChronicleOpen, isSettingsModalOpen, isSaveLoadModalOpen, isScenarioModalOpen, gameState?.isGameOver]);
 
   const handlePanTo = (worldX: number, worldY: number) => {
     if (engineRef.current) {

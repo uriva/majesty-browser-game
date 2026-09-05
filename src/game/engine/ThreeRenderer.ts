@@ -6010,8 +6010,16 @@ export class ThreeRenderer {
       const legStride = isMoving ? Math.sin(time * strideFreq) * 0.65 : 0;
 
       const heroGroundY = this.getTerrainHeight(h.x, h.y);
-      heroGroup.position.set(h.x, heroGroundY + stepBob, h.y);
-      heroGroup.rotation.z = bodySway;
+      heroGroup.position.set(h.x, heroGroundY, h.y);
+      heroGroup.rotation.z = 0;
+      // Gait bob/roll rides the BODY, not the group root: the nameplate
+      // sprite is a root child, so root-level bob made the label vibrate
+      // with every footstep (and roll tilted it).
+      const heroBody = heroGroup.getObjectByName('heroBody');
+      if (heroBody) {
+        heroBody.position.y = (heroBody.userData.baseY ?? 0) + stepBob;
+        heroBody.rotation.z = bodySway;
+      }
 
       if (!controller) {
         const leftLeg = this.getPart(heroGroup,'leftLeg');
@@ -6180,6 +6188,11 @@ export class ThreeRenderer {
 
       gltfHero.scale.set(scale, scale, scale);
       gltfHero.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      // Named so the per-frame gait update can bob the BODY without moving
+      // the group root (the nameplate sprite rides the root and must not
+      // inherit footstep bounce).
+      gltfHero.name = 'heroBody';
+      gltfHero.userData.baseY = -box.min.y * scale;
       // KayKit hero models ship weapon-free (empty hands), so an attack reads
       // as an empty punch. Dress the handslot bones with class weapons built
       // in model units (they inherit gltfHero's scale).
