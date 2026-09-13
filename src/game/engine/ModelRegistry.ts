@@ -47,6 +47,55 @@ export class ModelRegistry {
   /** Last finished asset key, for honest loading screens */
   public lastLoadedKey: string = '';
 
+  private queue: (() => Promise<void>)[] = [];
+  private activeCount: number = 0;
+  private readonly MAX_CONCURRENT: number = 6;
+
+  private enqueue(task: () => Promise<void>) {
+    this.queue.push(task);
+    this.processQueue();
+  }
+
+  private processQueue() {
+    while (this.activeCount < this.MAX_CONCURRENT && this.queue.length > 0) {
+      const task = this.queue.shift()!;
+      this.activeCount++;
+      task().finally(() => {
+        this.activeCount--;
+        this.processQueue();
+      });
+    }
+  }
+
+  private loadWithRetry(
+    loadFn: (onSuccess: () => void, onError: (err: unknown) => void) => void,
+    key: string,
+    onDone: () => void,
+    maxRetries: number = 3
+  ) {
+    let attempts = 0;
+    const execute = () => {
+      attempts++;
+      loadFn(
+        () => {
+          this.lastLoadedKey = key;
+          onDone();
+        },
+        (err) => {
+          if (attempts < maxRetries) {
+            const delay = attempts * 300;
+            console.warn(`Retry ${attempts}/${maxRetries} for ${key} after ${delay}ms:`, err);
+            setTimeout(execute, delay);
+          } else {
+            console.warn(`Failed to load ${key} after ${maxRetries} attempts:`, err);
+            onDone();
+          }
+        }
+      );
+    };
+    execute();
+  }
+
   public static getInstance(): ModelRegistry {
     if (!ModelRegistry.instance) {
       ModelRegistry.instance = new ModelRegistry();
@@ -190,176 +239,219 @@ export class ModelRegistry {
 
     // 1. Load Animation Packs
     for (const [packKey, url] of Object.entries(animationPacks)) {
-      this.loader.load(
-        url,
-        (gltf) => {
-          if (gltf.animations) {
-            for (const clip of gltf.animations) {
-              this.sharedClips.set(clip.name, clip);
-            }
+      this.enqueue(() => new Promise<void>((resolve) => {
+        this.loadWithRetry(
+          (success, fail) => {
+            this.loader.load(
+              url,
+              (gltf) => {
+                if (gltf.animations) {
+                  for (const clip of gltf.animations) {
+                    this.sharedClips.set(clip.name, clip);
+                  }
+                }
+                success();
+              },
+              undefined,
+              fail
+            );
+          },
+          packKey,
+          () => {
+            checkComplete();
+            resolve();
           }
-          this.lastLoadedKey = packKey;
-          checkComplete();
-        },
-        undefined,
-        () => checkComplete()
-      );
+        );
+      }));
     }
 
     // 2. Load Static Models (Buildings, Trees, Rocks)
     for (const [key, url] of Object.entries(allStatic)) {
-      this.loadStaticModel(key, url, checkComplete);
+      this.enqueue(() => new Promise<void>((resolve) => {
+        this.loadStaticModel(key, url, () => {
+          checkComplete();
+          resolve();
+        });
+      }));
     }
 
     // 3. Load Skinned Character Models (Rigged with Skeleton)
     for (const [key, url] of Object.entries(characterModels)) {
-      this.loadCharacterModel(key, url, checkComplete);
+      this.enqueue(() => new Promise<void>((resolve) => {
+        this.loadCharacterModel(key, url, () => {
+          checkComplete();
+          resolve();
+        });
+      }));
     }
 
     // 4. Load Quaternius CC0 Creatures (own armature + embedded clips)
     for (const [key, url] of Object.entries(CREATURE_MODELS)) {
-      this.loadEmbeddedCreature(key, url, checkComplete);
+      this.enqueue(() => new Promise<void>((resolve) => {
+        this.loadEmbeddedCreature(key, url, () => {
+          checkComplete();
+          resolve();
+        });
+      }));
     }
   }
 
   private loadStaticModel(key: string, url: string, onDone: () => void) {
-    if (this.staticTemplates.has(key) || this.loading.has(key)) return;
+    if (this.staticTemplates.has(key)) {
+      onDone();
+      return;
+    }
     this.loading.add(key);
 
-    this.loader.load(
-      url,
-      (gltf) => {
-        const root = gltf.scene;
-        root.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-            if (child.material) {
-              const mats = Array.isArray(child.material) ? child.material : [child.material];
-              mats.forEach((m) => {
-                m.side = THREE.DoubleSide;
-                if (m.map) {
-                  m.map.colorSpace = THREE.SRGBColorSpace;
-                } else {
-                  const texUrl = (m.name === 'halloweenbits_texture' || key === 'crypt' || key === 'gravestone' || key === 'skull' || key === 'post_skull' || key === 'tree_dead_large')
-                    ? '/models/halloweenbits_texture.png'
-                    : '/models/hexagons_medieval.png';
-                  new THREE.TextureLoader().load(texUrl, (loadedTex) => {
-                    loadedTex.colorSpace = THREE.SRGBColorSpace;
-                    loadedTex.flipY = false;
-                    m.map = loadedTex;
-                    m.needsUpdate = true;
+    this.loadWithRetry(
+      (success, fail) => {
+        this.loader.load(
+          url,
+          (gltf) => {
+            const root = gltf.scene;
+            root.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                if (child.material) {
+                  const mats = Array.isArray(child.material) ? child.material : [child.material];
+                  mats.forEach((m) => {
+                    m.side = THREE.DoubleSide;
+                    if (m.map) {
+                      m.map.colorSpace = THREE.SRGBColorSpace;
+                    } else {
+                      const texUrl = (m.name === 'halloweenbits_texture' || key === 'crypt' || key === 'gravestone' || key === 'skull' || key === 'post_skull' || key === 'tree_dead_large')
+                        ? '/models/halloweenbits_texture.png'
+                        : '/models/hexagons_medieval.png';
+                      new THREE.TextureLoader().load(texUrl, (loadedTex) => {
+                        loadedTex.colorSpace = THREE.SRGBColorSpace;
+                        loadedTex.flipY = false;
+                        m.map = loadedTex;
+                        m.needsUpdate = true;
+                      });
+                    }
                   });
                 }
-              });
-            }
-          }
-        });
+              }
+            });
 
-        this.staticTemplates.set(key, root);
-        this.loading.delete(key);
-        this.lastLoadedKey = key;
-        onDone();
+            this.staticTemplates.set(key, root);
+            this.loading.delete(key);
+            success();
+          },
+          undefined,
+          (err) => {
+            this.loading.delete(key);
+            fail(err);
+          }
+        );
       },
-      undefined,
-      (err) => {
-        console.warn(`Failed to load static 3D model ${key} from ${url}:`, err);
-        this.loading.delete(key);
-        onDone();
-      }
+      key,
+      onDone
     );
   }
 
   private loadCharacterModel(key: string, url: string, onDone: () => void) {
-    if (this.characterTemplates.has(key) || this.loading.has(key)) return;
+    if (this.characterTemplates.has(key)) {
+      onDone();
+      return;
+    }
     this.loading.add(key);
 
-    this.loader.load(
-      url,
-      (gltf) => {
-        const root = gltf.scene;
-        root.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-            child.frustumCulled = false;
-            if (child.material) {
-              const mats = Array.isArray(child.material) ? child.material : [child.material];
-              mats.forEach((m) => {
-                m.side = THREE.DoubleSide;
-                if (m.map) {
-                  m.map.colorSpace = THREE.SRGBColorSpace;
+    this.loadWithRetry(
+      (success, fail) => {
+        this.loader.load(
+          url,
+          (gltf) => {
+            const root = gltf.scene;
+            root.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                child.frustumCulled = false;
+                if (child.material) {
+                  const mats = Array.isArray(child.material) ? child.material : [child.material];
+                  mats.forEach((m) => {
+                    m.side = THREE.DoubleSide;
+                    if (m.map) {
+                      m.map.colorSpace = THREE.SRGBColorSpace;
+                    }
+                  });
                 }
-              });
-            }
-          }
-        });
+              }
+            });
 
-        this.characterTemplates.set(key, root);
-        this.loading.delete(key);
-        this.lastLoadedKey = key;
-        onDone();
+            this.characterTemplates.set(key, root);
+            this.loading.delete(key);
+            success();
+          },
+          undefined,
+          (err) => {
+            this.loading.delete(key);
+            fail(err);
+          }
+        );
       },
-      undefined,
-      (err) => {
-        console.warn(`Failed to load character model ${key} from ${url}:`, err);
-        this.loading.delete(key);
-        onDone();
-      }
+      key,
+      onDone
     );
   }
 
   private loadEmbeddedCreature(key: string, url: string, onDone: () => void) {
-    if (this.embeddedTemplates.has(key) || this.loading.has(key)) return;
+    if (this.embeddedTemplates.has(key)) {
+      onDone();
+      return;
+    }
     this.loading.add(key);
 
-    this.loader.load(
-      url,
-      (gltf) => {
-        const root = gltf.scene;
-        root.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-            // Skinned creatures move far from their bind pose — never cull by static bounds
-            child.frustumCulled = false;
-            if (child.material) {
-              const mats = Array.isArray(child.material) ? child.material : [child.material];
-              mats.forEach((m) => {
-                m.side = THREE.DoubleSide;
-                if (m.map) {
-                  m.map.colorSpace = THREE.SRGBColorSpace;
+    this.loadWithRetry(
+      (success, fail) => {
+        this.loader.load(
+          url,
+          (gltf) => {
+            const root = gltf.scene;
+            root.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                child.frustumCulled = false;
+                if (child.material) {
+                  const mats = Array.isArray(child.material) ? child.material : [child.material];
+                  mats.forEach((m) => {
+                    m.side = THREE.DoubleSide;
+                    if (m.map) {
+                      m.map.colorSpace = THREE.SRGBColorSpace;
+                    }
+                  });
+                }
+              }
+            });
+
+            if (key === 'creature_dragon') {
+              const red = new THREE.Color(1.5, 0.32, 0.28);
+              root.traverse((child) => {
+                if (child instanceof THREE.Mesh && child.material) {
+                  const mats = Array.isArray(child.material) ? child.material : [child.material];
+                  mats.forEach((m) => {
+                    if (m instanceof THREE.MeshStandardMaterial && m.color) m.color.multiply(red);
+                  });
                 }
               });
             }
+
+            this.embeddedTemplates.set(key, { template: root, clips: gltf.animations || [], bounds: this.measureBindBounds(root) });
+            this.loading.delete(key);
+            success();
+          },
+          undefined,
+          (err) => {
+            this.loading.delete(key);
+            fail(err);
           }
-        });
-
-        // Quaternius ships a green dragon — Fryre the Red demands crimson.
-        // Tint once at load (shared template materials, all dragons identical).
-        if (key === 'creature_dragon') {
-          const red = new THREE.Color(1.5, 0.32, 0.28);
-          root.traverse((child) => {
-            if (child instanceof THREE.Mesh && child.material) {
-              const mats = Array.isArray(child.material) ? child.material : [child.material];
-              mats.forEach((m) => {
-                if (m instanceof THREE.MeshStandardMaterial && m.color) m.color.multiply(red);
-              });
-            }
-          });
-        }
-
-        this.embeddedTemplates.set(key, { template: root, clips: gltf.animations || [], bounds: this.measureBindBounds(root) });
-        this.loading.delete(key);
-        this.lastLoadedKey = key;
-        onDone();
+        );
       },
-      undefined,
-      (err) => {
-        console.warn(`Failed to load creature model ${key} from ${url}:`, err);
-        this.loading.delete(key);
-        onDone();
-      }
+      key,
+      onDone
     );
   }
 
@@ -670,7 +762,7 @@ export class ModelRegistry {
     return this.createAnimatedCharacter(key);
   }
 
-  public createAnimatedCitizen(type: 'peasant' | 'tax_collector'): { group: THREE.Group; controller: CharacterAnimationController } | null {
+  public createAnimatedCitizen(_type: 'peasant' | 'tax_collector'): { group: THREE.Group; controller: CharacterAnimationController } | null {
     return this.createAnimatedCharacter('engineer');
   }
 
