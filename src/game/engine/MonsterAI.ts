@@ -203,8 +203,25 @@ export class MonsterAIManager {
             break;
           }
         }
+
+        // BUILDER PRIORITY IN RAIDS: If a peasant is actively repairing or constructing nearby, kill them!
+        let activeBuilderNearby: Peasant | null = null;
+        let minBldDist = 180;
+        for (const p of peasants) {
+          if (p.hp <= 0) continue;
+          const isWorking = p.state === 'repairing_building' || p.state === 'hammering_construction' || p.targetBuildingId === raidBuilding.id;
+          if (!isWorking) continue;
+          const d = Math.hypot(p.x - monster.x, p.y - monster.y);
+          if (d < minBldDist) {
+            minBldDist = d;
+            activeBuilderNearby = p;
+          }
+        }
+
         if (interceptor) {
           raidOverride = { x: interceptor.x, y: interceptor.y, id: interceptor.id, type: 'hero' };
+        } else if (activeBuilderNearby) {
+          raidOverride = { x: activeBuilderNearby.x, y: activeBuilderNearby.y, id: activeBuilderNearby.id, type: 'peasant' };
         } else {
           raidOverride = { x: raidPos.x, y: raidPos.y, id: raidBuilding.id, type: 'building' };
         }
@@ -237,19 +254,41 @@ export class MonsterAIManager {
           stickyTarget = { x: tc.x, y: tc.y, id: tc.id, type: 'tax_collector' };
         }
       } else if (t === 'building') {
-        const b = buildings.find(x => x.id === monster.targetEntityId);
-        if (b && b.hp > 0 && (!b.isConstructing || b.constructionProgress > 0)) {
-          // Cheap center-range pre-filter: the exterior point can never be closer than
-          // (centerDist - halfDiag - margin), so skip the expensive perimeter search when
-          // the building is provably beyond the leash.
-          const ts = this.gridManager.tileSize;
-          const bcx = (b.x + b.width / 2) * ts;
-          const bcy = (b.y + b.height / 2) * ts;
-          const halfDiag = Math.hypot(b.width, b.height) * ts * 0.5;
-          if (Math.hypot(bcx - monster.x, bcy - monster.y) <= leash * 1.2 + halfDiag + 24) {
-            const tp = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
-            if (Math.hypot(tp.x - monster.x, tp.y - monster.y) < leash * 1.2) {
-              stickyTarget = { x: tp.x, y: tp.y, id: b.id, type: 'building' };
+        // BREAK building lock if a builder is actively repairing or building nearby!
+        let builderNear: Peasant | null = null;
+        let minBuilderDist = 160;
+        for (const p of peasants) {
+          if (p.hp <= 0) continue;
+          const isWorking = p.state === 'repairing_building' || p.state === 'hammering_construction' || p.targetBuildingId === monster.targetEntityId;
+          if (!isWorking) continue;
+          const d = Math.hypot(p.x - monster.x, p.y - monster.y);
+          if (d < minBuilderDist) {
+            minBuilderDist = d;
+            builderNear = p;
+          }
+        }
+
+        if (builderNear) {
+          // Divert immediately to squash the repairman!
+          stickyTarget = { x: builderNear.x, y: builderNear.y, id: builderNear.id, type: 'peasant' };
+          monster.targetEntityId = builderNear.id;
+          monster.targetEntityType = 'peasant';
+          monster.targetHoldTimer = 2.5;
+        } else {
+          const b = buildings.find(x => x.id === monster.targetEntityId);
+          if (b && b.hp > 0 && (!b.isConstructing || b.constructionProgress > 0)) {
+            // Cheap center-range pre-filter: the exterior point can never be closer than
+            // (centerDist - halfDiag - margin), so skip the expensive perimeter search when
+            // the building is provably beyond the leash.
+            const ts = this.gridManager.tileSize;
+            const bcx = (b.x + b.width / 2) * ts;
+            const bcy = (b.y + b.height / 2) * ts;
+            const halfDiag = Math.hypot(b.width, b.height) * ts * 0.5;
+            if (Math.hypot(bcx - monster.x, bcy - monster.y) <= leash * 1.2 + halfDiag + 24) {
+              const tp = this.gridManager.getNearestExteriorWalkablePosition(monster.x, monster.y, b, buildings, lairs, 10);
+              if (Math.hypot(tp.x - monster.x, tp.y - monster.y) < leash * 1.2) {
+                stickyTarget = { x: tp.x, y: tp.y, id: b.id, type: 'building' };
+              }
             }
           }
         }
@@ -282,17 +321,26 @@ export class MonsterAIManager {
     }
 
     // A. PRIORITY: Peasants actively repairing or constructing structures!
-    if (!closestTarget) {
-      for (const p of peasants) {
-        if (p.hp <= 0) continue;
-        const isWorking = p.state === 'repairing_building' || p.state === 'hammering_construction' || p.state === 'walking_to_site';
-        const dist = Math.hypot(p.x - monster.x, p.y - monster.y);
-        const maxDetectDist = isWorking ? closestDist * 1.35 : closestDist * 0.85;
-        if (dist < maxDetectDist && dist < closestDist) {
-          closestDist = dist;
-          closestTarget = { x: p.x, y: p.y, id: p.id, type: 'peasant' };
-        }
+    // If monster is currently targeting a building or looking for targets, prioritize active builders
+    let activeRepairman: Peasant | null = null;
+    let minRepairDist = 240;
+    for (const p of peasants) {
+      if (p.hp <= 0) continue;
+      const isRepairing = p.state === 'repairing_building' || p.state === 'hammering_construction';
+      const isWalkingToSite = p.state === 'walking_to_site';
+      if (!isRepairing && !isWalkingToSite) continue;
+
+      const d = Math.hypot(p.x - monster.x, p.y - monster.y);
+      const maxDetect = isRepairing ? 260 : 180;
+      if (d < maxDetect && d < minRepairDist) {
+        minRepairDist = d;
+        activeRepairman = p;
       }
+    }
+
+    if (activeRepairman && (!closestTarget || closestTarget.type === 'building')) {
+      closestTarget = { x: activeRepairman.x, y: activeRepairman.y, id: activeRepairman.id, type: 'peasant' };
+      closestDist = minRepairDist;
     }
 
     // B. Check for Tax Collectors (Goblins & Rats love gold bags!)
