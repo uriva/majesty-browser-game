@@ -912,41 +912,62 @@ export class ThreeRenderer {
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
-    // Base deep crystalline azure blue
-    ctx.fillStyle = '#0284c7';
+    // Base deep crystalline riverbed cyan-blue gradient
+    const grad = ctx.createLinearGradient(0, 0, 512, 0);
+    grad.addColorStop(0, '#0369a1');
+    grad.addColorStop(0.2, '#0284c7');
+    grad.addColorStop(0.5, '#38bdf8');
+    grad.addColorStop(0.8, '#0284c7');
+    grad.addColorStop(1, '#0369a1');
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 512);
 
-    // River caustics, wave ripples, and foam currents
-    for (let i = 0; i < 320; i++) {
-      const rx = Math.random() * 512;
-      const ry = Math.random() * 512;
-      const rw = Math.random() * 60 + 20;
-      const rh = Math.random() * 8 + 3;
+    // Directional rushing water filaments and current streamlines
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 90; i++) {
+      const sx = Math.random() * 512;
+      const sy = Math.random() * 512;
+      const len = Math.random() * 90 + 50;
+      const waveW = Math.random() * 8 + 3;
+      const alpha = Math.random() * 0.4 + 0.2;
 
-      const alpha = Math.random() * 0.35 + 0.15;
-      ctx.fillStyle = Math.random() > 0.4 ? `rgba(56, 189, 248, ${alpha})` : `rgba(224, 242, 254, ${alpha * 0.8})`;
+      ctx.strokeStyle = `rgba(224, 242, 254, ${alpha})`;
+      ctx.lineWidth = Math.random() * 3 + 1.5;
       ctx.beginPath();
-      ctx.ellipse(rx, ry, rw / 2, rh / 2, (Math.random() - 0.5) * 0.3, 0, Math.PI * 2);
+      ctx.moveTo(sx, sy);
+      ctx.bezierCurveTo(sx + waveW, sy + len * 0.35, sx - waveW, sy + len * 0.65, sx, sy + len);
+      ctx.stroke();
+    }
+
+    // Sparkling foam crests and turbulent caustics
+    for (let c = 0; c < 180; c++) {
+      const cx = Math.random() * 512;
+      const cy = Math.random() * 512;
+      const cw = Math.random() * 45 + 15;
+      const ch = Math.random() * 6 + 2;
+      const alpha = Math.random() * 0.45 + 0.15;
+
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, cw / 2, ch / 2, (Math.random() - 0.5) * 0.2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // River foam stream lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.lineWidth = 2;
-    for (let l = 0; l < 24; l++) {
-      const sx = Math.random() * 512;
-      const sy = Math.random() * 512;
-      const len = Math.random() * 80 + 40;
+    // Lateral shore foam edges (translucent white frothing near banks)
+    for (let s = 0; s < 512; s += 8) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
       ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.bezierCurveTo(sx + 10, sy + len * 0.3, sx - 10, sy + len * 0.7, sx, sy + len);
-      ctx.stroke();
+      ctx.arc(Math.random() * 18, s, Math.random() * 4 + 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(512 - Math.random() * 18, s, Math.random() * 4 + 2, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(2, 8);
+    tex.repeat.set(1, 1);
     return tex;
   }
 
@@ -1007,7 +1028,7 @@ export class ThreeRenderer {
     const centerX = this.gridManager.width / 2;
     const westOffset = this.gridManager.width * 0.26;
     const tileY = worldZ / ts;
-    const rx = Math.floor(centerX - westOffset + Math.sin(tileY * 0.13) * 5 + Math.cos(tileY * 0.05) * 3);
+    const rx = centerX - westOffset + Math.sin(tileY * 0.13) * 5 + Math.cos(tileY * 0.05) * 3;
     return (rx + 1.0) * ts;
   }
 
@@ -1016,7 +1037,7 @@ export class ThreeRenderer {
     const centerX = this.gridManager.width / 2;
     const eastOffset = this.gridManager.width * 0.30;
     const tileY = worldZ / ts;
-    const rx = Math.floor(centerX + eastOffset + Math.sin(tileY * 0.15 + 1.2) * 4);
+    const rx = centerX + eastOffset + Math.sin(tileY * 0.15 + 1.2) * 4;
     return (rx + 1.0) * ts;
   }
 
@@ -1055,21 +1076,27 @@ export class ThreeRenderer {
     const tx = Math.floor(x / ts);
     const ty = Math.floor(z / ts);
 
-    // If unit or position is on a stone bridge deck (tile 5), return elevated bridge height
+    // If unit or position is on a stone bridge deck (tile 5), return elevated cambered bridge height
     if (this.gridManager.isValid(tx, ty) && this.gridManager.grid[ty][tx] === 5) {
-      return baseElevation + 2.2;
+      const westRiverX = this.getWestRiverX(z);
+      const eastRiverX = this.getEastRiverX(z);
+      const nearWest = Math.abs(x - westRiverX) < 40;
+      const rX = nearWest ? westRiverX : eastRiverX;
+      const distFromCenter = Math.min(38, Math.abs(x - rX));
+      const archRise = Math.max(0, 3.2 * Math.cos((distFromCenter / 38) * (Math.PI / 2)));
+      return baseElevation + 2.4 + archRise;
     }
 
     // Carve deep clean riverbed channels so ground never pokes through water
     const westRiverX = this.getWestRiverX(z);
     const distWest = Math.abs(x - westRiverX);
-    const riverBedRadiusW = 34.0;
+    const riverBedRadiusW = 38.0;
     if (distWest < riverBedRadiusW) {
-      const channelDepth = 5.2;
-      if (distWest < 22.0) {
+      const channelDepth = 6.0;
+      if (distWest < 24.0) {
         elev = Math.min(elev, baseElevation - channelDepth);
       } else {
-        const t = (distWest - 22.0) / (riverBedRadiusW - 22.0);
+        const t = (distWest - 24.0) / (riverBedRadiusW - 24.0);
         const smoothT = t * t * (3 - 2 * t);
         const bankElev = THREE.MathUtils.lerp(baseElevation - channelDepth, baseElevation, smoothT);
         elev = Math.min(elev, bankElev);
@@ -1078,13 +1105,13 @@ export class ThreeRenderer {
 
     const eastRiverX = this.getEastRiverX(z);
     const distEast = Math.abs(x - eastRiverX);
-    const riverBedRadiusE = 32.0;
+    const riverBedRadiusE = 36.0;
     if (distEast < riverBedRadiusE) {
-      const channelDepth = 4.8;
-      if (distEast < 20.0) {
+      const channelDepth = 5.5;
+      if (distEast < 22.0) {
         elev = Math.min(elev, baseElevation - channelDepth);
       } else {
-        const t = (distEast - 20.0) / (riverBedRadiusE - 20.0);
+        const t = (distEast - 22.0) / (riverBedRadiusE - 22.0);
         const smoothT = t * t * (3 - 2 * t);
         const bankElev = THREE.MathUtils.lerp(baseElevation - channelDepth, baseElevation, smoothT);
         elev = Math.min(elev, bankElev);
@@ -1164,7 +1191,7 @@ export class ThreeRenderer {
   public getRiverWaterHeight(z: number, riverType: 'west' | 'east' = 'west'): number {
     const rx = riverType === 'west' ? this.getWestRiverX(z) : this.getEastRiverX(z);
     const baseElev = this.getTerrainBaseElevation(rx, z);
-    return baseElev - (riverType === 'west' ? 1.2 : 1.0);
+    return baseElev - (riverType === 'west' ? 1.6 : 1.4);
   }
 
   // --- BUILD 3D TERRAIN ---
@@ -1295,8 +1322,8 @@ export class ThreeRenderer {
 
     const waterMat = new THREE.MeshStandardMaterial({
       color: waterColor,
-      roughness: 0.1,
-      metalness: 0.35,
+      roughness: 0.12,
+      metalness: 0.18,
       map: this.riverTexture,
       transparent: true,
       opacity: 0.88,
@@ -1313,7 +1340,7 @@ export class ThreeRenderer {
       const ry = this.getRiverWaterHeight(rz, 'west');
       westRiverPoints.push(new THREE.Vector3(rx, ry, rz));
     }
-    const westRiverMesh = this.createContinuousRiverRibbon(westRiverPoints, ts * 2.2, waterMat, 'west');
+    const westRiverMesh = this.createContinuousRiverRibbon(westRiverPoints, ts * 2.6, waterMat, 'west');
     westRiverMesh.renderOrder = 2;
     this.terrainGroup.add(westRiverMesh);
 
@@ -1325,7 +1352,7 @@ export class ThreeRenderer {
       const ry = this.getRiverWaterHeight(rz, 'east');
       eastRiverPoints.push(new THREE.Vector3(rx, ry, rz));
     }
-    const eastRiverMesh = this.createContinuousRiverRibbon(eastRiverPoints, ts * 2.0, waterMat, 'east');
+    const eastRiverMesh = this.createContinuousRiverRibbon(eastRiverPoints, ts * 2.4, waterMat, 'east');
     eastRiverMesh.renderOrder = 2;
     this.terrainGroup.add(eastRiverMesh);
 
@@ -1664,11 +1691,14 @@ export class ThreeRenderer {
 
       const waterY = this.getRiverWaterHeight(p.z, riverType);
 
+      // Map UV along world Z length so ripples scale naturally and flow visibly
+      const v = p.z / 32.0;
+
       vertices.push(p.x - normX, waterY, p.z - normZ);
-      uvs.push(0, i / 3);
+      uvs.push(0, v);
 
       vertices.push(p.x + normX, waterY, p.z + normZ);
-      uvs.push(1, i / 3);
+      uvs.push(1, v);
 
       if (i < segments) {
         const baseIdx = i * 2;
@@ -1776,11 +1806,14 @@ export class ThreeRenderer {
 
   private create3DBridgeMesh(): THREE.Group {
     const group = new THREE.Group();
-    const spanX = 76.0; // Spans across the 64-unit river channel onto the solid riverbanks
-    const spanZ = 64.0; // Spans both bridge road tiles (2 * 32 = 64 units)
+    const spanX = 76.0; // Spans across the river channel onto solid riverbanks
+    const spanZ = 46.0; // Width of the 2-tile road crossing
+    const halfSpan = spanX / 2; // 38.0
+    const halfWidth = spanZ / 2; // 23.0
 
-    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.85 });
-    const cobbleMat = new THREE.MeshStandardMaterial({ color: 0x64748b, map: this.cobbleTexture, roughness: 0.8 });
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x64748b, map: this.royalCastleWallTexture, roughness: 0.85 });
+    const darkStoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, map: this.royalCastleWallTexture, roughness: 0.9 });
+    const cobbleMat = new THREE.MeshStandardMaterial({ color: 0x78716c, map: this.cobbleTexture, roughness: 0.8 });
     const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.25 });
     const amberGlassMat = new THREE.MeshStandardMaterial({
       color: 0xf59e0b,
@@ -1795,77 +1828,140 @@ export class ThreeRenderer {
       emissiveIntensity: 2.0
     });
 
-    // 1. Heavy Stone Abutment Piers on West & East Riverbanks (anchored into dry terrain)
-    const pierGeo = new THREE.BoxGeometry(9.0, 9.0, spanZ * 0.96);
-    const pierL = new THREE.Mesh(pierGeo, stoneMat);
-    pierL.position.set(-spanX * 0.44, 0.5, 0);
-    pierL.castShadow = true;
-    pierL.receiveShadow = true;
-    group.add(pierL);
+    const archR = 21.0;
+    const archH = 5.8;
+    const deckCrown = 6.8;
+    const deckEnd = 2.4;
 
-    const pierR = new THREE.Mesh(pierGeo, stoneMat);
-    pierR.position.set(spanX * 0.44, 0.5, 0);
-    pierR.castShadow = true;
-    pierR.receiveShadow = true;
-    group.add(pierR);
+    // 1. Vaulted Stone Masonry Spandrel Body with True Open Semicircular Arch
+    const bridgeShape = new THREE.Shape();
+    bridgeShape.moveTo(-halfSpan, -1.2);
+    bridgeShape.lineTo(-archR, -1.2);
 
-    // 2. Central Stone Arch Substructure Vault (Gracefully arched above water surface)
-    const archGeo = new THREE.BoxGeometry(spanX * 0.78, 3.8, spanZ * 0.94);
-    const arch = new THREE.Mesh(archGeo, stoneMat);
-    arch.position.set(0, 1.2, 0);
-    arch.castShadow = true;
-    arch.receiveShadow = true;
-    group.add(arch);
+    // Arch opening vault curve
+    const archSteps = 24;
+    for (let i = 0; i <= archSteps; i++) {
+      const theta = (i / archSteps) * Math.PI;
+      const ax = -Math.cos(theta) * archR;
+      const ay = Math.sin(theta) * archH;
+      bridgeShape.lineTo(ax, ay);
+    }
 
-    // 3. Raised Cobblestone Roadway Deck (Slightly elevated above the river)
-    const deckGeo = new THREE.BoxGeometry(spanX, 1.8, spanZ - 4.0);
-    const deck = new THREE.Mesh(deckGeo, cobbleMat);
-    deck.position.set(0, 2.2, 0);
-    deck.castShadow = true;
-    deck.receiveShadow = true;
-    group.add(deck);
+    bridgeShape.lineTo(halfSpan, -1.2);
+    bridgeShape.lineTo(halfSpan, deckEnd);
 
-    // Approach ramps connecting elevated bridge deck to ground roads
-    const rampGeo = new THREE.BoxGeometry(7.0, 1.4, spanZ - 4.0);
+    // Cambered top deck road curve
+    const deckSteps = 24;
+    for (let i = deckSteps; i >= 0; i--) {
+      const frac = (i / deckSteps) * 2 - 1; // -1 to +1
+      const dx = frac * halfSpan;
+      const dy = deckEnd + (deckCrown - deckEnd) * Math.cos(frac * (Math.PI / 2));
+      bridgeShape.lineTo(dx, dy);
+    }
+    bridgeShape.lineTo(-halfSpan, -1.2);
+
+    const bridgeGeo = new THREE.ExtrudeGeometry(bridgeShape, {
+      depth: spanZ,
+      bevelEnabled: false
+    });
+    bridgeGeo.translate(0, 0, -halfWidth);
+    bridgeGeo.computeVertexNormals();
+
+    const bridgeMesh = new THREE.Mesh(bridgeGeo, stoneMat);
+    bridgeMesh.castShadow = true;
+    bridgeMesh.receiveShadow = true;
+    group.add(bridgeMesh);
+
+    // 2. Cobblestone Paved Roadway Deck (following the cambered arch)
+    const deckVertices: number[] = [];
+    const deckUvs: number[] = [];
+    const deckIndices: number[] = [];
+    const deckRoadHalfW = halfWidth - 1.8;
+
+    for (let i = 0; i <= deckSteps; i++) {
+      const frac = (i / deckSteps) * 2 - 1;
+      const dx = frac * halfSpan;
+      const dy = deckEnd + (deckCrown - deckEnd) * Math.cos(frac * (Math.PI / 2)) + 0.12;
+
+      deckVertices.push(dx, dy, -deckRoadHalfW);
+      deckUvs.push(0, (dx + halfSpan) / 14);
+      deckVertices.push(dx, dy, deckRoadHalfW);
+      deckUvs.push(1, (dx + halfSpan) / 14);
+
+      if (i < deckSteps) {
+        const bIdx = i * 2;
+        deckIndices.push(bIdx, bIdx + 1, bIdx + 2);
+        deckIndices.push(bIdx + 1, bIdx + 3, bIdx + 2);
+      }
+    }
+
+    const deckGeo = new THREE.BufferGeometry();
+    deckGeo.setAttribute('position', new THREE.Float32BufferAttribute(deckVertices, 3));
+    deckGeo.setAttribute('uv', new THREE.Float32BufferAttribute(deckUvs, 2));
+    deckGeo.setIndex(deckIndices);
+    deckGeo.computeVertexNormals();
+
+    const deckMesh = new THREE.Mesh(deckGeo, cobbleMat);
+    deckMesh.castShadow = true;
+    deckMesh.receiveShadow = true;
+    group.add(deckMesh);
+
+    // 3. Curved Stone Parapets on North & South Edges (following the arch curve)
+    for (const side of [-1, 1]) {
+      const pZ = side * (halfWidth - 0.9);
+      const parapetShape = new THREE.Shape();
+      parapetShape.moveTo(-halfSpan, deckEnd);
+
+      for (let i = 0; i <= deckSteps; i++) {
+        const frac = (i / deckSteps) * 2 - 1;
+        const dx = frac * halfSpan;
+        const dy = deckEnd + (deckCrown - deckEnd) * Math.cos(frac * (Math.PI / 2)) + 2.4;
+        parapetShape.lineTo(dx, dy);
+      }
+      for (let i = deckSteps; i >= 0; i--) {
+        const frac = (i / deckSteps) * 2 - 1;
+        const dx = frac * halfSpan;
+        const dy = deckEnd + (deckCrown - deckEnd) * Math.cos(frac * (Math.PI / 2));
+        parapetShape.lineTo(dx, dy);
+      }
+      parapetShape.lineTo(-halfSpan, deckEnd);
+
+      const pGeo = new THREE.ExtrudeGeometry(parapetShape, { depth: 1.8, bevelEnabled: false });
+      pGeo.translate(0, 0, pZ - 0.9);
+      pGeo.computeVertexNormals();
+
+      const pMesh = new THREE.Mesh(pGeo, stoneMat);
+      pMesh.castShadow = true;
+      pMesh.receiveShadow = true;
+      group.add(pMesh);
+
+      // Crenels along parapet top
+      const numCrenels = 6;
+      const crenelGeo = new THREE.BoxGeometry(3.6, 1.2, 2.0);
+      for (let c = 0; c < numCrenels; c++) {
+        const cFrac = (c / (numCrenels - 1)) * 1.6 - 0.8;
+        const cx = cFrac * (halfSpan * 0.8);
+        const cy = deckEnd + (deckCrown - deckEnd) * Math.cos(cFrac * (Math.PI / 2)) + 2.8;
+        const crenel = new THREE.Mesh(crenelGeo, darkStoneMat);
+        crenel.position.set(cx, cy, pZ);
+        crenel.castShadow = true;
+        group.add(crenel);
+      }
+    }
+
+    // 4. Approach Ramps connecting to bank roads
+    const rampGeo = new THREE.BoxGeometry(8.0, 1.2, spanZ - 3.6);
     const rampL = new THREE.Mesh(rampGeo, cobbleMat);
-    rampL.position.set(-spanX * 0.46, 1.2, 0);
-    rampL.rotation.z = -0.12;
+    rampL.position.set(-halfSpan - 3.8, deckEnd - 0.6, 0);
+    rampL.rotation.z = -0.15;
     group.add(rampL);
 
     const rampR = new THREE.Mesh(rampGeo, cobbleMat);
-    rampR.position.set(spanX * 0.46, 1.2, 0);
-    rampR.rotation.z = 0.12;
+    rampR.position.set(halfSpan + 3.8, deckEnd - 0.6, 0);
+    rampR.rotation.z = 0.15;
     group.add(rampR);
 
-    // 4. Heavy Carved Stone Parapets on North & South Edges
-    const parapetGeo = new THREE.BoxGeometry(spanX, 3.4, 2.2);
-    const pNorth = new THREE.Mesh(parapetGeo, stoneMat);
-    pNorth.position.set(0, 3.8, -spanZ / 2 + 1.1);
-    pNorth.castShadow = true;
-    pNorth.receiveShadow = true;
-    group.add(pNorth);
-
-    const pSouth = new THREE.Mesh(parapetGeo, stoneMat);
-    pSouth.position.set(0, 3.8, spanZ / 2 - 1.1);
-    pSouth.castShadow = true;
-    pSouth.receiveShadow = true;
-    group.add(pSouth);
-
-    // Crenellations along North & South parapet tops
-    const crenelGeo = new THREE.BoxGeometry(4.2, 1.4, 2.3);
-    const numCrenels = 7;
-    for (let c = 0; c < numCrenels; c++) {
-      const cx = -spanX * 0.40 + c * (spanX * 0.80 / (numCrenels - 1));
-      const cN = new THREE.Mesh(crenelGeo, stoneMat);
-      cN.position.set(cx, 5.8, -spanZ / 2 + 1.1);
-      group.add(cN);
-
-      const cS = new THREE.Mesh(crenelGeo, stoneMat);
-      cS.position.set(cx, 5.8, spanZ / 2 - 1.1);
-      group.add(cS);
-    }
-
-    // 5. Four Grand Corner Stone Pedestals with Amber Lanterns
+    // 5. Four Grand Corner Stone Pedestals with Amber Street Lanterns
     const pedestalGeo = new THREE.BoxGeometry(3.2, 5.0, 3.2);
     const capGeo = new THREE.BoxGeometry(3.6, 0.8, 3.6);
     const bracketGeo = new THREE.CylinderGeometry(0.35, 0.55, 0.9, 6);
@@ -1875,45 +1971,40 @@ export class ThreeRenderer {
     roofGeo.rotateY(Math.PI / 4);
 
     const cornerCoords = [
-      [-spanX * 0.46, -spanZ * 0.46],
-      [spanX * 0.46, -spanZ * 0.46],
-      [-spanX * 0.46, spanZ * 0.46],
-      [spanX * 0.46, spanZ * 0.46]
+      [-halfSpan * 0.95, -halfWidth * 0.92],
+      [halfSpan * 0.95, -halfWidth * 0.92],
+      [-halfSpan * 0.95, halfWidth * 0.92],
+      [halfSpan * 0.95, halfWidth * 0.92]
     ];
 
     cornerCoords.forEach(([lx, lz]) => {
-      // Stone Pedestal Pillar
       const pedestal = new THREE.Mesh(pedestalGeo, stoneMat);
-      pedestal.position.set(lx, 4.2, lz);
+      pedestal.position.set(lx, deckEnd + 2.0, lz);
       pedestal.castShadow = true;
       group.add(pedestal);
 
-      // Chamfered Stone Cap
-      const cap = new THREE.Mesh(capGeo, stoneMat);
-      cap.position.set(lx, 6.8, lz);
+      const cap = new THREE.Mesh(capGeo, darkStoneMat);
+      cap.position.set(lx, deckEnd + 4.6, lz);
       group.add(cap);
 
-      // Wrought-Iron Base
       const bracket = new THREE.Mesh(bracketGeo, ironMat);
-      bracket.position.set(lx, 7.5, lz);
+      bracket.position.set(lx, deckEnd + 5.3, lz);
       group.add(bracket);
 
-      // Amber Glass Lantern Cage
       const cage = new THREE.Mesh(cageGeo, amberGlassMat);
       cage.name = 'lanternCage';
-      cage.position.set(lx, 8.8, lz);
+      cage.position.set(lx, deckEnd + 6.6, lz);
       cage.castShadow = true;
       group.add(cage);
 
-      // Glowing Ember
       const ember = new THREE.Mesh(emberGeo, emberMat);
       ember.name = 'lanternEmber';
-      ember.position.set(lx, 8.8, lz);
+      ember.position.set(lx, deckEnd + 6.6, lz);
       group.add(ember);
 
-      // Iron Lantern Cap
       const roof = new THREE.Mesh(roofGeo, ironMat);
-      roof.position.set(lx, 10.5, lz);
+      roof.position.set(lx, deckEnd + 8.1, lz);
+      roof.castShadow = true;
       group.add(roof);
     });
 
@@ -3253,8 +3344,8 @@ export class ThreeRenderer {
 
     // Real-Time Flowing Water & Cascading Waterfall Animation
     if (this.riverTexture) {
-      this.riverTexture.offset.y -= delta * 0.45;
-      this.riverTexture.offset.x = Math.sin(now * 0.002) * 0.03;
+      this.riverTexture.offset.y -= delta * 1.5;
+      this.riverTexture.offset.x = Math.sin(now * 0.002) * 0.04;
     }
     if (this.waterfallTexture) {
       this.waterfallTexture.offset.y -= delta * 1.85;
