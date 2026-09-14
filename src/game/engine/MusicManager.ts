@@ -55,6 +55,9 @@ class MusicManager {
   public isShuffle: boolean = true;
   public volume: number = 0.45;
   public muted: boolean = false;
+  public inMenu: boolean = true;
+  private savedGameplayTrackIndex: number = 1;
+  private fadeInterval: NodeJS.Timeout | null = null;
   private tabBlurred: boolean = false;
   private muteOnBlur: boolean = true;
   private hasUserInteracted: boolean = false;
@@ -62,8 +65,8 @@ class MusicManager {
   private listeners: ((state: { isPlaying: boolean; currentTrack: MusicTrack; volume: number; muted: boolean; isShuffle: boolean }) => void)[] = [];
 
   constructor() {
-    // Pick a random track on start
-    this.currentTrackIndex = Math.floor(Math.random() * MUSIC_TRACKS.length);
+    // Start with Majesty Main Sovereign Theme (track 0) for menus/intro
+    this.currentTrackIndex = 0;
 
     if (typeof window !== 'undefined') {
       const initialSettings = getGameSettings();
@@ -82,7 +85,15 @@ class MusicManager {
       this.audioElement.volume = this.isEffectiveMuted() ? 0 : this.volume;
 
       this.audioElement.addEventListener('ended', () => {
-        this.nextTrack(true);
+        if (this.inMenu) {
+          // Loop the sovereign menu theme while in menus
+          if (this.audioElement) {
+            this.audioElement.currentTime = 0;
+            this.audioElement.play().catch(() => {});
+          }
+        } else {
+          this.nextTrack(true);
+        }
       });
 
       this.audioElement.addEventListener('error', (e) => {
@@ -215,15 +226,94 @@ class MusicManager {
     }
   }
 
+  public enterMenu() {
+    if (this.inMenu && this.currentTrackIndex === 0) return;
+    this.inMenu = true;
+    if (this.currentTrackIndex !== 0) {
+      this.savedGameplayTrackIndex = this.currentTrackIndex;
+    }
+    this.fadeTransitionToTrack(0);
+  }
+
+  public exitMenu(newScenario: boolean = false) {
+    if (!this.inMenu && !newScenario) return;
+    this.inMenu = false;
+    const target = newScenario ? 1 : (this.savedGameplayTrackIndex || 1);
+    this.fadeTransitionToTrack(target);
+  }
+
+  public fadeTransitionToTrack(targetIndex: number) {
+    if (targetIndex === this.currentTrackIndex && this.isPlaying) return;
+    if (this.fadeInterval) {
+      clearInterval(this.fadeInterval);
+      this.fadeInterval = null;
+    }
+
+    if (!this.audioElement) {
+      this.selectTrack(targetIndex);
+      return;
+    }
+
+    const currentVol = this.isEffectiveMuted() ? 0 : this.volume;
+    const fadeSteps = 8;
+    const stepTime = 25; // 200ms total fade out
+    let step = 0;
+
+    this.fadeInterval = setInterval(() => {
+      step++;
+      if (this.audioElement) {
+        this.audioElement.volume = Math.max(0, currentVol * (1 - step / fadeSteps));
+      }
+      if (step >= fadeSteps) {
+        if (this.fadeInterval) {
+          clearInterval(this.fadeInterval);
+          this.fadeInterval = null;
+        }
+        this.selectTrack(targetIndex);
+        if (this.isPlaying) {
+          let inStep = 0;
+          this.fadeInterval = setInterval(() => {
+            inStep++;
+            if (this.audioElement) {
+              const targetVol = this.isEffectiveMuted() ? 0 : this.volume;
+              this.audioElement.volume = Math.min(targetVol, targetVol * (inStep / fadeSteps));
+            }
+            if (inStep >= fadeSteps) {
+              if (this.fadeInterval) {
+                clearInterval(this.fadeInterval);
+                this.fadeInterval = null;
+              }
+              this.applyEffectiveVolume();
+            }
+          }, stepTime);
+        }
+      }
+    }, stepTime);
+  }
+
   public nextTrack(forceRandom?: boolean) {
+    if (this.inMenu) {
+      // In menu mode, loop/re-trigger the Main Sovereign Theme
+      this.currentTrackIndex = 0;
+      this.play();
+      return;
+    }
+
+    // In gameplay mode, cycle through gameplay tracks (indices 1 to 4)
+    const gameplayCount = MUSIC_TRACKS.length - 1;
     if (this.isShuffle || forceRandom) {
-      let nextIdx = Math.floor(Math.random() * MUSIC_TRACKS.length);
-      if (MUSIC_TRACKS.length > 1 && nextIdx === this.currentTrackIndex) {
-        nextIdx = (nextIdx + 1) % MUSIC_TRACKS.length;
+      let nextOffset = Math.floor(Math.random() * gameplayCount);
+      let nextIdx = 1 + nextOffset;
+      if (gameplayCount > 1 && nextIdx === this.currentTrackIndex) {
+        nextIdx = 1 + ((nextOffset + 1) % gameplayCount);
       }
       this.currentTrackIndex = nextIdx;
     } else {
-      this.currentTrackIndex = (this.currentTrackIndex + 1) % MUSIC_TRACKS.length;
+      let nextIdx = this.currentTrackIndex + 1;
+      if (nextIdx >= MUSIC_TRACKS.length || nextIdx === 0) {
+        nextIdx = 1;
+      }
+      this.currentTrackIndex = nextIdx;
     }
     if (this.isPlaying) {
       this.play();
@@ -233,11 +323,18 @@ class MusicManager {
   }
 
   public prevTrack() {
+    if (this.inMenu) {
+      this.currentTrackIndex = 0;
+      this.play();
+      return;
+    }
     if (this.isShuffle) {
       this.nextTrack(true);
       return;
     }
-    this.currentTrackIndex = (this.currentTrackIndex - 1 + MUSIC_TRACKS.length) % MUSIC_TRACKS.length;
+    let prevIdx = this.currentTrackIndex - 1;
+    if (prevIdx < 1) prevIdx = MUSIC_TRACKS.length - 1;
+    this.currentTrackIndex = prevIdx;
     if (this.isPlaying) {
       this.play();
     } else {

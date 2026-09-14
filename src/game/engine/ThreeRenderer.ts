@@ -7330,9 +7330,10 @@ export class ThreeRenderer {
     for (const h of state.heroes) {
       if (h.isDead) continue;
       const isRestingState = h.state === 'resting_at_guild' || h.state === 'visiting_inn';
-      // Never render Zzz while walking/traveling toward the guild or inn
-      const isWalking = h.targetX !== undefined || (h.path && h.path.length > 0);
-      const isResting = isRestingState && !isWalking;
+      const lastPos = this.lastUnitPositions.get(h.id);
+      const movedDist = lastPos ? Math.hypot(h.x - lastPos.x, h.y - lastPos.y) : 0;
+      const isMoving = movedDist > 0.05 || (h.path && h.path.length > 0) || h.targetX !== undefined;
+      const isResting = isRestingState && (h.restingProgress ?? 0) > 0 && !isMoving;
       if (isResting) {
         const id = `sleep_${h.id}`;
         activeSleepingIds.add(id);

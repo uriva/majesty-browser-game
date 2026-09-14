@@ -27,6 +27,7 @@ import { SettingsModal } from './SettingsModal';
 import { WelcomePromptModal } from './WelcomePromptModal';
 import { Hammer, Coins, Zap, Eye, RotateCw, Video, Crown, Sparkles, CheckCircle2 } from 'lucide-react';
 import { audioManager } from '../game/engine/Audio';
+import { musicManager } from '../game/engine/MusicManager';
 import { ModelRegistry } from '../game/engine/ModelRegistry';
 import { getGameSettings, subscribeGameSettings, GameSettings } from '../game/settings';
 
@@ -97,6 +98,29 @@ export const GameView: React.FC = () => {
     }
     prevAnyDialogOpenRef.current = isAnyDialogOpen;
   }, [isAnyDialogOpen, gameState?.activeDilemma]);
+
+  // Track menu / modal state for authentic Majesty menu music transitions
+  const isMenuModalOpen = Boolean(
+    isScenarioModalOpen ||
+    isSaveLoadModalOpen ||
+    isSettingsModalOpen ||
+    isWelcomePromptOpen
+  );
+
+  useEffect(() => {
+    if (isMenuModalOpen) {
+      musicManager.enterMenu();
+    } else if (!gameState?.isGameOver) {
+      musicManager.exitMenu();
+    }
+  }, [isMenuModalOpen, gameState?.isGameOver]);
+
+  // Stop music on Defeat (player loses)
+  useEffect(() => {
+    if (gameState?.isGameOver && !gameState.gameWon) {
+      musicManager.pause();
+    }
+  }, [gameState?.isGameOver, gameState?.gameWon]);
 
   // Track asset readiness (with honest progress for the loading veil).
   // The simulation is held paused until the veil lifts — otherwise days,
@@ -1139,7 +1163,10 @@ export const GameView: React.FC = () => {
           setIsWelcomePromptOpen(false);
           handleOpenLoadModal();
         }}
-        onStartNewGame={() => setIsWelcomePromptOpen(false)}
+        onStartNewGame={() => {
+          setIsWelcomePromptOpen(false);
+          musicManager.exitMenu(true);
+        }}
         onOpenScenarioModal={() => {
           setIsWelcomePromptOpen(false);
           setIsScenarioModalOpen(true);
@@ -1180,10 +1207,12 @@ export const GameView: React.FC = () => {
         onSelectScenario={(scen) => {
           initEngine(scen);
           setIsScenarioModalOpen(false);
+          musicManager.exitMenu(true);
         }}
         onRestartScenario={() => {
           if (gameState) initEngine(gameState.scenario);
           setIsScenarioModalOpen(false);
+          musicManager.exitMenu(true);
         }}
       />
     </div>

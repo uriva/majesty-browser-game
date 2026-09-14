@@ -310,7 +310,8 @@ export class HeroAIManager {
         hero.state = 'visiting_inn';
         hero.targetEntityId = inn.id;
         hero.targetEntityType = 'building';
-        hero.currentThought = 'Resting at the Inn to recover health';
+        hero.restingProgress = 0;
+        hero.currentThought = 'Traveling to the Inn to recover health';
         return;
       } else {
         const homeGuild = buildings.find(b => b.id === hero.homeGuildId && b.hp > 0);
@@ -318,6 +319,7 @@ export class HeroAIManager {
           hero.state = 'resting_at_guild';
           hero.targetEntityId = homeGuild.id;
           hero.targetEntityType = 'building';
+          hero.restingProgress = 0;
           hero.currentThought = 'Returning to guild hall to recover';
           return;
         }
@@ -637,12 +639,17 @@ export class HeroAIManager {
       const targetPos = this.gridManager.getNearestExteriorWalkablePosition(hero.x, hero.y, safeBuilding, buildings, lairs, 14);
       const dist = Math.hypot(targetPos.x - hero.x, targetPos.y - hero.y);
 
-      if (dist > 22 && hero.stateTimer > 0) {
-        this.moveTowards(hero, targetPos.x, targetPos.y, delta, buildings, lairs, 1.2, safeBuilding.id); // sprint when fleeing
+      if (dist > 22) {
+        hero.restingProgress = 0;
+        const sprintSpeed = hero.stateTimer > 0 ? 1.25 : 1.05;
+        this.moveTowards(hero, targetPos.x, targetPos.y, delta, buildings, lairs, sprintSpeed, safeBuilding.id);
+        hero.currentThought = hero.stateTimer > 0 ? 'Fleeing to safety!' : 'Retreating to sanctuary to heal';
       } else {
+        // Physically reached safe building!
         hero.targetX = undefined;
         hero.targetY = undefined;
         hero.state = 'resting_at_guild';
+        hero.restingProgress = 1;
         hero.stateTimer = 5.0;
         hero.currentThought = 'Resting in safety';
       }
@@ -669,11 +676,14 @@ export class HeroAIManager {
     const dist = Math.hypot(targetPos.x - hero.x, targetPos.y - hero.y);
 
     if (dist > 24) {
+      hero.restingProgress = 0;
       this.moveTowards(hero, targetPos.x, targetPos.y, delta, buildings, lairs, 1.0, building.id);
+      hero.currentThought = `Returning to ${building.name} to rest`;
     } else {
       // Arrived at doorstep/entrance
       hero.targetX = undefined;
       hero.targetY = undefined;
+      hero.restingProgress = 1;
 
       // Resting inside/at building: rapid recovery
       const healSpeed = building.type === 'royal_inn' ? 35 : 20;
