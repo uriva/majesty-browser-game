@@ -2132,28 +2132,46 @@ export class ThreeRenderer {
 
     const buildingAprons: { x: number; z: number; w: number; h: number }[] = [];
 
+    // Point-to-segment projection helper (for finding nearest point on existing road centerlines)
+    const distToSegment = (px: number, pz: number, a: { x: number; z: number }, b: { x: number; z: number }) => {
+      const abx = b.x - a.x, abz = b.z - a.z;
+      const len2 = abx * abx + abz * abz;
+      let t = len2 > 0 ? ((px - a.x) * abx + (pz - a.z) * abz) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const cx = a.x + abx * t, cz = a.z + abz * t;
+      return { d: Math.hypot(px - cx, pz - cz), x: cx, z: cz, t };
+    };
+
     for (const b of nonPalaceBuildings) {
       const centerBx = (b.x + b.width / 2) * ts;
       const centerBz = (b.y + b.height / 2) * ts;
       const halfW = (b.width * ts) / 2;
       const halfH = (b.height * ts) / 2;
 
-      // Find closest existing point on the road network
-      let closestPoint = roadNetworkNodes[0];
-      let minPointDist = Infinity;
-      for (const pt of roadNetworkNodes) {
-        const d = Math.hypot(pt.x - centerBx, pt.z - centerBz);
-        if (d < minPointDist) {
-          minPointDist = d;
-          closestPoint = pt;
+      // Find closest existing point or segment on the road network
+      let bestTarget = roadNetworkNodes[0] || { x: palaceCenterX, z: palaceGateZ + 20 };
+      let minTargetDist = Infinity;
+      let targetPolyIdx = -1;
+      let targetSegIdx = -1;
+
+      for (let pIdx = 0; pIdx < allPolylines.length; pIdx++) {
+        const poly = allPolylines[pIdx];
+        for (let s = 0; s < poly.length - 1; s++) {
+          const hit = distToSegment(centerBx, centerBz, poly[s], poly[s + 1]);
+          if (hit.d < minTargetDist) {
+            minTargetDist = hit.d;
+            bestTarget = { x: hit.x, z: hit.z };
+            targetPolyIdx = pIdx;
+            targetSegIdx = s;
+          }
         }
       }
 
-      // Determine doorstep facing closest road node
+      // Determine doorstep facing closest road target
       let facing = b.facing;
       if (!facing) {
-        const dxToRoad = closestPoint.x - centerBx;
-        const dzToRoad = closestPoint.z - centerBz;
+        const dxToRoad = bestTarget.x - centerBx;
+        const dzToRoad = bestTarget.z - centerBz;
         if (Math.abs(dzToRoad) >= Math.abs(dxToRoad)) {
           facing = dzToRoad < 0 ? 'north' : 'south';
         } else {
@@ -2177,6 +2195,20 @@ export class ThreeRenderer {
         entranceZ = centerBz;
       }
 
+      // Re-query closest point on road from the actual doorstep
+      for (let pIdx = 0; pIdx < allPolylines.length; pIdx++) {
+        const poly = allPolylines[pIdx];
+        for (let s = 0; s < poly.length - 1; s++) {
+          const hit = distToSegment(entranceX, entranceZ, poly[s], poly[s + 1]);
+          if (hit.d < minTargetDist) {
+            minTargetDist = hit.d;
+            bestTarget = { x: hit.x, z: hit.z };
+            targetPolyIdx = pIdx;
+            targetSegIdx = s;
+          }
+        }
+      }
+
       const isHorizontal = facing === 'east' || facing === 'west';
       buildingAprons.push({
         x: entranceX,
@@ -2189,79 +2221,63 @@ export class ThreeRenderer {
       const waypoints = this.gridManager.findPath(
         entranceX,
         entranceZ,
-        closestPoint.x,
-        closestPoint.z,
+        bestTarget.x,
+        bestTarget.z,
         state.buildings,
         state.lairs
       );
 
       const branchPath: { x: number; z: number }[] = [{ x: entranceX, z: entranceZ }];
-
-      // Point-to-segment projection (for merging onto existing road centerlines)
-      const distToSegment = (px: number, pz: number, a: { x: number; z: number }, b: { x: number; z: number }) => {
-        const abx = b.x - a.x, abz = b.z - a.z;
-        const len2 = abx * abx + abz * abz;
-        let t = len2 > 0 ? ((px - a.x) * abx + (pz - a.z) * abz) / len2 : 0;
-        t = Math.max(0, Math.min(1, t));
-        const cx = a.x + abx * t, cz = a.z + abz * t;
-        return { d: Math.hypot(px - cx, pz - cz), x: cx, z: cz };
-      };
-
       let mergedToExisting = false;
+
       for (let i = 0; i < waypoints.length; i++) {
         const wp = waypoints[i];
         const curP = {
-          x: wp.x + Math.sin(wp.x * 0.06 + wp.y * 0.06) * 1.5,
-          z: wp.y + Math.cos(wp.x * 0.06 - wp.y * 0.06) * 1.5
+          x: wp.x + Math.sin(wp.x * 0.05 + wp.y * 0.05) * 1.0,
+          z: wp.y + Math.cos(wp.x * 0.05 - wp.y * 0.05) * 1.0
         };
 
-        // If path comes within 10 units of ANY existing road node, snap and terminate smoothly!
-        for (const existingPt of roadNetworkNodes) {
-          if (Math.hypot(curP.x - existingPt.x, curP.z - existingPt.z) < 10) {
-            branchPath.push({ x: existingPt.x, z: existingPt.z });
-            mergedToExisting = true;
-            break;
-          }
-        }
-
-        // Also merge onto road SEGMENTS (not just sparse nodes) so parallel streets T-junction instead of running alongside
-        if (!mergedToExisting) {
-          for (const poly of allPolylines) {
-            for (let s = 0; s < poly.length - 1; s++) {
-              const hit = distToSegment(curP.x, curP.z, poly[s], poly[s + 1]);
-              if (hit.d < 9) {
-                branchPath.push({ x: hit.x, z: hit.z });
-                roadNetworkNodes.push({ x: hit.x, z: hit.z });
-                mergedToExisting = true;
-                break;
+        // Check if curP comes within road merge distance of any existing road segment
+        for (let pIdx = 0; pIdx < allPolylines.length; pIdx++) {
+          const poly = allPolylines[pIdx];
+          for (let s = 0; s < poly.length - 1; s++) {
+            const hit = distToSegment(curP.x, curP.z, poly[s], poly[s + 1]);
+            if (hit.d < 9.0) {
+              const junction = { x: hit.x, z: hit.z };
+              branchPath.push(junction);
+              // Insert junction node into the existing polyline so both roads share the exact vertex
+              if (hit.t > 0.05 && hit.t < 0.95) {
+                poly.splice(s + 1, 0, junction);
               }
+              mergedToExisting = true;
+              break;
             }
-            if (mergedToExisting) break;
           }
+          if (mergedToExisting) break;
         }
 
-        if (mergedToExisting) {
-          break; // Seamless T-junction merge
-        }
+        if (mergedToExisting) break;
 
         if (Math.hypot(curP.x - branchPath[branchPath.length - 1].x, curP.z - branchPath[branchPath.length - 1].z) > 6) {
           branchPath.push(curP);
         }
       }
 
-      // Guarantee the road physically touches BOTH ends: A* snaps to tile centers which can stop
-      // half a tile short of the doorstep and the network node — pin them exactly.
+      // Guarantee the road physically touches the target road centerline
       if (!mergedToExisting) {
-        const last = branchPath[branchPath.length - 1];
-        if (Math.hypot(last.x - closestPoint.x, last.z - closestPoint.z) > 3) {
-          branchPath.push({ x: closestPoint.x, z: closestPoint.z });
+        const junction = { x: bestTarget.x, z: bestTarget.z };
+        branchPath.push(junction);
+        if (targetPolyIdx >= 0 && targetSegIdx >= 0 && targetPolyIdx < allPolylines.length) {
+          const targetPoly = allPolylines[targetPolyIdx];
+          if (targetSegIdx < targetPoly.length - 1) {
+            targetPoly.splice(targetSegIdx + 1, 0, junction);
+          }
         }
       }
 
       if (branchPath.length >= 2) {
         allPolylines.push(branchPath);
-        // Register intermediate nodes so subsequent buildings can connect into this street
-        for (let k = 0; k < branchPath.length; k += 2) {
+        for (let k = 0; k < branchPath.length; k++) {
           roadNetworkNodes.push(branchPath[k]);
         }
       }
@@ -2274,7 +2290,9 @@ export class ThreeRenderer {
     const plazaX = toCanvasX(palaceCenterX) - plazaW / 2;
     const plazaY = toCanvasY(palaceGateZ - 2);
 
-    // Trace smooth rounded spline curves through waypoints (smooth fillets at all corners!)
+    // Trace smooth interpolating Catmull-Rom spline curves through waypoints.
+    // Catmull-Rom splines are mathematically guaranteed to pass directly through EVERY waypoint,
+    // ensuring that T-junctions meet centerlines with zero gap or misalignment.
     const traceCurvedRoad = (poly: { x: number; z: number }[]) => {
       if (poly.length < 2) return;
       ctx.moveTo(toCanvasX(poly[0].x), toCanvasY(poly[0].z));
@@ -2282,12 +2300,26 @@ export class ThreeRenderer {
         ctx.lineTo(toCanvasX(poly[1].x), toCanvasY(poly[1].z));
         return;
       }
-      for (let i = 1; i < poly.length - 1; i++) {
-        const xc = (toCanvasX(poly[i].x) + toCanvasX(poly[i + 1].x)) / 2;
-        const yc = (toCanvasY(poly[i].z) + toCanvasY(poly[i + 1].z)) / 2;
-        ctx.quadraticCurveTo(toCanvasX(poly[i].x), toCanvasY(poly[i].z), xc, yc);
+      for (let i = 0; i < poly.length - 1; i++) {
+        const p0 = poly[Math.max(0, i - 1)];
+        const p1 = poly[i];
+        const p2 = poly[i + 1];
+        const p3 = poly[Math.min(poly.length - 1, i + 2)];
+
+        const c1x = p1.x + (p2.x - p0.x) / 6;
+        const c1z = p1.z + (p2.z - p0.z) / 6;
+        const c2x = p2.x - (p3.x - p1.x) / 6;
+        const c2z = p2.z - (p3.z - p1.z) / 6;
+
+        ctx.bezierCurveTo(
+          toCanvasX(c1x),
+          toCanvasY(c1z),
+          toCanvasX(c2x),
+          toCanvasY(c2z),
+          toCanvasX(p2.x),
+          toCanvasY(p2.z)
+        );
       }
-      ctx.lineTo(toCanvasX(poly[poly.length - 1].x), toCanvasY(poly[poly.length - 1].z));
     };
 
     // --- PASS 1: Dark Slate Curb & Mortar Outlines ---
