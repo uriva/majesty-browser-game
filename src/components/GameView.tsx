@@ -814,6 +814,7 @@ export const GameView: React.FC = () => {
               onOpenSaveModal={handleOpenSaveModal}
               onOpenLoadModal={handleOpenLoadModal}
               onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+              onPanTo={handlePanTo}
               saveMeta={saveMeta}
             />
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { GameState, SaveMeta } from '../game/types';
 import { audioManager } from '../game/engine/Audio';
 import { musicManager } from '../game/engine/MusicManager';
@@ -22,7 +22,10 @@ import {
   FolderOpen, 
   Settings, 
   Check,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Locate
 } from 'lucide-react';
 
 interface GameHUDProps {
@@ -37,6 +40,7 @@ interface GameHUDProps {
   onOpenLoadModal?: () => void;
   onOpenSaveLoadModal?: () => void;
   onOpenSettingsModal?: () => void;
+  onPanTo?: (x: number, y: number) => void;
   saveMeta: SaveMeta | null;
   isChronicleOpen?: boolean;
   onToggleChronicle?: () => void;
@@ -56,17 +60,44 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onOpenSaveLoadModal,
   onOpenSettingsModal,
   saveMeta,
+  onPanTo,
   isChronicleOpen,
   onToggleChronicle,
   isAnyDialogOpen
 }) => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showLogInternal, setShowLogInternal] = useState(false);
-  const [dismissedNotifId, setDismissedNotifId] = useState<string | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [notifIndex, setNotifIndex] = useState<number>(0);
+  const latestSeenIdRef = useRef<string | null>(null);
+
+  const activeNotifs = state.notifications.filter(n => !dismissedIds.has(n.id));
+
+  // Automatically show newest notification when a fresh one arrives
+  const newestNotif = activeNotifs[0];
+  if (newestNotif && newestNotif.id !== latestSeenIdRef.current) {
+    latestSeenIdRef.current = newestNotif.id;
+    if (notifIndex !== 0) {
+      setNotifIndex(0);
+    }
+  }
+
+  const safeIndex = Math.min(notifIndex, Math.max(0, activeNotifs.length - 1));
+  const currentNotif = activeNotifs[safeIndex];
+
+  const formatTimeAgo = (timestamp?: number) => {
+    if (!timestamp) return 'Just now';
+    const sec = Math.max(1, Math.floor((Date.now() - timestamp) / 1000));
+    if (sec < 10) return 'Just now';
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    return `${Math.floor(min / 60)}h ago`;
+  };
+
   const showLog = isChronicleOpen !== undefined ? isChronicleOpen : showLogInternal;
   const handleToggleLog = onToggleChronicle || (() => setShowLogInternal(prev => !prev));
   const [justSaved, setJustSaved] = useState(false);
-  const currentNotif = state.notifications[0];
 
   const handleQuickSave = () => {
     if (state.isGameOver) return;
@@ -276,7 +307,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       </div>
 
       {/* Latest Advisor Announcement Banner */}
-      {currentNotif && currentNotif.id !== dismissedNotifId && (
+      {currentNotif && (
         <div className="max-w-2xl mx-auto mt-2 pointer-events-auto px-4 animate-in fade-in slide-in-from-top-2 duration-200">
           <div
             onClick={handleToggleLog}
@@ -306,15 +337,62 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0 ml-2">
-              <span className="text-[10px] text-slate-500 font-mono">Just now</span>
+            <div className="flex items-center gap-2 shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
+              {activeNotifs.length > 1 && (
+                <div className="flex items-center gap-1 bg-slate-900/90 border border-amber-500/40 rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNotifIndex((safeIndex - 1 + activeNotifs.length) % activeNotifs.length);
+                    }}
+                    className="p-1 rounded text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Previous message"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] font-mono font-bold text-amber-300 px-1 select-none">
+                    {safeIndex + 1}/{activeNotifs.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNotifIndex((safeIndex + 1) % activeNotifs.length);
+                    }}
+                    className="p-1 rounded text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Next message"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              <span className="text-[10px] text-slate-400 font-mono select-none">
+                {formatTimeAgo(currentNotif.timestamp)}
+              </span>
+
+              {currentNotif.targetPos && onPanTo && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (currentNotif.targetPos) onPanTo(currentNotif.targetPos.x, currentNotif.targetPos.y);
+                  }}
+                  className="p-1 rounded-lg text-amber-400 hover:text-amber-200 hover:bg-amber-950/60 transition-colors cursor-pointer"
+                  title="Focus camera on event"
+                >
+                  <Locate className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setDismissedNotifId(currentNotif.id);
+                  setDismissedIds(prev => new Set(prev).add(currentNotif.id));
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 transition-colors"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 transition-colors cursor-pointer"
                 title="Dismiss message"
               >
                 <X className="w-3.5 h-3.5" />

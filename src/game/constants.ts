@@ -277,19 +277,19 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDef> = {
 
 export function getXpRequiredForLevel(level: number): number {
   const table: Record<number, number> = {
-    1: 500,
-    2: 1100,
-    3: 2000,
-    4: 3200,
-    5: 4800,
-    6: 6800,
-    7: 9500,
-    8: 13000,
-    9: 17500,
-    10: 23000,
+    1: 65,    // ~3 rats or 1 skeleton + 1 rat -> fast, satisfying early level up!
+    2: 150,   // ~3-4 goblins or skeletons
+    3: 280,   // ~5-6 medium monsters or 1 troll/werewolf
+    4: 460,
+    5: 700,
+    6: 1050,
+    7: 1500,
+    8: 2100,
+    9: 2850,
+    10: 3800,
   };
   if (table[level]) return table[level];
-  return Math.round(23000 + (level - 10) * 8000);
+  return Math.round(3800 + (level - 10) * 1100);
 }
 
 export function getResurrectionCost(heroLevel: number): number {
@@ -501,7 +501,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 36,
     attackRange: 22,
     attackCooldown: 1.2,
-    xpReward: 15,
+    xpReward: 20,
     goldBountyReward: 2,
     color: '#78716c'
   },
@@ -513,7 +513,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 28,
     attackRange: 26,
     attackCooldown: 1.5,
-    xpReward: 30,
+    xpReward: 40,
     goldBountyReward: 4,
     color: '#e7e5e4'
   },
@@ -525,7 +525,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 20,
     attackRange: 24,
     attackCooldown: 2.0,
-    xpReward: 40,
+    xpReward: 55,
     goldBountyReward: 6,
     color: '#4d7c0f'
   },
@@ -537,7 +537,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 36,
     attackRange: 30,
     attackCooldown: 1.2,
-    xpReward: 25,
+    xpReward: 35,
     goldBountyReward: 5,
     color: '#84cc16'
   },
@@ -550,7 +550,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     attackRange: 130,
     attackCooldown: 2.1,
     isRanged: true,
-    xpReward: 50,
+    xpReward: 65,
     goldBountyReward: 12,
     color: '#a855f7'
   },
@@ -562,7 +562,7 @@ export const MONSTER_DEFINITIONS: Record<MonsterType, MonsterDef> = {
     speed: 42,
     attackRange: 26,
     attackCooldown: 1.2,
-    xpReward: 45,
+    xpReward: 60,
     goldBountyReward: 6,
     color: '#52525b'
   },
