@@ -379,9 +379,8 @@ export class GridManager {
   }
 
   /**
-   * Fast tile-only line-of-sight. Same contract as hasLineOfSight for pathing purposes
-   * (structure footprints ARE in the cache) but O(samples) array lookups instead of
-   * O(samples × structures) AABB scans. Used by the per-tick movement code.
+   * Fast tile line-of-sight with strict physical unit corridor clearance.
+   * Ensures units cannot cut corners or get trapped running against building edges.
    */
   public hasClearTilePath(
     startX: number,
@@ -390,7 +389,8 @@ export class GridManager {
     endY: number,
     buildings: Building[],
     lairs: MonsterLair[],
-    excludeBuildingId?: string
+    excludeBuildingId?: string,
+    unitRadius: number = 8.5
   ): boolean {
     const dist = Math.hypot(endX - startX, endY - startY);
     if (dist < 3) return true;
@@ -400,23 +400,47 @@ export class GridManager {
     const excludeRect = excludeBuildingId
       ? this.findStructureRect(excludeBuildingId, buildings, lairs)
       : null;
-    const step = Math.max(10, this.tileSize * 0.4);
+
+    const ts = this.tileSize;
+    const r = Math.max(6, unitRadius);
+    const step = Math.max(6, Math.min(r, ts * 0.3));
     const steps = Math.ceil(dist / step);
     const dx = (endX - startX) / steps;
     const dy = (endY - startY) / steps;
-    for (let i = 1; i < steps; i++) {
-      const tx = Math.floor((startX + dx * i) / this.tileSize);
-      const ty = Math.floor((startY + dy * i) / this.tileSize);
+
+    for (let i = 0; i <= steps; i++) {
+      const cx = startX + dx * i;
+      const cy = startY + dy * i;
+
+      const tx = Math.floor(cx / ts);
+      const ty = Math.floor(cy / ts);
       if (this.isBlockedCached(tx, ty, excludeRect)) {
         return false;
       }
+
+      // Check perimeter clearance around unit circle to guarantee corner separation
+      const txL = Math.floor((cx - r) / ts);
+      const txR = Math.floor((cx + r) / ts);
+      const tyT = Math.floor((cy - r) / ts);
+      const tyB = Math.floor((cy + r) / ts);
+
+      if (txL !== tx && this.isBlockedCached(txL, ty, excludeRect)) return false;
+      if (txR !== tx && this.isBlockedCached(txR, ty, excludeRect)) return false;
+      if (tyT !== ty && this.isBlockedCached(tx, tyT, excludeRect)) return false;
+      if (tyB !== ty && this.isBlockedCached(tx, tyB, excludeRect)) return false;
+
+      // Diagonal clearance
+      const diagR = r * 0.707;
+      const dtx1 = Math.floor((cx - diagR) / ts);
+      const dty1 = Math.floor((cy - diagR) / ts);
+      const dtx2 = Math.floor((cx + diagR) / ts);
+      const dty2 = Math.floor((cy + diagR) / ts);
+      if (this.isBlockedCached(dtx1, dty1, excludeRect)) return false;
+      if (this.isBlockedCached(dtx2, dty1, excludeRect)) return false;
+      if (this.isBlockedCached(dtx1, dty2, excludeRect)) return false;
+      if (this.isBlockedCached(dtx2, dty2, excludeRect)) return false;
     }
-    // Check the destination tile itself
-    const endTx = Math.floor(endX / this.tileSize);
-    const endTy = Math.floor(endY / this.tileSize);
-    if (this.isBlockedCached(endTx, endTy, excludeRect)) {
-      return false;
-    }
+
     return true;
   }
 
@@ -843,7 +867,7 @@ export class GridManager {
     excludeBuildingId?: string
   ): Position[] {
     // 1. Direct line-of-sight shortcut with generous corner clearance (cached tile checks)
-    if (this.hasClearTilePath(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId)) {
+    if (this.hasClearTilePath(startPx, startPy, endPx, endPy, buildings, lairs, excludeBuildingId, 8.5)) {
       return [{ x: endPx, y: endPy }];
     }
 
@@ -1034,7 +1058,7 @@ export class GridManager {
     while (curIndex < rawWaypoints.length - 1) {
       let furthest = curIndex + 1;
       for (let j = rawWaypoints.length - 1; j > curIndex + 1; j--) {
-        if (this.hasClearTilePath(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId)) {
+        if (this.hasClearTilePath(rawWaypoints[curIndex].x, rawWaypoints[curIndex].y, rawWaypoints[j].x, rawWaypoints[j].y, buildings, lairs, excludeBuildingId, 8.5)) {
           furthest = j;
           break;
         }
@@ -1044,14 +1068,18 @@ export class GridManager {
     }
 
     // Replace final destination with exact destination coordinate if line of sight is clear
-    if (this.hasClearTilePath(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId)) {
+    if (this.hasClearTilePath(smoothPath[smoothPath.length - 1].x, smoothPath[smoothPath.length - 1].y, endPx, endPy, buildings, lairs, excludeBuildingId, 8.5)) {
       smoothPath[smoothPath.length - 1] = { x: endPx, y: endPy };
     } else {
       smoothPath.push({ x: endPx, y: endPy });
     }
 
-    // Remove first waypoint if already very close
-    if (smoothPath.length > 1 && Math.hypot(smoothPath[0].x - startPx, smoothPath[0].y - startPy) < 8) {
+    // Remove first waypoint only if already very close AND line of sight to next waypoint has safe corridor clearance
+    if (
+      smoothPath.length > 1 &&
+      Math.hypot(smoothPath[0].x - startPx, smoothPath[0].y - startPy) < 8 &&
+      this.hasClearTilePath(startPx, startPy, smoothPath[1].x, smoothPath[1].y, buildings, lairs, excludeBuildingId, 8.5)
+    ) {
       smoothPath.shift();
     }
 
@@ -1083,9 +1111,9 @@ export class GridManager {
       return true;
     }
 
-    // 1. Direct line-of-sight shortcut: only use direct movement if line of sight is strictly unobstructed
+    // 1. Direct line-of-sight shortcut: only use direct movement if line of sight is strictly unobstructed with unit clearance
     const hasActiveMultiPath = !!(entity.path && entity.path.length > 1);
-    const hasClearLOS = this.hasClearTilePath(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId);
+    const hasClearLOS = this.hasClearTilePath(entity.x, entity.y, targetX, targetY, buildings, lairs, targetBuildingId, 9);
     const canDirectMove = (distToTarget < 12 && hasClearLOS) || (!hasActiveMultiPath && hasClearLOS);
 
     if (canDirectMove) {
@@ -1107,7 +1135,7 @@ export class GridManager {
         entity.y += vy;
       } else {
         // Multi-angle deflection when brushing a corner
-        const angles = [0.35, -0.35, 0.70, -0.70, 1.05, -1.05, 1.40, -1.40];
+        const angles = [0.35, -0.35, 0.70, -0.70, 1.05, -1.05, 1.40, -1.40, 1.75, -1.75, 2.10, -2.10];
         let deflected = false;
         for (const ang of angles) {
           const cosA = Math.cos(ang);
@@ -1122,8 +1150,10 @@ export class GridManager {
           }
         }
         if (!deflected) {
-          // Re-route with A* path on next frame
+          // Re-route with A* path on next frame and ensure separation from wall
+          entity.path = undefined;
           entity.pathTargetKey = undefined;
+          this.resolveCollision(entity, buildings, lairs, targetBuildingId, 8.5);
         }
       }
 
@@ -1188,7 +1218,7 @@ export class GridManager {
           entity.y += vy;
         } else {
           // Multi-angle deflection checks to smoothly glide around building corners and doorways
-          const angles = [0.35, -0.35, 0.70, -0.70, 1.05, -1.05, 1.40, -1.40];
+          const angles = [0.35, -0.35, 0.70, -0.70, 1.05, -1.05, 1.40, -1.40, 1.75, -1.75, 2.10, -2.10];
           let deflected = false;
           for (const ang of angles) {
             const cosA = Math.cos(ang);
@@ -1203,9 +1233,10 @@ export class GridManager {
             }
           }
           if (!deflected) {
-            // Cannot make progress; clear path to recalculate on next tick
+            // Cannot make progress; clear path to recalculate on next tick and ensure separation from wall
             entity.path = undefined;
             entity.pathTargetKey = undefined;
+            this.resolveCollision(entity, buildings, lairs, targetBuildingId, 8.5);
           }
         }
         moveBudget = 0;

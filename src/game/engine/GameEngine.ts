@@ -982,7 +982,7 @@ export class GameEngine {
       ]
     };
     audioManager.playAdvisorChime();
-    this.addNotification(`Royal Dispatch: ${title}`, description.slice(0, 75) + '...', 'quest', targetPos);
+    this.addNotification(`Royal Dispatch: ${title}`, description, 'quest', targetPos);
   }
 
   public triggerRandomDilemma() {
@@ -993,7 +993,7 @@ export class GameEngine {
     this.state.isPaused = true;
     this.state.activeDilemma = dilemma;
     audioManager.playAdvisorChime();
-    this.addNotification(`Royal Decree: ${dilemma.title}`, dilemma.description.slice(0, 70) + '...', 'quest');
+    this.addNotification(`Royal Decree: ${dilemma.title}`, dilemma.description, 'quest');
   }
 
   public resolveDilemma(choice: DilemmaChoice) {
