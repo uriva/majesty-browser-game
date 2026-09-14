@@ -22,13 +22,14 @@ export class ThreeRenderer {
   private dirLight: THREE.DirectionalLight;
   private hemiLight: THREE.HemisphereLight;
 
-  // Stable Shadow-Casting Directional Light Setup (Zero Vibration & Shimmer)
+  // Continuous Smooth Celestial Movement System (Zero-Shimmer Dynamic Shadows)
   private readonly shadowExtent: number = 550;
   private readonly shadowMapSize: number = 2048;
-  private readonly lightOffset: THREE.Vector3 = new THREE.Vector3(240, 380, 190);
-  private lightRight: THREE.Vector3;
-  private lightOrthoUp: THREE.Vector3;
-  private snappedLightTarget: THREE.Vector3 = new THREE.Vector3();
+  private smoothDayTime: number = -1;
+  private lightOffsetVec: THREE.Vector3 = new THREE.Vector3();
+  private sunOrbitVec: THREE.Vector3 = new THREE.Vector3();
+  private moonOrbitVec: THREE.Vector3 = new THREE.Vector3();
+  private blendedLightDir: THREE.Vector3 = new THREE.Vector3();
 
   // Procedural Canvas Textures
   private grassTexture: THREE.CanvasTexture;
@@ -230,19 +231,13 @@ export class ThreeRenderer {
     this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.45);
     this.scene.add(this.hemiLight);
 
-    // Precalculate light-space basis vectors for jitter-free shadow texel snapping
-    const lightDir = this.lightOffset.clone().normalize();
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    this.lightRight = new THREE.Vector3().crossVectors(worldUp, lightDir).normalize();
-    this.lightOrthoUp = new THREE.Vector3().crossVectors(lightDir, this.lightRight).normalize();
-
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.4);
-    this.dirLight.position.copy(this.lightOffset);
+    this.dirLight.position.set(240, 380, 190);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = this.shadowMapSize;
     this.dirLight.shadow.mapSize.height = this.shadowMapSize;
     this.dirLight.shadow.camera.near = 50;
-    this.dirLight.shadow.camera.far = 1200;
+    this.dirLight.shadow.camera.far = 1300;
     const shadowD = this.shadowExtent;
     this.dirLight.shadow.camera.left = -shadowD;
     this.dirLight.shadow.camera.right = shadowD;
@@ -3024,8 +3019,17 @@ export class ThreeRenderer {
     }
   ];
 
-  private updateDayNightLighting(state: GameState) {
-    const t = (((state.stats.dayTime % 2400) + 2400) % 2400) / 2400; // 0.0 to 1.0
+  private updateDayNightLighting(state: GameState, delta: number = 0.016) {
+    if (this.smoothDayTime < 0) {
+      this.smoothDayTime = state.stats.dayTime;
+    } else {
+      let diff = state.stats.dayTime - this.smoothDayTime;
+      if (diff > 1200) diff -= 2400;
+      else if (diff < -1200) diff += 2400;
+      this.smoothDayTime = (this.smoothDayTime + diff * Math.min(1.0, 12.0 * delta) + 2400) % 2400;
+    }
+
+    const t = (((this.smoothDayTime % 2400) + 2400) % 2400) / 2400; // 0.0 to 1.0
     const sunAngle = (t - 0.25) * Math.PI * 2;
     const sinAngle = Math.sin(sunAngle);
 
@@ -3066,23 +3070,44 @@ export class ThreeRenderer {
       (this.starsPoints.material as THREE.PointsMaterial).opacity = starOpacity;
     }
 
-    // 2. Stable Directional Light with Light-Space Texel Snapping (Zero Vibration & Shimmer)
-    // Anchoring the shadow-casting light to a stable isometric directional vector avoids the
-    // continuous sub-texel shadow crawling caused by celestial orbit.
-    // The sun, moon, and stars still orbit in the sky dome above, and lighting colors/intensities
-    // transition through the day/night keyframes, but shadows remain completely rock-solid.
-    const texelWorldSize = (this.shadowExtent * 2) / this.shadowMapSize;
-    const u = this.cameraTarget.dot(this.lightRight);
-    const v = this.cameraTarget.dot(this.lightOrthoUp);
-    const snappedU = Math.round(u / texelWorldSize) * texelWorldSize;
-    const snappedV = Math.round(v / texelWorldSize) * texelWorldSize;
+    // 2. Smooth Continuous Directional Celestial Light Orbit (Dynamic Shadows with Zero Shimmer)
+    const sunAzimuthX = Math.cos(sunAngle);
+    const sunAzimuthZ = Math.sin(sunAngle * 0.5) * 0.5;
+    const sunHorizLen = Math.hypot(sunAzimuthX, sunAzimuthZ) || 1;
+    const sunNormX = sunAzimuthX / sunHorizLen;
+    const sunNormZ = sunAzimuthZ / sunHorizLen;
 
-    this.snappedLightTarget.copy(this.cameraTarget)
-      .addScaledVector(this.lightRight, snappedU - u)
-      .addScaledVector(this.lightOrthoUp, snappedV - v);
+    // Elevation angle arcs between 34 deg (dawn/dusk) and 66 deg (noon)
+    const sunElevRad = (34 + 32 * Math.max(0, sinAngle)) * (Math.PI / 180);
+    const cosSunElev = Math.cos(sunElevRad);
+    const sinSunElev = Math.sin(sunElevRad);
 
-    this.dirLight.target.position.copy(this.snappedLightTarget);
-    this.dirLight.position.copy(this.snappedLightTarget).add(this.lightOffset);
+    this.sunOrbitVec.set(
+      sunNormX * cosSunElev,
+      sinSunElev,
+      sunNormZ * cosSunElev
+    ).normalize();
+
+    // Nighttime moon elevation arcs between 30 deg and 54 deg
+    const moonElevRad = (30 + 24 * Math.max(0, -sinAngle)) * (Math.PI / 180);
+    const cosMoonElev = Math.cos(moonElevRad);
+    const sinMoonElev = Math.sin(moonElevRad);
+
+    this.moonOrbitVec.set(
+      -sunNormX * cosMoonElev,
+      sinMoonElev,
+      -sunNormZ * cosMoonElev
+    ).normalize();
+
+    // Smooth day/night blend factor across horizon (-0.15 to +0.15)
+    const dayBlend = THREE.MathUtils.smoothstep(sinAngle, -0.15, 0.15);
+    this.blendedLightDir.lerpVectors(this.moonOrbitVec, this.sunOrbitVec, dayBlend).normalize();
+
+    const lightDist = 580;
+    this.lightOffsetVec.copy(this.blendedLightDir).multiplyScalar(lightDist);
+
+    this.dirLight.target.position.copy(this.cameraTarget);
+    this.dirLight.position.copy(this.cameraTarget).add(this.lightOffsetVec);
     this.dirLight.target.updateMatrixWorld();
     this.dirLight.updateMatrixWorld();
 
@@ -3168,7 +3193,7 @@ export class ThreeRenderer {
     this.lastRenderTime = now;
 
     this.updateCamera(state, delta);
-    this.updateDayNightLighting(state);
+    this.updateDayNightLighting(state, delta);
 
     // Fog of war only repaints at ~7Hz — vision changes slowly and a full grid
     // repaint + 512px texture upload every frame is pure waste.

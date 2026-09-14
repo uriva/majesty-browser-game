@@ -408,8 +408,22 @@ export const GameView: React.FC = () => {
   // Mouse Controls for 3D Panning, Rotating & Zooming
   // (drag state lives in refs — per-mousemove setState re-renders the whole tree and stutters the camera)
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button === 2 || (e.button === 0 && e.altKey)) {
-      // Right Click / Alt+Click -> 3D Orbit Rotate
+    if (e.button === 2) {
+      // Right Click: If currently placing a building, flag, or spell, cancel placement immediately!
+      if (activeBuildingType || activeFlagType || activeSpellId || engineRef.current?.state.activePlacement) {
+        setActiveBuildingType(null);
+        setActiveFlagType(null);
+        setActiveSpellId(null);
+        if (engineRef.current) {
+          engineRef.current.state.activePlacement = null;
+        }
+        return;
+      }
+      // Otherwise: Right Click -> 3D Orbit Rotate
+      isRotatingRef.current = true;
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
+    } else if (e.button === 0 && e.altKey) {
+      // Alt+Left Click -> 3D Orbit Rotate
       isRotatingRef.current = true;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
     } else if (e.button === 0 || e.button === 1) {
@@ -740,7 +754,17 @@ export const GameView: React.FC = () => {
         onMouseUp={handleMouseUp}
         onClick={handleCanvasClick}
         onWheel={handleWheel}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (activeBuildingType || activeFlagType || activeSpellId || engineRef.current?.state.activePlacement) {
+            setActiveBuildingType(null);
+            setActiveFlagType(null);
+            setActiveSpellId(null);
+            if (engineRef.current) {
+              engineRef.current.state.activePlacement = null;
+            }
+          }
+        }}
         className="w-full h-full cursor-crosshair block"
       />
 
