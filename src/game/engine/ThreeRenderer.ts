@@ -22,6 +22,14 @@ export class ThreeRenderer {
   private dirLight: THREE.DirectionalLight;
   private hemiLight: THREE.HemisphereLight;
 
+  // Stable Shadow-Casting Directional Light Setup (Zero Vibration & Shimmer)
+  private readonly shadowExtent: number = 550;
+  private readonly shadowMapSize: number = 2048;
+  private readonly lightOffset: THREE.Vector3 = new THREE.Vector3(240, 380, 190);
+  private lightRight: THREE.Vector3;
+  private lightOrthoUp: THREE.Vector3;
+  private snappedLightTarget: THREE.Vector3 = new THREE.Vector3();
+
   // Procedural Canvas Textures
   private grassTexture: THREE.CanvasTexture;
   private grassBumpTexture: THREE.CanvasTexture;
@@ -199,7 +207,7 @@ export class ThreeRenderer {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -222,20 +230,27 @@ export class ThreeRenderer {
     this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.45);
     this.scene.add(this.hemiLight);
 
+    // Precalculate light-space basis vectors for jitter-free shadow texel snapping
+    const lightDir = this.lightOffset.clone().normalize();
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    this.lightRight = new THREE.Vector3().crossVectors(worldUp, lightDir).normalize();
+    this.lightOrthoUp = new THREE.Vector3().crossVectors(lightDir, this.lightRight).normalize();
+
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.4);
-    this.dirLight.position.set(250, 400, 200);
+    this.dirLight.position.copy(this.lightOffset);
     this.dirLight.castShadow = true;
-    this.dirLight.shadow.mapSize.width = 1024;
-    this.dirLight.shadow.mapSize.height = 1024;
-    this.dirLight.shadow.camera.near = 10;
-    this.dirLight.shadow.camera.far = 1500;
-    const shadowD = 600;
+    this.dirLight.shadow.mapSize.width = this.shadowMapSize;
+    this.dirLight.shadow.mapSize.height = this.shadowMapSize;
+    this.dirLight.shadow.camera.near = 50;
+    this.dirLight.shadow.camera.far = 1200;
+    const shadowD = this.shadowExtent;
     this.dirLight.shadow.camera.left = -shadowD;
     this.dirLight.shadow.camera.right = shadowD;
     this.dirLight.shadow.camera.top = shadowD;
     this.dirLight.shadow.camera.bottom = -shadowD;
     this.dirLight.shadow.bias = -0.0002;
-    this.dirLight.shadow.normalBias = 0.03;
+    this.dirLight.shadow.normalBias = 0.02;
+    this.dirLight.shadow.camera.updateProjectionMatrix();
     this.scene.add(this.dirLight);
     this.scene.add(this.dirLight.target);
 
@@ -3051,34 +3066,23 @@ export class ThreeRenderer {
       (this.starsPoints.material as THREE.PointsMaterial).opacity = starOpacity;
     }
 
-    // 2. Smooth Continuous Directional Light Orbit (Zero Discontinuous Flips)
-    const sunLightDist = 650;
-    const rawSunX = Math.cos(sunAngle) * sunLightDist;
-    const rawSunY = sinAngle * sunLightDist;
-    const rawSunZ = Math.sin(sunAngle * 0.5) * 180;
+    // 2. Stable Directional Light with Light-Space Texel Snapping (Zero Vibration & Shimmer)
+    // Anchoring the shadow-casting light to a stable isometric directional vector avoids the
+    // continuous sub-texel shadow crawling caused by celestial orbit.
+    // The sun, moon, and stars still orbit in the sky dome above, and lighting colors/intensities
+    // transition through the day/night keyframes, but shadows remain completely rock-solid.
+    const texelWorldSize = (this.shadowExtent * 2) / this.shadowMapSize;
+    const u = this.cameraTarget.dot(this.lightRight);
+    const v = this.cameraTarget.dot(this.lightOrthoUp);
+    const snappedU = Math.round(u / texelWorldSize) * texelWorldSize;
+    const snappedV = Math.round(v / texelWorldSize) * texelWorldSize;
 
-    // Smooth day/night blend factor across horizon (-0.12 to +0.12)
-    const dayBlend = THREE.MathUtils.smoothstep(sinAngle, -0.12, 0.12);
+    this.snappedLightTarget.copy(this.cameraTarget)
+      .addScaledVector(this.lightRight, snappedU - u)
+      .addScaledVector(this.lightOrthoUp, snappedV - v);
 
-    const sunLightX = rawSunX;
-    const sunLightY = Math.max(70, rawSunY);
-    const sunLightZ = rawSunZ;
-
-    const moonLightX = -rawSunX;
-    const moonLightY = Math.max(75, -rawSunY);
-    const moonLightZ = -rawSunZ;
-
-    const lightPosX = THREE.MathUtils.lerp(moonLightX, sunLightX, dayBlend);
-    const lightPosY = THREE.MathUtils.lerp(moonLightY, sunLightY, dayBlend);
-    const lightPosZ = THREE.MathUtils.lerp(moonLightZ, sunLightZ, dayBlend);
-
-    const shadowD = 600;
-    const texelWorldSize = (shadowD * 2) / 4096;
-    const snappedTargetX = Math.round(this.cameraTarget.x / texelWorldSize) * texelWorldSize;
-    const snappedTargetZ = Math.round(this.cameraTarget.z / texelWorldSize) * texelWorldSize;
-
-    this.dirLight.target.position.set(snappedTargetX, 0, snappedTargetZ);
-    this.dirLight.position.set(lightPosX + snappedTargetX, lightPosY, lightPosZ + snappedTargetZ);
+    this.dirLight.target.position.copy(this.snappedLightTarget);
+    this.dirLight.position.copy(this.snappedLightTarget).add(this.lightOffset);
     this.dirLight.target.updateMatrixWorld();
     this.dirLight.updateMatrixWorld();
 
